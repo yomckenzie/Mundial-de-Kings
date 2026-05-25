@@ -263,7 +263,7 @@ export const db = {
       const d = db._init();
       const idx = d.users.findIndex(u => u.id === id);
       if (idx === -1) throw new Error('User not found');
-      d.users[idx] = { ...d.users[idx], ...data };
+      d.users[idx] = { ...d.users[idx], ...data, updated_at: getNow() };
       db._persist();
       return d.users[idx];
     },
@@ -307,7 +307,7 @@ export const db = {
       const d = db._init();
       const idx = d.matches.findIndex(m => m.id === id);
       if (idx === -1) throw new Error('Match not found');
-      d.matches[idx] = { ...d.matches[idx], ...data };
+      d.matches[idx] = { ...d.matches[idx], ...data, updated_at: getNow() };
       db._persist();
       return d.matches[idx];
     },
@@ -362,7 +362,7 @@ export const db = {
       const d = db._init();
       const idx = d.predictions.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prediction not found');
-      d.predictions[idx] = { ...d.predictions[idx], ...data };
+      d.predictions[idx] = { ...d.predictions[idx], ...data, updated_at: getNow() };
       db._persist();
       return d.predictions[idx];
     },
@@ -400,7 +400,7 @@ export const db = {
       const d = db._init();
       const idx = d.prizes.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prize not found');
-      d.prizes[idx] = { ...d.prizes[idx], ...data };
+      d.prizes[idx] = { ...d.prizes[idx], ...data, updated_at: getNow() };
       db._persist();
       return d.prizes[idx];
     },
@@ -438,7 +438,7 @@ export const db = {
       const d = db._init();
       const idx = d.redemptions.findIndex(r => r.id === id);
       if (idx === -1) throw new Error('Redemption not found');
-      d.redemptions[idx] = { ...d.redemptions[idx], ...data };
+      d.redemptions[idx] = { ...d.redemptions[idx], ...data, updated_at: getNow() };
       db._persist();
       return d.redemptions[idx];
     },
@@ -476,7 +476,7 @@ export const db = {
       const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
-      d.supportTickets[idx] = { ...d.supportTickets[idx], ...data };
+      d.supportTickets[idx] = { ...d.supportTickets[idx], ...data, updated_at: getNow() };
       db._persist();
       return d.supportTickets[idx];
     },
@@ -531,7 +531,7 @@ export const db = {
       const d = db._init();
       const idx = d.appSettings.findIndex(s => s.id === id);
       if (idx === -1) throw new Error('Setting not found');
-      d.appSettings[idx] = { ...d.appSettings[idx], ...data };
+      d.appSettings[idx] = { ...d.appSettings[idx], ...data, updated_at: getNow() };
       db._persist();
       return d.appSettings[idx];
     },
