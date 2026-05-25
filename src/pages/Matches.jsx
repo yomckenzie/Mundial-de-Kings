@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw, UserCheck } from 'lucide-react';
-import { format, parse } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
@@ -69,7 +69,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="w-4 h-4" />
-              {match.match_date && format(parse(match.match_date, 'yyyy-MM-dd', new Date()), "d 'de' MMMM", { locale: es })}
+              {match.match_date && (() => { const d = new Date(match.match_date); return isNaN(d.getTime()) ? match.match_date : format(d, "d 'de' MMMM", { locale: es }); })()}
               <Clock className="w-4 h-4 ml-1" />
               {match.match_time}
             </div>
@@ -377,7 +377,7 @@ export default function Matches() {
 
       {sourceStatus?.lastSync && sourceStatus?.connected && (
         <p className="text-xs text-muted-foreground/60 text-right -mt-4">
-          Última sincronización: {new Date(sourceStatus.lastSync.time).toLocaleTimeString() || '—'}
+          Última sincronización: {(() => { if (!sourceStatus?.lastSync?.time) return '—'; const d = new Date(sourceStatus.lastSync.time); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}
           {sourceStatus.lastSync.updated > 0 && ` · ${sourceStatus.lastSync.updated} actualizados`}
         </p>
       )}
