@@ -111,17 +111,49 @@ export async function deleteRecords(tableName, field, value) {
 /**
  * Sincronizar datos locales hacia Supabase
  * Envía los datos de una tabla completa
+ * @param {string} tableName - Nombre de la tabla
+ * @param {Array} records - Registros a sincronizar
+ * @param {string} conflictColumn - Columna para resolver conflictos (default: 'id')
  */
-export async function syncTableToSupabase(tableName, records) {
+export async function syncTableToSupabase(tableName, records, conflictColumn = 'id') {
   if (!supabase || !records) return false
   try {
-    // Insertar todos los registros (upsert por id)
     const { error } = await supabase
       .from(tableName)
-      .upsert(records, { onConflict: 'id' })
+      .upsert(records, { onConflict: conflictColumn })
     if (error) throw error
     return true
   } catch (err) {
+    // Si falla por unique constraint (ej: email duplicado en users),
+    // intentar uno por uno cambiando la columna de conflicto
+    if (err.code === '23505' || err.status === 409) {
+      console.warn(`[Supabase] Conflict en ${tableName}, intentando individual...`)
+      let successCount = 0
+      for (const record of records) {
+        try {
+          // Primero intentar insert (sin conflicto) — si el email ya existe, fallará
+          const { error: insertError } = await supabase
+            .from(tableName)
+            .insert(record)
+            .select()
+            .single()
+          if (insertError) {
+            // El registro ya existe (email duplicado) → actualizar por email
+            const { error: updateError } = await supabase
+              .from(tableName)
+              .update(record)
+              .eq('email', record.email)
+              .select()
+              .single()
+            if (!updateError) successCount++
+          } else {
+            successCount++
+          }
+        } catch {}
+      }
+      console.warn(`[Supabase] Sincronizados ${successCount}/${records.length} en ${tableName}`)
+      return successCount > 0
+    }
     console.warn(`[Supabase] Error syncing ${tableName}:`, err.message)
     return false
   }
