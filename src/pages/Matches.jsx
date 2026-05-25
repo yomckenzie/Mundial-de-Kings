@@ -23,11 +23,18 @@ const statusMap = {
   finished: { label: 'Finalizado', class: 'bg-muted text-muted-foreground' },
 };
 
-const getTimeUntilOpen = (match_date, match_time) => {
+const getMatchDate = (match_date, match_time) => {
+  // Soporta formato ISO (de Supabase) y formato simple yyyy-MM-dd
   if (!match_date || !match_time) return null;
-  const [year, month, day] = match_date.split('-').map(Number);
+  const datePart = match_date.split('T')[0];
+  const [year, month, day] = datePart.split('-').map(Number);
   const [hour, minute] = match_time.split(':').map(Number);
-  const matchDateTime = new Date(year, month - 1, day, hour, minute, 0);
+  return new Date(year, month - 1, day, hour, minute, 0);
+};
+
+const getTimeUntilOpen = (match_date, match_time) => {
+  const matchDateTime = getMatchDate(match_date, match_time);
+  if (!matchDateTime) return null;
   const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
   const now = new Date();
   const diff = openFrom - now;
@@ -39,14 +46,10 @@ const getTimeUntilOpen = (match_date, match_time) => {
 
 const isMatchOpenForPredictions = (match) => {
   if (match.status !== 'pending' && match.status !== 'open') return false;
-  if (!match.match_date || !match.match_time) return false;
-
-  const [year, month, day] = match.match_date.split('-').map(Number);
-  const [hour, minute] = match.match_time.split(':').map(Number);
-  const matchDateTime = new Date(year, month - 1, day, hour, minute, 0);
+  const matchDateTime = getMatchDate(match.match_date, match.match_time);
+  if (!matchDateTime) return false;
   const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
   const now = new Date();
-
   return now >= openFrom && now < matchDateTime;
 };
 
