@@ -13,6 +13,9 @@ const getNow = () => new Date().toISOString();
 
 let _syncTimers = {};
 let _syncInProgress = {};
+let _pollInterval = null;
+let _syncToSupabaseInProgress = false;
+let _syncFromSupabaseInProgress = false;
 
 const load = () => {
   try {
@@ -99,29 +102,55 @@ export const db = {
       // Cargar datos desde Supabase en segundo plano
       // Los componentes React se actualizarán vía evento 'db-synced'
       this._syncAllFromSupabase();
+
+      // Polling automático cada 60s para detectar cambios de otros admins/dispositivos
+      if (!_pollInterval) {
+        _pollInterval = setInterval(() => {
+          this._syncAllFromSupabase();
+        }, 60000);
+      }
     }
     return this._data;
   },
 
   _persist() {
     save(this._data);
-    // Sincronizar cambios a Supabase en segundo plano
+    // Sincronizar cambios a Supabase INMEDIATAMENTE
     this._syncAllToSupabase();
   },
 
   // Sincronizar TODAS las tablas desde Supabase
   async _syncAllFromSupabase() {
     if (!isSupabaseAvailable()) return;
+    // Evitar race condition: si estamos subiendo datos, no bajar al mismo tiempo
+    if (_syncToSupabaseInProgress) {
+      console.log('[DB] Sync a Supabase en progreso, saltando polling');
+      return;
+    }
+    return this._syncAllFromSupabaseInternal();
+  },
 
+  // Forzar sincronización desde Supabase (ignora el lock de subida)
+  async _syncAllFromSupabaseForce() {
+    if (!isSupabaseAvailable()) return;
+    return this._syncAllFromSupabaseInternal();
+  },
+
+  // Implementación interna de sincronización desde Supabase
+  async _syncAllFromSupabaseInternal() {
+    if (_syncFromSupabaseInProgress) return;
+
+    _syncFromSupabaseInProgress = true;
     try {
       const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
       let changed = false;
 
       for (const jsKey of tablesToSync) {
         const localRecords = this._data[jsKey] || [];
-        const merged = await syncTableFromSupabaseFn(jsKey, localRecords);
-        if (merged && merged.length !== localRecords.length) {
-          this._data[jsKey] = merged;
+        const remoteRecords = await syncTableFromSupabaseFn(jsKey, localRecords);
+        // Si el resultado es un nuevo array (diferente referencia), hubo cambios
+        if (remoteRecords && remoteRecords !== localRecords) {
+          this._data[jsKey] = remoteRecords;
           changed = true;
         }
       }
@@ -133,25 +162,43 @@ export const db = {
       }
     } catch (err) {
       console.warn('[DB] Error al sincronizar desde Supabase:', err);
+    } finally {
+      _syncFromSupabaseInProgress = false;
     }
   },
 
-  // Sincronizar TODAS las tablas a Supabase
+  // Sincronizar TODAS las tablas a Supabase (con await para asegurar que llegue)
   async _syncAllToSupabase() {
     if (!isSupabaseAvailable()) return;
+    if (_syncToSupabaseInProgress) return;
 
-    const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
-    for (const jsKey of tablesToSync) {
-      const records = this._data[jsKey] || [];
-      if (records.length > 0) {
-        syncTableToSupabaseFn(jsKey, records);
+    _syncToSupabaseInProgress = true;
+    try {
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
+      for (const jsKey of tablesToSync) {
+        const records = this._data[jsKey] || [];
+        if (records.length > 0) {
+          await syncTableToSupabaseFn(jsKey, records);
+        }
       }
+    } finally {
+      _syncToSupabaseInProgress = false;
     }
   },
 
   // Forzar sincronización manual desde Supabase
   async forceSync() {
-    await this._syncAllFromSupabase();
+    await this._syncAllFromSupabaseForce();
+  },
+
+  // Sincronizar desde Supabase (forzar inmediato)
+  async forceSyncFromCloud() {
+    if (!isSupabaseAvailable()) {
+      return { success: false, error: 'Supabase no está configurado' };
+    }
+    this._init();
+    await this._syncAllFromSupabaseForce();
+    return { success: true };
   },
 
   // Sincronizar TODOS los datos locales a Supabase (push to cloud)

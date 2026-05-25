@@ -129,6 +129,8 @@ export async function syncTableToSupabase(tableName, records) {
 
 /**
  * Sincronizar datos de Supabase hacia local
+ * Maneja: nuevos registros remotos, actualizaciones a existentes.
+ * RETORNA SIEMPRE UN NUEVO ARRAY si hubo cambios (no muta localRecords).
  */
 export async function syncTableFromSupabase(tableName, localRecords = []) {
   if (!supabase) return null
@@ -136,19 +138,81 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
     const remoteData = await fetchAll(tableName)
     if (!remoteData) return localRecords
 
-    // Mapa de IDs locales para evitar duplicados
-    const localIds = new Set(localRecords.map(r => r.id))
+    const localMap = new Map(localRecords.map(r => [r.id, r]))
+    const result = []
+    let changed = false
 
-    // Agregar registros remotos que no existen localmente
-    const newRecords = remoteData.filter(r => !localIds.has(r.id))
+    for (const remote of remoteData) {
+      const local = localMap.get(remote.id)
+      if (!local) {
+        // Nuevo registro remoto — agregarlo
+        result.push(remote)
+        changed = true
+      } else {
+        // Decidir si usar el remoto o mantener el local
+        const remoteTime = remote.updated_at || remote.created_date
+        const localTime = local.updated_at || local.created_date
 
-    if (newRecords.length > 0) {
-      return [...localRecords, ...newRecords]
+        let useRemote = false
+        if (remoteTime && localTime && new Date(remoteTime) > new Date(localTime)) {
+          useRemote = true
+        } else if (!remoteTime && !localTime) {
+          // Sin timestamps, preferir remoto si el contenido difiere
+          const { created_date: _, ...a } = local
+          const { created_date: __, ...b } = remote
+          if (JSON.stringify(a) !== JSON.stringify(b)) {
+            useRemote = true
+          }
+        }
+
+        if (useRemote) {
+          result.push({ ...local, ...remote })
+          changed = true
+        } else {
+          result.push(local)
+        }
+      }
     }
+
+    if (changed) return result
     return localRecords
   } catch (err) {
     console.warn(`[Supabase] Error syncing ${tableName} from server:`, err.message)
     return localRecords
+  }
+}
+
+/**
+ * Subir una imagen a Supabase Storage
+ * @param {File} file - Archivo de imagen
+ * @param {string} bucket - Nombre del bucket (default: 'banners')
+ * @returns {Promise<string|null>} - URL pública de la imagen
+ */
+export async function uploadImage(file, bucket = 'banners') {
+  if (!supabase) return null
+  try {
+    const ext = file.name.split('.').pop() || 'png'
+    const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const filePath = `${fileName}`
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type
+      })
+
+    if (error) throw error
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filePath)
+
+    return publicUrl
+  } catch (err) {
+    console.warn(`[Supabase] Error uploading image:`, err.message)
+    return null
   }
 }
 

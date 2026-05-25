@@ -121,10 +121,17 @@ const client = {
   integrations: {
     Core: {
       UploadFile: async ({ file }) => {
+        // Intentar subir a Supabase Storage primero
+        const { uploadImage } = await import('@/lib/supabase');
+        const publicUrl = await uploadImage(file, 'banners');
+        if (publicUrl) {
+          return { file_url: publicUrl, storage: 'supabase' };
+        }
+        // Fallback: DataURL local (sin Supabase)
         return new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = () => {
-            resolve({ file_url: reader.result });
+            resolve({ file_url: reader.result, storage: 'local' });
           };
           reader.readAsDataURL(file);
         });
