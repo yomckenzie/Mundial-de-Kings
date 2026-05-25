@@ -126,28 +126,38 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
   } catch (err) {
     // Si falla por unique constraint (ej: email duplicado en users),
     // intentar uno por uno cambiando la columna de conflicto
+    // Usamos upsert (INSERT ... ON CONFLICT DO UPDATE) porque
+    // la anon key solo tiene permiso INSERT + SELECT (no UPDATE directo)
     if (err.code === '23505' || err.status === 409) {
-      console.warn(`[Supabase] Conflict en ${tableName}, intentando individual...`)
+      console.warn(`[Supabase] Conflict en ${tableName}, intentando individual por email...`)
       let successCount = 0
       for (const record of records) {
         try {
-          // Primero intentar insert (sin conflicto) — si el email ya existe, fallará
-          const { error: insertError } = await supabase
+          // Intentar con onConflict: 'email' — hace INSERT ON CONFLICT DO UPDATE
+          // así funciona con solo permiso INSERT + SELECT
+          const altColumn = 'email'
+          const { error: indError } = await supabase
             .from(tableName)
-            .insert(record)
-            .select()
-            .single()
-          if (insertError) {
-            // El registro ya existe (email duplicado) → actualizar por email
-            const { error: updateError } = await supabase
-              .from(tableName)
-              .update(record)
-              .eq('email', record.email)
-              .select()
-              .single()
-            if (!updateError) successCount++
-          } else {
-            successCount++
+            .upsert(record, { onConflict: altColumn })
+          if (!indError) successCount++
+        } catch {}
+      }
+      // Si no funcionó por email, reintentar omitiendo los registros conflictivos
+      if (successCount === 0 && records.length > 0) {
+        // Estrategia final: upsert uno por uno con onConflict: 'id'
+        // filtrando los que ya existen en Supabase (para no violar unique en email)
+        try {
+          const { data: existing } = await supabase
+            .from(tableName)
+            .select('id, email')
+          const existingEmails = new Set((existing || []).map(r => r.email))
+          for (const record of records) {
+            if (!existingEmails.has(record.email)) {
+              const { error: indError } = await supabase
+                .from(tableName)
+                .upsert(record, { onConflict: 'id' })
+              if (!indError) successCount++
+            }
           }
         } catch {}
       }
