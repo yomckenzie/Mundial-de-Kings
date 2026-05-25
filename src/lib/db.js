@@ -154,6 +154,31 @@ export const db = {
     await this._syncAllFromSupabase();
   },
 
+  // Sincronizar TODOS los datos locales a Supabase (push to cloud)
+  async syncToCloud() {
+    if (!isSupabaseAvailable()) {
+      return { success: false, error: 'Supabase no está configurado. Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en .env' };
+    }
+    this._init();
+    const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
+    const results = [];
+    for (const jsKey of tablesToSync) {
+      const records = this._data[jsKey] || [];
+      const tableName = tableNameToSupabase(jsKey);
+      if (records.length > 0) {
+        try {
+          await syncTableToSupabase(tableName, records);
+          results.push({ table: tableName, count: records.length, status: 'ok' });
+        } catch (err) {
+          results.push({ table: tableName, count: records.length, status: 'error', error: err.message });
+        }
+      } else {
+        results.push({ table: tableName, count: 0, status: 'empty' });
+      }
+    }
+    return { success: true, results };
+  },
+
   reset() {
     this._data = getDefaults();
     this._persist();

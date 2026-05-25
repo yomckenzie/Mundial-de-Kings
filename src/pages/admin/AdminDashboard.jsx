@@ -7,8 +7,9 @@ import TopUsersChart from '@/components/admin/TopUsersChart';
 import DailyRegistrationsChart from '@/components/admin/DailyRegistrationsChart';
 import DailyWinnersChart from '@/components/admin/DailyWinnersChart';
 import { Button } from '@/components/ui/button';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, CloudUpload } from 'lucide-react';
 import { toast } from 'sonner';
+import { db } from '@/lib/db';
 
 export default function AdminDashboard() {
   const queryClient = useQueryClient();
@@ -39,12 +40,39 @@ export default function AdminDashboard() {
     }
   };
 
+  const [syncLoading, setSyncLoading] = useState(false);
+
+  const handleSyncToCloud = async () => {
+    setSyncLoading(true);
+    try {
+      const result = await db.syncToCloud();
+      if (result.success) {
+        const total = result.results.reduce((sum, r) => sum + r.count, 0);
+        const errores = result.results.filter(r => r.status === 'error');
+        if (errores.length > 0) {
+          toast.warning(`Sincronizado: ${total} registros enviados. ${errores.length} tabla(s) con errores.`);
+        } else {
+          toast.success(`✅ ${total} registros sincronizados a Supabase correctamente`);
+        }
+      } else {
+        toast.error(result.error || 'Error al sincronizar');
+      }
+    } catch (err) {
+      toast.error('Error inesperado al sincronizar');
+    }
+    setSyncLoading(false);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={handleSyncToCloud} disabled={syncLoading} className="gap-2">
+          <CloudUpload className={`w-4 h-4 ${syncLoading ? 'animate-bounce' : ''}`} />
+          {syncLoading ? 'Sincronizando...' : 'Sincronizar a la nube'}
+        </Button>
         <Button variant="outline" size="sm" onClick={handleRecalc} disabled={recalcLoading} className="gap-2">
           <RefreshCw className={`w-4 h-4 ${recalcLoading ? 'animate-spin' : ''}`} />
-          {recalcLoading ? 'Recalculando...' : 'Recalcular puntos de todos'}
+          {recalcLoading ? 'Recalculando...' : 'Recalcular puntos'}
         </Button>
       </div>
       <StatsCards stats={stats} />
