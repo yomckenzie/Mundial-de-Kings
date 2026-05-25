@@ -196,12 +196,22 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
         const localTime = local.updated_at || local.created_date
 
         let useRemote = false
-        if (remoteTime && localTime && new Date(remoteTime) > new Date(localTime)) {
-          useRemote = true
-        } else if (!remoteTime && !localTime) {
-          // Sin timestamps, preferir remoto si el contenido difiere
-          const { created_date: _, ...a } = local
-          const { created_date: __, ...b } = remote
+        if (remoteTime && localTime) {
+          if (new Date(remoteTime) > new Date(localTime)) {
+            // Remoto más reciente → usar remoto
+            useRemote = true
+          } else if (new Date(remoteTime).getTime() === new Date(localTime).getTime()) {
+            // Mismo timestamp → comparar contenido
+            const { created_date: _, updated_at: __, ...a } = local
+            const { created_date: ___, updated_at: ____, ...b } = remote
+            if (JSON.stringify(a) !== JSON.stringify(b)) {
+              useRemote = true
+            }
+          }
+        } else {
+          // Sin timestamps → preferir remoto si el contenido difiere
+          const { created_date: _, updated_at: __, ...a } = local
+          const { created_date: ___, updated_at: ____, ...b } = remote
           if (JSON.stringify(a) !== JSON.stringify(b)) {
             useRemote = true
           }
