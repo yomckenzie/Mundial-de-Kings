@@ -2,61 +2,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import fs from 'fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-// Plugin para base de datos compartida en la red local
-function sharedDbPlugin() {
-  const dbPath = path.resolve(__dirname, 'shared-db.json')
-  return {
-    name: 'shared-db',
-    configureServer(server) {
-      // Inicializar archivo si no existe
-      if (!fs.existsSync(dbPath)) {
-        fs.writeFileSync(dbPath, JSON.stringify({}))
-        console.log('[SharedDB] Archivo shared-db.json creado')
-      }
-
-      server.middlewares.use('/api/shared-db', (req, res, next) => {
-        // GET: obtener toda la base de datos compartida
-        if (req.method === 'GET') {
-          try {
-            const data = fs.readFileSync(dbPath, 'utf-8')
-            res.setHeader('Content-Type', 'application/json')
-            res.setHeader('Cache-Control', 'no-store')
-            res.end(data)
-          } catch (err) {
-            res.statusCode = 500
-            res.end(JSON.stringify({ error: err.message }))
-          }
-          return
-        }
-
-        // POST: guardar la base de datos compartida
-        if (req.method === 'POST') {
-          let body = ''
-          req.on('data', chunk => { body += chunk })
-          req.on('end', () => {
-            try {
-              // Validar que sea JSON válido
-              JSON.parse(body)
-              fs.writeFileSync(dbPath, body)
-              res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ success: true }))
-            } catch (err) {
-              res.statusCode = 500
-              res.end(JSON.stringify({ error: err.message }))
-            }
-          })
-          return
-        }
-
-        next()
-      })
-    },
-  }
-}
 
 export default defineConfig({
   logLevel: 'error',
@@ -67,7 +14,6 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    sharedDbPlugin(),
   ],
   server: {
     host: true, // permite conexiones desde la misma red

@@ -1,13 +1,18 @@
+import {
+  isSupabaseAvailable,
+  syncTableToSupabase,
+  syncTableFromSupabase,
+  TABLES
+} from './supabase';
+
 const STORAGE_KEY = 'chessking_db';
-const SHARED_DB_API = '/api/shared-db';
 
 const makeId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 const getNow = () => new Date().toISOString();
 
-let _syncTimer = null;
-let _syncInProgress = false;
-let _pendingSyncData = null;
+let _syncTimers = {};
+let _syncInProgress = {};
 
 const load = () => {
   try {
@@ -21,40 +26,45 @@ const save = (data) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 };
 
-// --- Sincronización con servidor compartido (red local) ---
-
-const syncToServer = (data) => {
-  // Agendar sincronización con debounce
-  _pendingSyncData = JSON.parse(JSON.stringify(data));
-  if (_syncTimer) clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(doSyncToServer, 100);
+// --- Mapeo de nombres de tablas db.js -> Supabase ---
+const TABLE_MAP = {
+  users: TABLES.users,
+  matches: TABLES.matches,
+  predictions: TABLES.predictions,
+  prizes: TABLES.prizes,
+  redemptions: TABLES.redemptions,
+  supportTickets: TABLES.support_tickets,
+  pointsBonuses: TABLES.points_bonuses,
+  appSettings: TABLES.app_settings,
 };
 
-const doSyncToServer = async () => {
-  if (_syncInProgress || !_pendingSyncData) return;
-  _syncInProgress = true;
+// --- Sincronización con Supabase ---
+
+const tableNameToSupabase = (jsKey) => TABLE_MAP[jsKey] || jsKey;
+
+const syncTableToSupabaseFn = async (jsKey, records) => {
+  const tableName = tableNameToSupabase(jsKey);
+  if (!tableName || !records || !isSupabaseAvailable()) return;
+  const key = `sync_${jsKey}`;
+  if (_syncInProgress[key]) return;
+  _syncInProgress[key] = true;
   try {
-    await fetch(SHARED_DB_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(_pendingSyncData),
-    });
-    _pendingSyncData = null;
+    await syncTableToSupabase(tableName, records);
   } catch (err) {
-    // Silently fail - servidor no disponible (ej: archivo abierto directo)
+    // Silently fail
   } finally {
-    _syncInProgress = false;
+    _syncInProgress[key] = false;
   }
 };
 
-const syncFromServer = async () => {
+const syncTableFromSupabaseFn = async (jsKey, localRecords) => {
+  const tableName = tableNameToSupabase(jsKey);
+  if (!tableName || !isSupabaseAvailable()) return localRecords;
   try {
-    const res = await fetch(SHARED_DB_API);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
+    const result = await syncTableFromSupabase(tableName, localRecords);
+    if (result) return result;
+  } catch {}
+  return localRecords;
 };
 
 // Dispara un evento para que los componentes React se actualicen
@@ -77,56 +87,71 @@ const getDefaults = () => ({
 export const db = {
   _data: null,
 
+  // Dispara un evento para que los componentes React se actualicen
+  _notifyReactComponents() {
+    window.dispatchEvent(new CustomEvent('db-synced'));
+  },
+
   _init() {
     if (!this._data) {
       this._data = load();
       this.seedIfEmpty();
-      // Cargar datos del servidor compartido en segundo plano
+      // Cargar datos desde Supabase en segundo plano
       // Los componentes React se actualizarán vía evento 'db-synced'
-      this._loadFromServer();
+      this._syncAllFromSupabase();
     }
     return this._data;
   },
 
   _persist() {
     save(this._data);
-    // Sincronizar cambios al servidor compartido
-    syncToServer(this._data);
+    // Sincronizar cambios a Supabase en segundo plano
+    this._syncAllToSupabase();
   },
 
-  // Sincronizar datos desde el servidor compartido (red local)
-  async _loadFromServer() {
-    try {
-      const serverData = await syncFromServer();
-      if (!serverData) return;
+  // Sincronizar TODAS las tablas desde Supabase
+  async _syncAllFromSupabase() {
+    if (!isSupabaseAvailable()) return;
 
-      const hasData = serverData.appSettings && serverData.appSettings.length > 0;
-      if (!hasData) {
-        // El servidor está vacío, subir datos locales como fuente de verdad
-        if (this._data.appSettings && this._data.appSettings.length > 0) {
-          syncToServer(this._data);
+    try {
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
+      let changed = false;
+
+      for (const jsKey of tablesToSync) {
+        const localRecords = this._data[jsKey] || [];
+        const merged = await syncTableFromSupabaseFn(jsKey, localRecords);
+        if (merged && merged.length !== localRecords.length) {
+          this._data[jsKey] = merged;
+          changed = true;
         }
-        return;
       }
 
-      // Solo sincronizar appSettings del servidor (banners, Instagram, etc.)
-      // Mantener datos locales de usuarios, predicciones, partidos, etc.
-      this._data.appSettings = JSON.parse(JSON.stringify(serverData.appSettings));
-
-      // Actualizar localStorage
-      save(this._data);
-      console.log('[DB] Datos sincronizados desde el servidor compartido');
-
-      // Notificar a los componentes React para que se actualicen
-      notifyReactComponents();
+      if (changed) {
+        save(this._data);
+        console.log('[DB] Datos sincronizados desde Supabase');
+        this._notifyReactComponents();
+      }
     } catch (err) {
-      console.warn('[DB] Error al sincronizar desde el servidor:', err);
+      console.warn('[DB] Error al sincronizar desde Supabase:', err);
     }
   },
 
-  // Forzar sincronización manual desde el servidor
+  // Sincronizar TODAS las tablas a Supabase
+  async _syncAllToSupabase() {
+    if (!isSupabaseAvailable()) return;
+
+    const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
+    for (const jsKey of tablesToSync) {
+      const records = this._data[jsKey] || [];
+      if (records.length > 0) {
+        syncTableToSupabaseFn(jsKey, records);
+      }
+    }
+  },
+
+  // Forzar sincronización manual desde Supabase
   async forceSync() {
-    await this._loadFromServer();
+    await this._syncAllFromSupabase();
   },
 
   reset() {
