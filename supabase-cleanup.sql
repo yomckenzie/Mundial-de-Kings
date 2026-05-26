@@ -21,7 +21,11 @@ DELETE FROM users a USING (
 ) b
 WHERE a.email = b.email AND a.id <> b.max_id;
 
--- 3. ELIMINAR DUPLICADOS EN prizes (mantener 1 por name)
+-- 3. PONER EN 0 LOS PUNTOS DEL ADMIN (para que no aparezca en ranking aunque se cuele)
+UPDATE users SET total_points = 0, prediction_points = 0, bonus_points = 0
+WHERE role = 'admin' OR email = 'admin@chessking.com';
+
+-- 4. ELIMINAR DUPLICADOS EN prizes (mantener 1 por name)
 DELETE FROM prizes a USING (
   SELECT name, MAX(id) AS max_id
   FROM prizes
@@ -30,7 +34,7 @@ DELETE FROM prizes a USING (
 ) b
 WHERE a.name = b.name AND a.id <> b.max_id;
 
--- 4. VERIFICAR QUE NO QUEDEN DUPLICADOS
+-- 5. VERIFICAR QUE NO QUEDEN DUPLICADOS
 SELECT 'app_settings' as tabla, key, COUNT(*) as duplicados FROM app_settings GROUP BY key HAVING COUNT(*) > 1
 UNION ALL
 SELECT 'users' as tabla, email, COUNT(*) FROM users GROUP BY email HAVING COUNT(*) > 1

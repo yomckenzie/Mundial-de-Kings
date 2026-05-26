@@ -578,7 +578,7 @@ export const db = {
         instagram: 'chessking_admin',
         tiktok: 'chessking_admin',
         phone: '+507 6000-0000',
-        total_points: 999999,
+        total_points: 0,
         prediction_points: 0,
         bonus_points: 0,
         profile_complete: true,

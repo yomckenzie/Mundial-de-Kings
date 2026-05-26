@@ -87,7 +87,7 @@ const client = {
       switch (name) {
         case 'getRanking': {
           const users = db.users.list()
-            .filter(u => u.profile_complete)
+            .filter(u => u.profile_complete && u.role !== 'admin')
             .sort((a, b) => ((b.prediction_points || 0) - (a.prediction_points || 0)));
           return { data: { ranking: users } };
         }
