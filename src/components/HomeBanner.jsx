@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Upload, X, Link, ImageIcon, Images } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, X, Link, ImageIcon, Images, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/api/client';
+import { db } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ export default function HomeBanner() {
   const [storedImages, setStoredImages] = useState([]);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [loadingImages, setLoadingImages] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const fileInputRef = useRef(null);
   const intervalRef = useRef(null);
 
@@ -157,6 +159,19 @@ export default function HomeBanner() {
     setBanners(updated);
     await saveBanners(updated);
     toast.success('Banner agregado');
+  };
+
+  const handleManualSync = async () => {
+    setSyncing(true);
+    try {
+      await db.syncToCloud();
+      await db.forceSyncFromCloud();
+      loadBanners();
+      toast.success('Banners sincronizados con la nube');
+    } catch (err) {
+      toast.error('Error al sincronizar: ' + (err.message || 'Error'));
+    }
+    setSyncing(false);
   };
 
   // No banners and not admin → show nothing
@@ -336,6 +351,15 @@ export default function HomeBanner() {
               className="transition-all"
             >
               {isEditing ? 'Listo' : 'Editar Banners'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleManualSync}
+              disabled={syncing}
+            >
+              <RefreshCw className={`w-4 h-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Sincronizando...' : 'Sincronizar ahora'}
             </Button>
           </div>
 
