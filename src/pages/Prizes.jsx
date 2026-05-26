@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
@@ -6,9 +6,11 @@ import { db } from '@/lib/db';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 const containerVariants = {
@@ -46,27 +48,26 @@ export default function Prizes() {
   const { user, setUser } = useOutletContext();
   const queryClient = useQueryClient();
 
+  const [confirmPrize, setConfirmPrize] = useState(null);
+  const [cedulaInput, setCedulaInput] = useState('');
+  const [cedulaError, setCedulaError] = useState('');
+  const [showSuccess, setShowSuccess] = useState(null);
+
   const { data: prizes = [], isLoading } = useQuery({
     queryKey: ['prizes'],
     queryFn: async () => {
-      // Intentar obtener premios activos
       let prizes = db._init().prizes.filter(p => p.status === 'active');
-
-      // Si no hay premios, forzar la siembra de datos semilla
       if (prizes.length === 0) {
         db.seedIfEmpty();
         prizes = db._init().prizes.filter(p => p.status === 'active');
-
-        // Si aún no hay premios, devolver todos los que existan
         if (prizes.length === 0) {
           const allPrizes = db._init().prizes;
           if (allPrizes.length > 0) return allPrizes;
         }
       }
-
       return prizes;
     },
-    staleTime: 1000 * 60, // 1 minuto antes de considerar datos obsoletos
+    staleTime: 1000 * 60,
     retry: 1,
   });
 
@@ -94,17 +95,39 @@ export default function Prizes() {
         units_available: prize.units_available - 1,
       });
 
-      return newPoints;
+      return { prize, newPoints };
     },
-    onSuccess: (newPoints) => {
+    onSuccess: ({ prize, newPoints }) => {
       setUser(prev => ({ ...prev, total_points: newPoints }));
       queryClient.invalidateQueries({ queryKey: ['prizes'] });
-      toast.success('¡Premio canjeado exitosamente! El administrador revisará tu solicitud.');
+      setConfirmPrize(null);
+      setCedulaInput('');
+      setCedulaError('');
+      setShowSuccess(prize);
     },
     onError: (err) => {
       toast.error(err.message);
     },
   });
+
+  const openConfirmDialog = (prize) => {
+    setCedulaInput('');
+    setCedulaError('');
+    setConfirmPrize(prize);
+  };
+
+  const handleConfirmRedeem = () => {
+    const cedula = cedulaInput.trim();
+    if (!cedula) {
+      setCedulaError('Debes ingresar tu cédula');
+      return;
+    }
+    if (cedula.length < 3) {
+      setCedulaError('Ingresa una cédula válida');
+      return;
+    }
+    redeemMutation.mutate(confirmPrize);
+  };
 
   if (isLoading) {
     return (
@@ -157,7 +180,7 @@ export default function Prizes() {
         )}
       </motion.div>
 
-      {/* Points progress bar for logged in users */}
+      {/* Points progress bar */}
       {user && pointsProgress > 0 && (
         <motion.div variants={itemVariants}>
           <Card className="overflow-hidden">
@@ -185,7 +208,6 @@ export default function Prizes() {
         </motion.div>
       )}
 
-      {/* Empty state */}
       {prizes.length === 0 && (
         <motion.div
           className="text-center py-16 space-y-3"
@@ -197,101 +219,51 @@ export default function Prizes() {
         </motion.div>
       )}
 
-      {/* Prize grid */}
       <motion.div
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         variants={containerVariants}
       >
-        {prizes.map((prize, idx) => {
-          const canRedeem = (user?.total_points || 0) >= prize.points_cost && prize.units_available > 0;
+        {prizes.map((prize, i) => {
+          const canRedeem = user && (user.total_points || 0) >= prize.points_cost;
           const soldOut = prize.units_available <= 0;
-          const progress = user && prize.points_cost > 0 ? Math.min(100, Math.round(((user?.total_points || 0) / prize.points_cost) * 100)) : 0;
 
           return (
             <motion.div
               key={prize.id}
-              custom={idx}
+              custom={i}
               variants={itemVariants}
               whileHover="hover"
               whileTap={{ scale: 0.98 }}
             >
-              <Card className={`overflow-hidden h-full card-hover relative group ${!soldOut && canRedeem ? 'ring-1 ring-secondary/30' : ''} ${soldOut ? 'opacity-75' : ''}`}>
-                {/* Gradient overlay on hover */}
-                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-b from-transparent via-transparent to-secondary/5 transition-opacity duration-300 pointer-events-none" />
-
-                {/* Prize image */}
+              <Card className="overflow-hidden h-full flex flex-col">
                 {prize.image_url ? (
-                  <div className="aspect-video bg-muted relative overflow-hidden">
-                    <img
-                      src={prize.image_url}
-                      alt={prize.name}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                    {soldOut && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <Badge variant="destructive" className="text-sm px-4 py-1">Agotado</Badge>
-                      </div>
-                    )}
+                  <div className="aspect-video w-full overflow-hidden">
+                    <img src={prize.image_url} alt={prize.name} className="w-full h-full object-cover" />
                   </div>
                 ) : (
-                  <div className="aspect-video bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative overflow-hidden">
-                    <Gift className="w-14 h-14 text-muted-foreground/20 transition-transform duration-500 group-hover:scale-110" />
-                    {soldOut && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <Badge variant="destructive" className="text-sm px-4 py-1">Agotado</Badge>
-                      </div>
-                    )}
+                  <div className="aspect-video w-full bg-muted flex items-center justify-center">
+                    <Gift className="w-10 h-10 text-muted-foreground/30" />
                   </div>
                 )}
-
-                <CardContent className="p-4 space-y-3 relative">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-foreground">{prize.name}</h3>
-                    {soldOut ? (
-                      <Badge variant="destructive" className="shrink-0">Agotado</Badge>
-                    ) : (
-                      <Badge variant="outline" className="shrink-0 bg-secondary/10 text-secondary border-secondary/20">
-                        Activo
-                      </Badge>
-                    )}
+                <CardContent className="p-4 flex flex-col flex-1">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h3 className="font-semibold">{prize.name}</h3>
+                    </div>
+                    <Badge variant="outline" className="text-xs shrink-0 ml-2">
+                      {prize.points_cost} pts
+                    </Badge>
                   </div>
-
                   {prize.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{prize.description}</p>
+                    <p className="text-sm text-muted-foreground mb-3 flex-1">{prize.description}</p>
                   )}
-
-                  {/* Points cost bar */}
-                  {user && !soldOut && (
-                    <div className="space-y-1">
-                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                        <motion.div
-                          className={`h-full rounded-full ${progress >= 100 ? 'bg-secondary' : 'bg-muted-foreground/30'}`}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min(progress, 100)}%` }}
-                          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 + idx * 0.05 }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        {progress >= 100
-                          ? '¡Puntos suficientes!'
-                          : `Te faltan ${prize.points_cost - (user?.total_points || 0)} pts`}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Trophy className="w-4 h-4 text-foreground" />
-                      <span className="font-black text-base">{prize.points_cost}</span>
-                      <span className="text-xs text-muted-foreground">pts</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Package className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 mb-3">
+                    <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                    <div className="text-xs text-muted-foreground">
                       {prize.units_available} {prize.units_available === 1 ? 'disponible' : 'disponibles'}
                     </div>
                   </div>
 
-                  {/* Action button */}
                   {!user ? (
                     <Link to="/register" className="block">
                       <Button variant="outline" className="w-full gap-2">
@@ -308,7 +280,7 @@ export default function Prizes() {
                     <Button
                       className={`w-full gap-1.5 ${!canRedeem ? 'opacity-70' : 'glow-sm'}`}
                       disabled={!canRedeem || redeemMutation.isPending}
-                      onClick={() => redeemMutation.mutate(prize)}
+                      onClick={() => openConfirmDialog(prize)}
                     >
                       {redeemMutation.isPending ? (
                         <>
@@ -334,6 +306,101 @@ export default function Prizes() {
           );
         })}
       </motion.div>
+
+      {/* Confirm cedula dialog */}
+      <Dialog open={!!confirmPrize} onOpenChange={(open) => { if (!open) { setConfirmPrize(null); setCedulaInput(''); setCedulaError(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="w-5 h-5" />
+              Confirmar canje
+            </DialogTitle>
+          </DialogHeader>
+          {confirmPrize && (
+            <div className="space-y-4">
+              <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-1">
+                <p><span className="text-muted-foreground">Premio:</span> <strong>{confirmPrize.name}</strong></p>
+                <p><span className="text-muted-foreground">Puntos a canjear:</span> <strong>{confirmPrize.points_cost} pts</strong></p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Confirma tu número de cédula
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">(para validar tu identidad al reclamar el premio)</span>
+                </label>
+                <Input
+                  value={cedulaInput}
+                  onChange={(e) => { setCedulaInput(e.target.value); setCedulaError(''); }}
+                  placeholder="8-000-0000"
+                  onKeyDown={(e) => e.key === 'Enter' && handleConfirmRedeem()}
+                />
+                {cedulaError && <p className="text-xs text-destructive">{cedulaError}</p>}
+              </div>
+              <Button
+                className="w-full gap-2"
+                onClick={handleConfirmRedeem}
+                disabled={redeemMutation.isPending}
+              >
+                {redeemMutation.isPending ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Canjeando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirmar y canjear
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Success dialog */}
+      <Dialog open={!!showSuccess} onOpenChange={(open) => { if (!open) setShowSuccess(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="sr-only">Premio canjeado</DialogTitle>
+          </DialogHeader>
+          {showSuccess && (
+            <div className="text-center space-y-4 py-2">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200 }}
+              >
+                <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+                </div>
+              </motion.div>
+              <div>
+                <h3 className="text-xl font-bold">¡Felicidades!</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Has canjeado <strong>{showSuccess.name}</strong> exitosamente.
+                </p>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-4 text-sm space-y-2 text-left">
+                <p className="flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                  Te contactaremos vía <strong>WhatsApp</strong> para confirmar tu premio.
+                </p>
+                <p className="flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                  Deberás proporcionar tu dirección de entrega o punto de recogida.
+                </p>
+                <p className="flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                  La cédula registrada se usará para validar tu identidad al entregar el premio.
+                </p>
+              </div>
+              <Button onClick={() => setShowSuccess(null)} className="w-full">
+                Entendido
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
