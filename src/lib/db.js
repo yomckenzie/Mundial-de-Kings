@@ -163,8 +163,18 @@ export const db = {
       for (const jsKey of tablesToSync) {
         const localRecords = this._data[jsKey] || [];
         const remoteRecords = await syncTableFromSupabaseFn(jsKey, localRecords);
-        // Si el resultado es un nuevo array (diferente referencia), hubo cambios
         if (remoteRecords && remoteRecords !== localRecords) {
+          // Si se agregaron registros localmente mientras se sincronizaba (ej: una predicción),
+          // mezclarlos para no perderlos
+          const currentLocal = this._data[jsKey] || [];
+          if (currentLocal.length > localRecords.length) {
+            const remoteIds = new Set(remoteRecords.map(r => r.id));
+            for (const rec of currentLocal) {
+              if (!remoteIds.has(rec.id)) {
+                remoteRecords.push(rec);
+              }
+            }
+          }
           this._data[jsKey] = remoteRecords;
           changed = true;
         }
@@ -377,6 +387,14 @@ export const db = {
     },
     create(data) {
       const d = db._init();
+      // Evitar duplicados: un solo pronóstico por usuario por partido
+      const existing = d.predictions.find(p => p.user_email === data.user_email && p.match_id === data.match_id);
+      if (existing) {
+        // Actualizar el existente en lugar de crear duplicado
+        Object.assign(existing, data, { updated_at: getNow() });
+        db._persist();
+        return existing;
+      }
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.predictions.push(record);
       db._persist();
