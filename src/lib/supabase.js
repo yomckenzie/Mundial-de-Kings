@@ -115,43 +115,55 @@ export async function deleteRecords(tableName, field, value) {
  * @param {Array} records - Registros a sincronizar
  * @param {string} conflictColumn - Columna para resolver conflictos (default: 'id')
  */
+/**
+ * Limpiar campos locales que no existen en las tablas de Supabase
+ * (created_date, updated_at son solo del localStorage local)
+ */
+function stripLocalFields(records) {
+  return records.map(r => {
+    const { created_date, updated_at, ...clean } = r
+    return clean
+  })
+}
+
+/**
+ * Sincronizar datos locales hacia Supabase
+ * Envía los datos de una tabla completa
+ * @param {string} tableName - Nombre de la tabla
+ * @param {Array} records - Registros a sincronizar
+ * @param {string} conflictColumn - Columna para resolver conflictos (default: 'id')
+ */
 export async function syncTableToSupabase(tableName, records, conflictColumn = 'id') {
   if (!supabase || !records) return false
+  // Limpiar campos locales que no existen en Supabase
+  const cleanedRecords = stripLocalFields(records)
   try {
     const { error } = await supabase
       .from(tableName)
-      .upsert(records, { onConflict: conflictColumn })
+      .upsert(cleanedRecords, { onConflict: conflictColumn })
     if (error) throw error
     return true
   } catch (err) {
     // Si falla por unique constraint (ej: email duplicado en users),
     // intentar uno por uno cambiando la columna de conflicto
-    // Usamos upsert (INSERT ... ON CONFLICT DO UPDATE) porque
-    // la anon key solo tiene permiso INSERT + SELECT (no UPDATE directo)
     if (err.code === '23505' || err.status === 409) {
       console.warn(`[Supabase] Conflict en ${tableName}, intentando individual por email...`)
       let successCount = 0
-      for (const record of records) {
+      for (const record of cleanedRecords) {
         try {
-          // Intentar con onConflict: 'email' — hace INSERT ON CONFLICT DO UPDATE
-          // así funciona con solo permiso INSERT + SELECT
-          const altColumn = 'email'
           const { error: indError } = await supabase
             .from(tableName)
-            .upsert(record, { onConflict: altColumn })
+            .upsert(record, { onConflict: 'email' })
           if (!indError) successCount++
         } catch {}
       }
-      // Si no funcionó por email, reintentar omitiendo los registros conflictivos
       if (successCount === 0 && records.length > 0) {
-        // Estrategia final: upsert uno por uno con onConflict: 'id'
-        // filtrando los que ya existen en Supabase (para no violar unique en email)
         try {
           const { data: existing } = await supabase
             .from(tableName)
             .select('id, email')
           const existingEmails = new Set((existing || []).map(r => r.email))
-          for (const record of records) {
+          for (const record of cleanedRecords) {
             if (!existingEmails.has(record.email)) {
               const { error: indError } = await supabase
                 .from(tableName)
@@ -161,7 +173,7 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
           }
         } catch {}
       }
-      console.warn(`[Supabase] Sincronizados ${successCount}/${records.length} en ${tableName}`)
+      console.warn(`[Supabase] Sincronizados ${successCount}/${cleanedRecords.length} en ${tableName}`)
       return successCount > 0
     }
     console.warn(`[Supabase] Error syncing ${tableName}:`, err.message)
