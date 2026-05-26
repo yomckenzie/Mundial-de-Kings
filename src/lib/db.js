@@ -645,7 +645,6 @@ export const db = {
         { id: makeId(), key: 'tiktok_title', value: 'TikTok', created_date: getNow() },
         { id: makeId(), key: 'hero_subtitle', value: 'Síguenos, predice resultados y gana premios', created_date: getNow() },
         { id: makeId(), key: 'info_sections', value: infoSections, created_date: getNow() },
-        { id: makeId(), key: 'home_banners', value: JSON.stringify([]), created_date: getNow() },
       );
       this._persist();
     }
