@@ -636,14 +636,6 @@ export const db = {
         }
       ]);
       d.appSettings.push(
-        { id: makeId(), key: 'social_header', value: 'Recuerda seguirnos en instagram y tiktok y unirte a nuestro canal para participar', created_date: getNow() },
-        { id: makeId(), key: 'instagram1_url', value: 'https://instagram.com', created_date: getNow() },
-        { id: makeId(), key: 'instagram1_title', value: 'Instagram 1', created_date: getNow() },
-        { id: makeId(), key: 'instagram2_url', value: 'https://instagram.com', created_date: getNow() },
-        { id: makeId(), key: 'instagram2_title', value: 'Instagram 2', created_date: getNow() },
-        { id: makeId(), key: 'tiktok_url', value: 'https://tiktok.com', created_date: getNow() },
-        { id: makeId(), key: 'tiktok_title', value: 'TikTok', created_date: getNow() },
-        { id: makeId(), key: 'hero_subtitle', value: 'Síguenos, predice resultados y gana premios', created_date: getNow() },
         { id: makeId(), key: 'info_sections', value: infoSections, created_date: getNow() },
       );
       this._persist();

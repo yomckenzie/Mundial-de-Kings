@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Trophy, Target, Gift, Award, Pencil, Check, TrendingUp, Star } from 'lucide-react';
+import { Trophy, Target, Gift, Award, TrendingUp, Star } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import SocialFollow from '@/components/SocialFollow';
 import HomeBanner from '@/components/HomeBanner';
-import { api } from '@/api/client';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -34,47 +32,6 @@ const cardVariants = {
 
 export default function Home() {
   const { user } = useOutletContext();
-  const isAdmin = user?.role === 'admin';
-
-  const DEFAULT_SUBTITLE = 'Síguenos, predice resultados y gana premios';
-  const [heroSubtitle, setHeroSubtitle] = useState(DEFAULT_SUBTITLE);
-  const [subtitleRecord, setSubtitleRecord] = useState(null);
-  const [editingHero, setEditingHero] = useState(false);
-  const [draftSubtitle, setDraftSubtitle] = useState(DEFAULT_SUBTITLE);
-
-  const loadSubtitle = useCallback(() => {
-    api.entities.AppSettings.list().then((records) => {
-      const rec = records.find(r => r.key === 'hero_subtitle');
-      if (rec) {
-        setHeroSubtitle(rec.value);
-        setDraftSubtitle(rec.value);
-        setSubtitleRecord(rec);
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    loadSubtitle();
-  }, [loadSubtitle]);
-
-  // Escuchar sincronización desde el servidor compartido
-  useEffect(() => {
-    const handleSync = () => loadSubtitle();
-    window.addEventListener('db-synced', handleSync);
-    return () => window.removeEventListener('db-synced', handleSync);
-  }, [loadSubtitle]);
-
-  const handleSaveSubtitle = async () => {
-    if (subtitleRecord) {
-      await api.entities.AppSettings.update(subtitleRecord.id, { key: 'hero_subtitle', value: draftSubtitle });
-      setSubtitleRecord(prev => ({ ...prev, value: draftSubtitle }));
-    } else {
-      const created = await api.entities.AppSettings.create({ key: 'hero_subtitle', value: draftSubtitle });
-      setSubtitleRecord(created);
-    }
-    setHeroSubtitle(draftSubtitle);
-    setEditingHero(false);
-  };
 
   const cards = [
     { icon: Target, title: 'Partidos', desc: 'Haz tus pronósticos', to: '/matches' },
@@ -114,41 +71,11 @@ export default function Home() {
 
         <HomeBanner />
 
-        {/* Subtitle con edición admin */}
-        <motion.div
-          className="flex items-center justify-center gap-2 max-w-xl mx-auto"
-          variants={itemVariants}
-        >
-          {editingHero ? (
-            <motion.div
-              className="flex items-center gap-2 w-full max-w-md"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-            >
-              <Input
-                value={draftSubtitle}
-                onChange={(e) => setDraftSubtitle(e.target.value)}
-                className="text-center"
-              />
-              <Button size="icon" variant="outline" onClick={handleSaveSubtitle}>
-                <Check className="w-4 h-4" />
-              </Button>
-            </motion.div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <p className="text-muted-foreground text-base md:text-lg">{heroSubtitle}</p>
-              {isAdmin && (
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setEditingHero(true)}
-                  className="text-muted-foreground hover:text-foreground transition"
-                >
-                  <Pencil className="w-4 h-4" />
-                </motion.button>
-              )}
-            </div>
-          )}
+        {/* Subtitle */}
+        <motion.div className="flex items-center justify-center gap-2 max-w-xl mx-auto" variants={itemVariants}>
+          <p className="text-muted-foreground text-base md:text-lg">
+            Síguenos, predice resultados y gana premios
+          </p>
         </motion.div>
 
         {/* Points badge */}
