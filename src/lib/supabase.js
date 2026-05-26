@@ -221,23 +221,29 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
     }
 
     // 2. Preservar registros locales que aún no se han subido a Supabase
-    // Esto es vital para tablas de usuarios comunes (ej: predicciones, tickets de soporte)
-    // Para tablas controladas por admins (matches, prizes, app_settings), la nube es la única verdad,
-    // pero si el admin acaba de crear el registro localmente, debemos mantenerlo temporalmente hasta que se suba.
-    const remoteIds = new Set(remoteData.map(r => r.id))
-    const userGeneratedTables = ['predictions', 'support_tickets', 'redemptions', 'users']
-    
-    for (const local of localRecords) {
-      if (!remoteIds.has(local.id)) {
-        const isUserGenerated = userGeneratedTables.includes(tableName)
-        // O si fue creado hace menos de 5 minutos (evita que se borre si la subida tarda un poco)
-        const isRecent = local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)
-        
-        if (isUserGenerated || isRecent) {
+    // Para app_settings, comparamos por KEY en vez de por ID
+    if (tableName === 'app_settings') {
+      const remoteKeys = new Set(remoteData.map(r => r.key))
+      for (const local of localRecords) {
+        if (!remoteKeys.has(local.key)) {
           result.push(local)
-        } else {
-          // Si no es generado por usuario ni reciente, se asume que fue eliminado en Supabase por el admin
           changed = true
+        }
+      }
+    } else {
+      const remoteIds = new Set(remoteData.map(r => r.id))
+      const userGeneratedTables = ['predictions', 'support_tickets', 'redemptions', 'users']
+      
+      for (const local of localRecords) {
+        if (!remoteIds.has(local.id)) {
+          const isUserGenerated = userGeneratedTables.includes(tableName)
+          const isRecent = local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)
+          
+          if (isUserGenerated || isRecent) {
+            result.push(local)
+          } else {
+            changed = true
+          }
         }
       }
     }

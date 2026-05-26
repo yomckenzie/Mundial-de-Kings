@@ -1,5 +1,4 @@
 import {
-  supabase,
   isSupabaseAvailable,
   syncTableToSupabase,
   syncTableFromSupabase,
@@ -54,19 +53,9 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
   _syncInProgress[key] = true;
   try {
     if (jsKey === 'appSettings') {
-      // Para app_settings: eliminar registros existentes con esas claves y luego insertar
-      // Esto evita duplicados por key (distintos dispositivos generan distintas IDs)
-      if (!supabase) return;
-      const keys = records.map(r => r.key).filter(Boolean);
-      if (keys.length > 0) {
-        const { error: delError } = await supabase
-          .from(tableName)
-          .delete()
-          .in('key', keys);
-        if (!delError) {
-          await supabase.from(tableName).insert(records);
-        }
-      }
+      // Para app_settings: upsert por KEY para evitar duplicados
+      // Requiere la constraint UNIQUE(key) en la tabla (ver supabase-cleanup.sql)
+      await syncTableToSupabase(tableName, records, 'key');
     } else {
       await syncTableToSupabase(tableName, records);
     }
