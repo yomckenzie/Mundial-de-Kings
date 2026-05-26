@@ -176,6 +176,12 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
       console.warn(`[Supabase] Sincronizados ${successCount}/${cleanedRecords.length} en ${tableName}`)
       return successCount > 0
     }
+    // Fallback: si no existe la constraint UNIQUE para la columna de conflicto (ej: key)
+    // reintentar con 'id' como columna de conflicto
+    if (conflictColumn !== 'id' && (err.code === '42P10' || err.message?.includes('ON CONFLICT'))) {
+      console.warn(`[Supabase] No hay UNIQUE en ${conflictColumn} para ${tableName}, reintentando con id...`)
+      return await syncTableToSupabase(tableName, records, 'id')
+    }
     console.warn(`[Supabase] Error syncing ${tableName}:`, err.message)
     return false
   }
