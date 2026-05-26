@@ -238,6 +238,22 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
       }
     }
 
+    // Deduplicar app_settings por key (habían duplicados por errores anteriores de sync)
+    // Los registros vienen de Supabase sin created_date (se limpia al subir),
+    // así que mantenemos la ÚLTIMA ocurrencia de cada key (orden de inserción = más reciente al final)
+    if (changed && tableName === 'app_settings') {
+      const keyMap = new Map()
+      for (const rec of result) {
+        keyMap.set(rec.key, rec) // la última ocurrencia sobreescribe las anteriores
+      }
+      const deduped = Array.from(keyMap.values())
+      if (deduped.length !== result.length) {
+        console.log(`[Supabase] Deduplicados ${result.length - deduped.length} registros en ${tableName}`)
+        result.length = 0
+        result.push(...deduped)
+      }
+    }
+
     if (changed) return result
     return localRecords
   } catch (err) {
