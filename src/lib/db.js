@@ -1,4 +1,5 @@
 import {
+  supabase,
   isSupabaseAvailable,
   syncTableToSupabase,
   syncTableFromSupabase,
@@ -52,7 +53,23 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
   if (_syncInProgress[key]) return;
   _syncInProgress[key] = true;
   try {
-    await syncTableToSupabase(tableName, records);
+    if (jsKey === 'appSettings') {
+      // Para app_settings: eliminar registros existentes con esas claves y luego insertar
+      // Esto evita duplicados por key (distintos dispositivos generan distintas IDs)
+      if (!supabase) return;
+      const keys = records.map(r => r.key).filter(Boolean);
+      if (keys.length > 0) {
+        const { error: delError } = await supabase
+          .from(tableName)
+          .delete()
+          .in('key', keys);
+        if (!delError) {
+          await supabase.from(tableName).insert(records);
+        }
+      }
+    } else {
+      await syncTableToSupabase(tableName, records);
+    }
   } catch (err) {
     // Silently fail
   } finally {
