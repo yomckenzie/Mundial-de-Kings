@@ -217,8 +217,16 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
         const contentChanged = JSON.stringify(a) !== JSON.stringify(b)
         
         if (contentChanged) {
-          // Local más reciente → mantener cambios del admin aunque no se hayan subido aún
-          result.push({ ...remote, ...local })
+          // Para tablas de admin (matches, prizes), la nube manda
+          // Para tablas de usuario (predictions, redemptions, etc.), el local manda
+          const adminTables = ['matches', 'prizes']
+          if (adminTables.includes(tableName)) {
+            // La nube es la autoridad — el admin hizo cambios allí
+            result.push({ ...local, ...remote })
+          } else {
+            // El usuario local puede tener datos no subidos aún
+            result.push({ ...remote, ...local })
+          }
           changed = true
         } else {
           result.push(local)

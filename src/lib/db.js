@@ -18,6 +18,7 @@ let _syncInProgress = {};
 let _pollInterval = null;
 let _syncToSupabaseInProgress = false;
 let _syncFromSupabaseInProgress = false;
+let _resyncQueued = false;
 const _pendingDeletes = []; // { tableName, id }[]
 
 const load = () => {
@@ -195,7 +196,10 @@ export const db = {
   // Sincronizar TODAS las tablas a Supabase (con await para asegurar que llegue)
   async _syncAllToSupabase() {
     if (!isSupabaseAvailable()) return;
-    if (_syncToSupabaseInProgress) return;
+    if (_syncToSupabaseInProgress) {
+      _resyncQueued = true;
+      return;
+    }
 
     _syncToSupabaseInProgress = true;
     try {
@@ -217,6 +221,10 @@ export const db = {
       }
     } finally {
       _syncToSupabaseInProgress = false;
+      if (_resyncQueued) {
+        _resyncQueued = false;
+        this._syncAllToSupabase();
+      }
     }
   },
 
