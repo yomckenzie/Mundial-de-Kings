@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Gift } from 'lucide-react';
+import { Plus, Pencil, Trash2, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 
 const INITIAL = { name: '', description: '', image_url: '', points_cost: '', units_available: '', status: 'active' };
@@ -40,6 +40,17 @@ export default function AdminPrizes() {
       setEditId(null);
       setDialogOpen(false);
       toast.success(editId ? 'Premio actualizado' : 'Premio creado');
+    },
+  });
+
+  const deletePrize = useMutation({
+    mutationFn: (id) => api.entities.Prize.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-prizes'] });
+      toast.success('Premio eliminado');
+    },
+    onError: (err) => {
+      toast.error('Error al eliminar: ' + (err.message || 'Error'));
     },
   });
 
@@ -131,9 +142,23 @@ export default function AdminPrizes() {
                 </div>
                 <p className="text-sm text-muted-foreground">{p.points_cost} pts · {p.units_available} unidades</p>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>
-                <Pencil className="w-4 h-4" />
-              </Button>
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => {
+                    if (window.confirm(`¿Eliminar "${p.name}" definitivamente?`)) {
+                      deletePrize.mutate(p.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}

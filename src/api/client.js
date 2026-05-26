@@ -49,6 +49,7 @@ const client = {
       filter: P((fields, order) => db.prizes.filter(fields, order)),
       create: P((data) => db.prizes.create(data)),
       update: P((id, data) => db.prizes.update(id, data)),
+      delete: P((id) => db.prizes.remove(id)),
     },
     Redemption: {
       list: P((order) => db.redemptions.list(order)),

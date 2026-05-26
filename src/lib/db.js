@@ -418,6 +418,14 @@ export const db = {
       db._persist();
       return d.prizes[idx];
     },
+    remove(id) {
+      const d = db._init();
+      const idx = d.prizes.findIndex(p => p.id === id);
+      if (idx === -1) throw new Error('Prize not found');
+      d.prizes.splice(idx, 1);
+      db._persist();
+      return true;
+    },
   },
 
   // --- Redemptions ---
