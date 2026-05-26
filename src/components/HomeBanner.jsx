@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Upload, X, Link, ImageIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, X, Link, ImageIcon, Images } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/api/client';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
 
@@ -18,6 +19,9 @@ export default function HomeBanner() {
   const [uploading, setUploading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const [storedImages, setStoredImages] = useState([]);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
   const fileInputRef = useRef(null);
   const intervalRef = useRef(null);
 
@@ -125,6 +129,36 @@ export default function HomeBanner() {
     toast.success('Banner eliminado');
   };
 
+  const listStoredImages = useCallback(async () => {
+    if (!supabase) return;
+    setLoadingImages(true);
+    try {
+      const { data, error } = await supabase.storage.from('banners').list();
+      if (error) throw error;
+      const images = (data || [])
+        .filter(f => f.metadata?.mimetype?.startsWith('image/'))
+        .map(f => ({
+          name: f.name,
+          url: supabase.storage.from('banners').getPublicUrl(f.name).data.publicUrl,
+        }));
+      setStoredImages(images);
+    } catch (err) {
+      console.warn('[Banner] Error listing stored images:', err.message);
+    }
+    setLoadingImages(false);
+  }, []);
+
+  const addStoredBanner = async (url) => {
+    if (banners.length >= 3) {
+      toast.error('Máximo 3 banners permitidos');
+      return;
+    }
+    const updated = [...banners, url];
+    setBanners(updated);
+    await saveBanners(updated);
+    toast.success('Banner agregado');
+  };
+
   // No banners and not admin → show nothing
   if (banners.length === 0 && !isAdmin) return null;
 
@@ -144,6 +178,10 @@ export default function HomeBanner() {
             <Button size="sm" variant="outline" onClick={() => fileInputRef.current.click()} disabled={uploading}>
               <Upload className="w-4 h-4 mr-1" />
               {uploading ? 'Subiendo...' : 'Subir imagen'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setShowImagePicker(true); listStoredImages(); }}>
+              <Images className="w-4 h-4 mr-1" />
+              Seleccionar existente
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowUrlInput(!showUrlInput)}>
               <Link className="w-4 h-4 mr-1" />
@@ -165,6 +203,40 @@ export default function HomeBanner() {
               <Button size="sm" onClick={handleAddUrl}>Agregar</Button>
             </motion.div>
           )}
+
+          {/* Image picker */}
+          <AnimatePresence>
+            {showImagePicker && (
+              <motion.div
+                className="w-full"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <p className="text-xs text-muted-foreground mb-2">Imágenes ya subidas al servidor:</p>
+                {loadingImages ? (
+                  <p className="text-xs text-muted-foreground">Cargando...</p>
+                ) : storedImages.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No hay imágenes subidas aún.</p>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto">
+                    {storedImages.map(img => (
+                      <button
+                        key={img.name}
+                        onClick={() => { addStoredBanner(img.url); setShowImagePicker(false); }}
+                        className="relative rounded-lg overflow-hidden border border-border hover:border-primary transition-colors aspect-square"
+                      >
+                        <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => setShowImagePicker(false)} className="mt-2">
+                  Cerrar
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </motion.div>
     );
@@ -324,6 +396,14 @@ export default function HomeBanner() {
                         >
                           <Link className="w-4 h-4 text-muted-foreground" />
                         </button>
+                        <span className="text-muted-foreground text-xs">|</span>
+                        <button
+                          onClick={() => { setShowImagePicker(true); listStoredImages(); }}
+                          className="p-1 hover:text-foreground transition-colors"
+                          title="Seleccionar existente"
+                        >
+                          <Images className="w-4 h-4 text-muted-foreground" />
+                        </button>
                       </div>
                     </div>
                   )}
@@ -346,6 +426,39 @@ export default function HomeBanner() {
                     <Button size="sm" onClick={handleAddUrl}>Agregar</Button>
                   </motion.div>
                 )}
+
+                {/* Image picker in editing mode */}
+                <AnimatePresence>
+                  {showImagePicker && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <p className="text-xs text-muted-foreground mb-2">Imágenes ya subidas:</p>
+                      {loadingImages ? (
+                        <p className="text-xs text-muted-foreground">Cargando...</p>
+                      ) : storedImages.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No hay imágenes subidas aún.</p>
+                      ) : (
+                        <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto">
+                          {storedImages.map(img => (
+                            <button
+                              key={img.name}
+                              onClick={() => { addStoredBanner(img.url); setShowImagePicker(false); }}
+                              className="relative rounded-lg overflow-hidden border border-border hover:border-primary transition-colors aspect-square"
+                            >
+                              <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => setShowImagePicker(false)} className="mt-2">
+                        Cerrar
+                      </Button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             )}
           </AnimatePresence>
