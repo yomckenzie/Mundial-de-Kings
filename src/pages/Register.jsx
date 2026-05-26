@@ -140,7 +140,7 @@ export default function Register() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="phone">Teléfono *</Label>
                     <Input
@@ -155,7 +155,7 @@ export default function Register() {
                   <div className="space-y-1.5">
                     <Label htmlFor="cedula">
                       Cédula *
-                      <span className="ml-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground font-normal cursor-help" title="La cédula se usará para validar tu identidad al reclamar un premio si resultas ganador.">
+                      <span className="ml-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground font-normal cursor-help" title="Se usará para validar tu identidad al reclamar un premio si resultas ganador.">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-text-bottom"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                         ¿Para qué?
                       </span>
@@ -170,7 +170,7 @@ export default function Register() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="instagram_user">Instagram *</Label>
                     <Input
@@ -217,9 +217,9 @@ export default function Register() {
                   </Button>
                 </motion.div>
 
-                <div className="p-3 rounded-xl bg-muted/50 text-xs text-muted-foreground text-center leading-relaxed">
-                  <Shield className="w-4 h-4 inline-block mr-1 text-foreground" />
-                  Protegemos tu información. Tus datos no serán compartidos con terceros sin autorización, conforme a la Ley 81 de Protección de Datos Personales de Panamá.
+                <div className="p-3 rounded-xl bg-muted/50 text-[11px] sm:text-xs text-muted-foreground text-center leading-relaxed">
+                  <Shield className="w-4 h-4 inline-block mr-1 text-foreground align-text-bottom" />
+                  Tus datos están protegidos. No serán compartidos sin autorización (Ley 81 de Protección de Datos de Panamá).
                 </div>
 
                 <p className="text-center text-sm text-muted-foreground">
