@@ -18,6 +18,7 @@ let _syncInProgress = {};
 let _pollInterval = null;
 let _syncToSupabaseInProgress = false;
 let _syncFromSupabaseInProgress = false;
+const _pendingDeletes = []; // { tableName, id }[]
 
 const load = () => {
   try {
@@ -188,6 +189,15 @@ export const db = {
 
     _syncToSupabaseInProgress = true;
     try {
+      // Procesar eliminaciones pendientes primero
+      if (_pendingDeletes.length > 0 && supabase) {
+        const deletes = _pendingDeletes.splice(0);
+        for (const { tableName, id } of deletes) {
+          try {
+            await supabase.from(tableName).delete().eq('id', id);
+          } catch {}
+        }
+      }
       const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
       for (const jsKey of tablesToSync) {
         const records = this._data[jsKey] || [];
@@ -423,6 +433,7 @@ export const db = {
       const idx = d.prizes.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prize not found');
       d.prizes.splice(idx, 1);
+      _pendingDeletes.push({ tableName: 'prizes', id });
       db._persist();
       return true;
     },
