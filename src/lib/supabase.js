@@ -240,19 +240,19 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
  * @param {string} bucket - Nombre del bucket (default: 'banners')
  * @returns {Promise<string|null>} - URL pública de la imagen
  */
-export async function uploadImage(file, bucket = 'banners') {
+export async function uploadImage(blob, originalFileName = 'image.jpg', bucket = 'banners') {
   if (!supabase) return null
   try {
-    const ext = file.name.split('.').pop() || 'png'
+    const ext = originalFileName.split('.').pop() || 'jpg'
     const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
     const filePath = `${fileName}`
 
     const { data, error } = await supabase.storage
       .from(bucket)
-      .upload(filePath, file, {
+      .upload(filePath, blob, {
         cacheControl: '3600',
         upsert: false,
-        contentType: file.type
+        contentType: 'image/jpeg'
       })
 
     if (error) throw error

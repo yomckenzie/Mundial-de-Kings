@@ -121,23 +121,49 @@ const client = {
   integrations: {
     Core: {
       UploadFile: async ({ file }) => {
-        // Intentar subir a Supabase Storage primero
+        // 1. Comprimir imagen en cliente para reducir tamaño
+        const compressedBlob = await compressImage(file, 1200, 0.8);
+
+        // 2. Subir a Supabase Storage (fallback DataURL eliminado — causaba problemas de sync)
         const { uploadImage } = await import('@/lib/supabase');
-        const publicUrl = await uploadImage(file, 'banners');
-        if (publicUrl) {
-          return { file_url: publicUrl, storage: 'supabase' };
+        const publicUrl = await uploadImage(compressedBlob, file.name, 'banners');
+        if (!publicUrl) {
+          throw new Error('No se pudo subir la imagen a Supabase Storage. Verifica que el bucket "banners" exista y tenga políticas INSERT + SELECT para anon.');
         }
-        // Fallback: DataURL local (sin Supabase)
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            resolve({ file_url: reader.result, storage: 'local' });
-          };
-          reader.readAsDataURL(file);
-        });
+        return { file_url: publicUrl, storage: 'supabase' };
       },
     },
   },
 };
+
+// --- Helper: comprimir imagen en cliente ---
+function compressImage(file, maxWidth = 1200, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Error al comprimir la imagen'));
+      }, 'image/jpeg', quality);
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Error al cargar la imagen para comprimirla'));
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 export const api = client;

@@ -96,7 +96,7 @@ export default function HomeBanner() {
       await saveBanners(updated);
       toast.success('Banner subido correctamente');
     } catch (err) {
-      toast.error('Error al subir el banner');
+      toast.error('Error al subir el banner: ' + (err.message || 'Error desconocido'));
     }
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
