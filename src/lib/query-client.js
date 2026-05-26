@@ -14,3 +14,11 @@ export const queryClientInstance = new QueryClient({
 		},
 	},
 });
+
+// Escuchar cambios de sincronización con Supabase para refrescar queries
+if (typeof window !== 'undefined') {
+  window.addEventListener('db-synced', () => {
+    console.log('[React Query] DB synced, invalidating queries...');
+    queryClientInstance.invalidateQueries();
+  });
+}

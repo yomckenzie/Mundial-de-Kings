@@ -196,6 +196,7 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
     const result = []
     let changed = false
 
+    // 1. Procesar todos los registros provenientes de Supabase (el servidor manda)
     for (const remote of remoteData) {
       const local = localMap.get(remote.id)
       if (!local) {
@@ -203,37 +204,40 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
         result.push(remote)
         changed = true
       } else {
-        // Decidir si usar el remoto o mantener el local
-        const remoteTime = remote.updated_at || remote.created_date
-        const localTime = local.updated_at || local.created_date
-
-        let useRemote = false
-        if (remoteTime && localTime) {
-          if (new Date(remoteTime) > new Date(localTime)) {
-            // Remoto más reciente → usar remoto
-            useRemote = true
-          } else if (new Date(remoteTime).getTime() === new Date(localTime).getTime()) {
-            // Mismo timestamp → comparar contenido
-            const { created_date: _, updated_at: __, ...a } = local
-            const { created_date: ___, updated_at: ____, ...b } = remote
-            if (JSON.stringify(a) !== JSON.stringify(b)) {
-              useRemote = true
-            }
-          }
-        } else {
-          // Sin timestamps → preferir remoto si el contenido difiere
-          const { created_date: _, updated_at: __, ...a } = local
-          const { created_date: ___, updated_at: ____, ...b } = remote
-          if (JSON.stringify(a) !== JSON.stringify(b)) {
-            useRemote = true
-          }
-        }
-
-        if (useRemote) {
+        // Comparar contenido omitiendo fechas locales de creación/modificación
+        const { created_date: _, updated_at: __, ...a } = local
+        const { created_date: ___, updated_at: ____, ...b } = remote
+        
+        const contentChanged = JSON.stringify(a) !== JSON.stringify(b)
+        
+        if (contentChanged) {
+          // Si el contenido difiere, priorizamos el de Supabase
           result.push({ ...local, ...remote })
           changed = true
         } else {
           result.push(local)
+        }
+      }
+    }
+
+    // 2. Preservar registros locales que aún no se han subido a Supabase
+    // Esto es vital para tablas de usuarios comunes (ej: predicciones, tickets de soporte)
+    // Para tablas controladas por admins (matches, prizes, app_settings), la nube es la única verdad,
+    // pero si el admin acaba de crear el registro localmente, debemos mantenerlo temporalmente hasta que se suba.
+    const remoteIds = new Set(remoteData.map(r => r.id))
+    const userGeneratedTables = ['predictions', 'support_tickets', 'redemptions', 'users']
+    
+    for (const local of localRecords) {
+      if (!remoteIds.has(local.id)) {
+        const isUserGenerated = userGeneratedTables.includes(tableName)
+        // O si fue creado hace menos de 5 minutos (evita que se borre si la subida tarda un poco)
+        const isRecent = local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)
+        
+        if (isUserGenerated || isRecent) {
+          result.push(local)
+        } else {
+          // Si no es generado por usuario ni reciente, se asume que fue eliminado en Supabase por el admin
+          changed = true
         }
       }
     }

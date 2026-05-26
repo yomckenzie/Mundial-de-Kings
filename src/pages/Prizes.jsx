@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Gift, Trophy, Package, UserPlus, Sparkles, Star, Crown, TrendingUp, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 const containerVariants = {

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { BookOpen, Trophy, Gift, Pencil, Save, X, Plus, Trash2 } from 'lucide-react';
+import { BookOpen, Pencil, Save, X, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SETTING_KEY = 'info_sections';

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Save, Calendar, Clock, Trash2, Database, Wifi, WifiOff, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Save, Calendar, Clock, Trash2, Database, Wifi, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Calendar, Clock, TrendingUp, Award, ChevronRight, Sparkles, LogIn } from 'lucide-react';
+import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, ChevronRight, Sparkles, LogIn } from 'lucide-react';
 
 const tabs = [
   { id: 'overview', label: 'Resumen', icon: User },
@@ -64,6 +64,37 @@ export default function Profile() {
   const { user } = useOutletContext();
   const [activeTab, setActiveTab] = useState('overview');
 
+  const userEmail = user?.email || '';
+
+  const { data: predictions = [], isLoading: loadingPreds } = useQuery({
+    queryKey: ['my-predictions-profile', userEmail],
+    queryFn: () => api.entities.Prediction.filter({ user_email: userEmail }, '-created_date'),
+    enabled: !!userEmail,
+  });
+
+  const { data: matches = [] } = useQuery({
+    queryKey: ['matches-profile'],
+    queryFn: () => api.entities.Match.list(),
+  });
+
+  const { data: redemptions = [], isLoading: loadingRedeems } = useQuery({
+    queryKey: ['my-redemptions', userEmail],
+    queryFn: () => api.entities.Redemption.filter({ user_email: userEmail }, '-created_date'),
+    enabled: !!userEmail,
+  });
+
+  const { data: bonuses = [] } = useQuery({
+    queryKey: ['my-bonuses', userEmail],
+    queryFn: () => api.entities.PointsBonus.filter({ user_email: userEmail }, '-created_date'),
+    enabled: !!userEmail,
+  });
+
+  const matchMap = useMemo(() => {
+    const map = {};
+    matches.forEach(m => { map[m.id] = m; });
+    return map;
+  }, [matches]);
+
   if (!user) {
     return (
       <motion.div
@@ -83,33 +114,6 @@ export default function Profile() {
       </motion.div>
     );
   }
-
-  const { data: predictions = [], isLoading: loadingPreds } = useQuery({
-    queryKey: ['my-predictions-profile'],
-    queryFn: () => api.entities.Prediction.filter({ user_email: user.email }, '-created_date'),
-  });
-
-  const { data: matches = [] } = useQuery({
-    queryKey: ['matches-profile'],
-    queryFn: () => api.entities.Match.list(),
-  });
-
-  const { data: redemptions = [], isLoading: loadingRedeems } = useQuery({
-    queryKey: ['my-redemptions'],
-    queryFn: () => api.entities.Redemption.filter({ user_email: user.email }, '-created_date'),
-  });
-
-  const { data: bonuses = [] } = useQuery({
-    queryKey: ['my-bonuses', user?.email],
-    queryFn: () => api.entities.PointsBonus.filter({ user_email: user.email }, '-created_date'),
-    enabled: !!user?.email,
-  });
-
-  const matchMap = useMemo(() => {
-    const map = {};
-    matches.forEach(m => { map[m.id] = m; });
-    return map;
-  }, [matches]);
 
   const scoredPreds = predictions.filter(p => p.scored);
   const correctPreds = predictions.filter(p => p.is_correct);
