@@ -126,6 +126,10 @@ export default function Prizes() {
       setCedulaError('Ingresa una cédula válida');
       return;
     }
+    if (cedula !== user?.cedula) {
+      setCedulaError('La cédula no coincide con la registrada. Debe ser la misma que usaste al registrarte.');
+      return;
+    }
     redeemMutation.mutate(confirmPrize);
   };
 
@@ -325,7 +329,7 @@ export default function Prizes() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">
                   Confirma tu número de cédula
-                  <span className="ml-1 text-xs text-muted-foreground font-normal">(para validar tu identidad al reclamar el premio)</span>
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">(debe coincidir con la que registraste)</span>
                 </label>
                 <Input
                   value={cedulaInput}
