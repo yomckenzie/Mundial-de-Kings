@@ -327,10 +327,16 @@ export default function Matches() {
     submitPrediction.mutate(data);
   };
 
+  const isWithin24h = (match) => {
+    const matchDateTime = getMatchDate(match.match_date, match.match_time);
+    if (!matchDateTime) return false;
+    const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
+    return new Date() >= openFrom;
+  };
+
   const liveMatches = matches.filter(m => m.status === 'live');
-  const upcomingMatches = matches.filter(m => m.status === 'pending' || m.status === 'open')
+  const upcomingMatches = matches.filter(m => (m.status === 'pending' || m.status === 'open') && isWithin24h(m))
     .sort((a, b) => {
-      // Open matches first (ready for predictions), then pending
       if (a.status === 'open' && b.status !== 'open') return -1;
       if (a.status !== 'open' && b.status === 'open') return 1;
       if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
