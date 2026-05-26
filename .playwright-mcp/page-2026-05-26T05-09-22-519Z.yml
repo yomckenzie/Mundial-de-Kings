@@ -1,0 +1,33 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic:
+      - link "ChessKing":
+        - /url: /
+        - img "ChessKing"
+    - heading "MUNDIAL DE KINGS" [level=1] [ref=e6]
+    - paragraph [ref=e7]: Inicia sesión para pronosticar y ganar
+  - generic [ref=e9]:
+    - generic [ref=e11]:
+      - img [ref=e12]
+      - text: Iniciar sesión
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - text: Correo electrónico
+        - textbox "Correo electrónico" [active] [ref=e18]:
+          - /placeholder: tu@correo.com
+      - generic [ref=e19]:
+        - text: Contraseña
+        - generic [ref=e20]:
+          - textbox "Contraseña" [ref=e21]:
+            - /placeholder: Tu contraseña
+          - button [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+      - button "Iniciar sesión" [ref=e27] [cursor=pointer]
+      - paragraph [ref=e28]:
+        - text: ¿No tienes cuenta?
+        - link "Crear cuenta" [ref=e29] [cursor=pointer]:
+          - /url: /register
+      - link "Volver al inicio" [ref=e31] [cursor=pointer]:
+        - /url: /
+        - img [ref=e32]
+        - text: Volver al inicio

@@ -1,0 +1,159 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - link "ChessKing" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - img "ChessKing" [ref=e8]
+      - generic [ref=e9]:
+        - link "Inicio" [ref=e10] [cursor=pointer]:
+          - /url: /
+          - button "Inicio" [ref=e12]:
+            - img
+            - text: Inicio
+        - link "Partidos" [ref=e14] [cursor=pointer]:
+          - /url: /matches
+          - button "Partidos" [ref=e16]:
+            - img
+            - text: Partidos
+        - link "Ranking" [ref=e17] [cursor=pointer]:
+          - /url: /ranking
+          - button "Ranking" [ref=e19]:
+            - img
+            - text: Ranking
+        - link "Premios" [ref=e20] [cursor=pointer]:
+          - /url: /prizes
+          - button "Premios" [ref=e22]:
+            - img
+            - text: Premios
+        - link "Información" [ref=e23] [cursor=pointer]:
+          - /url: /info
+          - button "Información" [ref=e25]:
+            - img
+            - text: Información
+        - link "Soporte" [ref=e26] [cursor=pointer]:
+          - /url: /support
+          - button "Soporte" [ref=e28]:
+            - img
+            - text: Soporte
+        - link "Mi Perfil" [ref=e29] [cursor=pointer]:
+          - /url: /profile
+          - button "Mi Perfil" [ref=e31]:
+            - img
+            - text: Mi Perfil
+        - link "Admin" [ref=e32] [cursor=pointer]:
+          - /url: /admin
+          - button "Admin" [ref=e34]:
+            - img
+            - text: Admin
+        - switch "Cambiar a modo oscuro" [ref=e36] [cursor=pointer]:
+          - img
+        - button "Salir" [ref=e38] [cursor=pointer]
+  - generic [ref=e40]:
+    - img [ref=e41]
+    - generic [ref=e44]:
+      - generic [ref=e45]: 00:10:06
+      - generic [ref=e46]: Mar 26 May 2026 · Panamá
+  - main [ref=e47]:
+    - generic [ref=e49]:
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - heading "MUNDIAL DE KINGS" [level=1] [ref=e52]
+          - paragraph [ref=e53]: Kings World Cup 2026
+        - generic [ref=e55]:
+          - img [ref=e56]
+          - paragraph [ref=e60]: Sin banners aún. Agrega hasta 3 imágenes.
+          - generic [ref=e61]:
+            - button "Subir imagen" [ref=e62] [cursor=pointer]:
+              - img
+              - text: Subir imagen
+            - button "Seleccionar existente" [ref=e63] [cursor=pointer]:
+              - img
+              - text: Seleccionar existente
+            - button "Pegar URL" [ref=e64] [cursor=pointer]:
+              - img
+              - text: Pegar URL
+        - generic [ref=e66]:
+          - paragraph [ref=e67]: Síguenos, predice resultados y gana premios
+          - button [ref=e68] [cursor=pointer]:
+            - img [ref=e69]
+        - generic [ref=e72]:
+          - img [ref=e73]
+          - text: "Tus puntos:"
+          - generic [ref=e79]: "999999"
+      - generic [ref=e82]:
+        - generic [ref=e83]:
+          - paragraph [ref=e84]: Recuerda seguirnos en instagram y tiktok y unirte a nuestro canal para participar
+          - button [ref=e85] [cursor=pointer]:
+            - img [ref=e86]
+        - generic [ref=e89]:
+          - generic [ref=e90]:
+            - link [ref=e91] [cursor=pointer]:
+              - /url: https://instagram.com
+              - img [ref=e92]
+            - paragraph [ref=e95]: Instagram 1
+          - generic [ref=e96]:
+            - link [ref=e97] [cursor=pointer]:
+              - /url: https://instagram.com
+              - img [ref=e98]
+            - paragraph [ref=e101]: Instagram 2
+          - generic [ref=e102]:
+            - link [ref=e103] [cursor=pointer]:
+              - /url: https://tiktok.com
+              - img [ref=e104]
+            - paragraph [ref=e107]: TikTok
+        - paragraph [ref=e108]: Revisaremos que cumplas las condiciones para canjear premios
+        - button "Editar URLs y Títulos" [ref=e109] [cursor=pointer]
+      - generic [ref=e110]:
+        - link "Partidos Haz tus pronósticos" [ref=e112] [cursor=pointer]:
+          - /url: /matches
+          - generic [ref=e115]:
+            - img [ref=e117]
+            - generic [ref=e121]:
+              - paragraph [ref=e122]: Partidos
+              - paragraph [ref=e123]: Haz tus pronósticos
+        - link "Ranking Ve tu posición" [ref=e125] [cursor=pointer]:
+          - /url: /ranking
+          - generic [ref=e128]:
+            - img [ref=e130]
+            - generic [ref=e136]:
+              - paragraph [ref=e137]: Ranking
+              - paragraph [ref=e138]: Ve tu posición
+        - link "Premios Canjea tus puntos" [ref=e140] [cursor=pointer]:
+          - /url: /prizes
+          - generic [ref=e143]:
+            - img [ref=e145]
+            - generic [ref=e149]:
+              - paragraph [ref=e150]: Premios
+              - paragraph [ref=e151]: Canjea tus puntos
+        - link "Mis Puntos 999999 pts" [ref=e153] [cursor=pointer]:
+          - /url: /profile
+          - generic [ref=e156]:
+            - img [ref=e158]
+            - generic [ref=e161]:
+              - paragraph [ref=e162]: Mis Puntos
+              - paragraph [ref=e163]: 999999 pts
+      - generic [ref=e168]:
+        - img [ref=e170]
+        - heading "¡Bienvenido, Admin!" [level=2] [ref=e172]
+        - paragraph [ref=e173]:
+          - text: Participa haciendo tus pronósticos en cada partido del Mundial. Si aciertas el resultado exacto, ganas
+          - strong [ref=e174]: 100 puntos
+          - text: . Acumula puntos y canjéalos por increíbles premios.
+        - link "Ver Partidos Disponibles" [ref=e176] [cursor=pointer]:
+          - /url: /matches
+          - button "Ver Partidos Disponibles" [ref=e177]:
+            - img
+            - text: Ver Partidos Disponibles
+      - generic [ref=e178]:
+        - generic [ref=e181]:
+          - img [ref=e182]
+          - paragraph [ref=e186]: —
+          - paragraph [ref=e187]: Pronósticos
+        - generic [ref=e190]:
+          - img [ref=e191]
+          - paragraph [ref=e194]: —
+          - paragraph [ref=e195]: Aciertos
+        - generic [ref=e198]:
+          - img [ref=e199]
+          - paragraph [ref=e205]: "999999"
+          - paragraph [ref=e206]: Puntos

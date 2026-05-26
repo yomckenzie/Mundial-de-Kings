@@ -538,10 +538,10 @@ export default function AdminMatches() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Controles de estado */}
-                  {match.status !== 'finished' && (
-                    <>
+                <div className="space-y-2">
+                  {/* Primera fila: controles de estado */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {match.status !== 'finished' && (
                       <select
                         className="text-xs border rounded-md px-2 py-1 bg-background"
                         value={match.status}
@@ -552,41 +552,42 @@ export default function AdminMatches() {
                         <option value="live">En Vivo</option>
                         <option value="closed">Cerrado</option>
                       </select>
+                    )}
+                    {match.fixture_id && (
+                      <span className="text-[10px] text-muted-foreground/50">ID: {match.fixture_id}</span>
+                    )}
+                  </div>
 
-                      {/* Resultado individual */}
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        <Input
-                          type="number"
-                          min="0"
-                          className="w-12 h-8 text-center text-sm"
-                          placeholder="0"
-                          value={resultForm[match.id]?.team1 ?? ''}
-                          onChange={(e) => setResultForm(prev => ({
-                            ...prev,
-                            [match.id]: { ...prev[match.id], team1: e.target.value }
-                          }))}
-                        />
-                        <span className="text-muted-foreground text-sm">-</span>
-                        <Input
-                          type="number"
-                          min="0"
-                          className="w-12 h-8 text-center text-sm"
-                          placeholder="0"
-                          value={resultForm[match.id]?.team2 ?? ''}
-                          onChange={(e) => setResultForm(prev => ({
-                            ...prev,
-                            [match.id]: { ...prev[match.id], team2: e.target.value }
-                          }))}
-                        />
-                        <Button size="sm" variant="secondary" onClick={() => handlePublishResult(match)} className="h-8 text-xs">
-                          <Save className="w-3 h-3 mr-1" /> Publicar
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                  {match.fixture_id && (
-                    <span className="text-[10px] text-muted-foreground/50 ml-auto">ID: {match.fixture_id}</span>
+                  {/* Segunda fila: resultado individual */}
+                  {match.status !== 'finished' && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Input
+                        type="number"
+                        min="0"
+                        className="w-12 h-8 text-center text-sm"
+                        placeholder="0"
+                        value={resultForm[match.id]?.team1 ?? ''}
+                        onChange={(e) => setResultForm(prev => ({
+                          ...prev,
+                          [match.id]: { ...prev[match.id], team1: e.target.value }
+                        }))}
+                      />
+                      <span className="text-muted-foreground text-sm">-</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        className="w-12 h-8 text-center text-sm"
+                        placeholder="0"
+                        value={resultForm[match.id]?.team2 ?? ''}
+                        onChange={(e) => setResultForm(prev => ({
+                          ...prev,
+                          [match.id]: { ...prev[match.id], team2: e.target.value }
+                        }))}
+                      />
+                      <Button size="sm" variant="secondary" onClick={() => handlePublishResult(match)} className="h-8 text-xs">
+                        <Save className="w-3 h-3 mr-1" /> Publicar
+                      </Button>
+                    </div>
                   )}
                 </div>
               </CardContent>
