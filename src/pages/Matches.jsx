@@ -55,7 +55,7 @@ const isMatchOpenForPredictions = (match) => {
   return now >= openFrom && now < matchDateTime;
 };
 
-function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict }) {
+function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   const isLive = match.status === 'live';
@@ -451,6 +451,7 @@ export default function Matches() {
                   predictions={predictionsState}
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
+                  handleSubmit={handleSubmit}
                 />
               ))}
             </div>
@@ -466,7 +467,7 @@ export default function Matches() {
           >
             <h2 className="font-display text-2xl tracking-wide mb-3">PRÓXIMOS PARTIDOS</h2>
             <div className="space-y-4">
-              {upcomingMatches.map(match => (
+{upcomingMatches.map(match => (
                 <MatchCard
                   key={match.id}
                   match={match}
@@ -475,6 +476,7 @@ export default function Matches() {
                   predictions={predictionsState}
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
+                  handleSubmit={handleSubmit}
                 />
               ))}
             </div>
@@ -501,6 +503,7 @@ export default function Matches() {
                     predictions={predictionsState}
                     submitPrediction={submitPrediction}
                     handlePredict={handlePredict}
+                    handleSubmit={handleSubmit}
                   />
                 ))}
               </AnimatePresence>
