@@ -500,7 +500,15 @@ export default function AdminMatches() {
       {sortedDates.map(dateStr => (
         <div key={dateStr}>
           <h3 className="font-display text-lg mb-2 mt-6 first:mt-0">
-            {format(parse(dateStr, 'yyyy-MM-dd', new Date()), "d 'de' MMMM yyyy", { locale: es })}
+            {(() => {
+              try {
+                const d = parse(dateStr, 'yyyy-MM-dd', new Date());
+                if (isNaN(d.getTime())) return dateStr;
+                return format(d, "d 'de' MMMM yyyy", { locale: es });
+              } catch {
+                return dateStr;
+              }
+            })()}
             <span className="text-sm font-sans font-normal text-muted-foreground ml-2">
               ({groupedMatches[dateStr].length} partidos)
             </span>

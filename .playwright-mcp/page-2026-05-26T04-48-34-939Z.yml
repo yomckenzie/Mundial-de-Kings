@@ -1,0 +1,55 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - link "ChessKing":
+        - /url: /
+        - img "ChessKing"
+      - generic [ref=e7]:
+        - link "Inicio" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - button "Inicio" [ref=e10]:
+            - img
+            - text: Inicio
+        - link "Partidos" [ref=e11] [cursor=pointer]:
+          - /url: /matches
+          - button "Partidos" [ref=e13]:
+            - img
+            - text: Partidos
+        - link "Ranking" [ref=e14] [cursor=pointer]:
+          - /url: /ranking
+          - button "Ranking" [ref=e16]:
+            - img
+            - text: Ranking
+        - link "Premios" [ref=e17] [cursor=pointer]:
+          - /url: /prizes
+          - button "Premios" [ref=e19]:
+            - img
+            - text: Premios
+        - link "Información" [ref=e20] [cursor=pointer]:
+          - /url: /info
+          - button "Información" [ref=e22]:
+            - img
+            - text: Información
+        - link "Soporte" [ref=e23] [cursor=pointer]:
+          - /url: /support
+          - button "Soporte" [ref=e25]:
+            - img
+            - text: Soporte
+        - switch "Cambiar a modo oscuro" [ref=e27] [cursor=pointer]:
+          - img
+        - generic [ref=e28]:
+          - link "Ingresar" [ref=e29] [cursor=pointer]:
+            - /url: /login
+            - button "Ingresar" [ref=e30]:
+              - img
+              - text: Ingresar
+          - link "Crear cuenta" [ref=e31] [cursor=pointer]:
+            - /url: /register
+            - button "Crear cuenta" [ref=e33]:
+              - img
+              - text: Crear cuenta
+  - generic [ref=e35]:
+    - img [ref=e36]
+    - generic [ref=e40]: · Panamá
+  - main [ref=e41]:
+    - paragraph [ref=e44]: No tienes permiso para acceder a esta sección.
