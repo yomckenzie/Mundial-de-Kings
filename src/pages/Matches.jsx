@@ -46,6 +46,8 @@ const getTimeUntilOpen = (match_date, match_time) => {
 
 const isMatchOpenForPredictions = (match) => {
   if (match.status !== 'pending' && match.status !== 'open') return false;
+  // Si el admin lo puso como 'open', se habilita manualmente sin importar la ventana de 24h
+  if (match.status === 'open') return true;
   const matchDateTime = getMatchDate(match.match_date, match.match_time);
   if (!matchDateTime) return false;
   const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
@@ -328,6 +330,8 @@ export default function Matches() {
   };
 
   const isWithin24h = (match) => {
+    // Si el admin lo abrió manualmente, se muestra siempre
+    if (match.status === 'open') return true;
     const matchDateTime = getMatchDate(match.match_date, match.match_time);
     if (!matchDateTime) return false;
     const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
