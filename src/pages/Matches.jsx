@@ -190,7 +190,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               />
               <Button
                 size="sm"
-                onClick={() => submitPrediction({
+                onClick={() => handleSubmit({
                   match_id: match.id,
                   user_email: user.email,
                   pred_team1: Number(predictions[match.id]?.team1),
@@ -200,7 +200,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                 className="gap-1.5"
               >
                 <Send className="w-3.5 h-3.5" />
-                Enviar
+                Enviar Pronóstico
               </Button>
             </motion.div>
           ) : (
@@ -304,7 +304,13 @@ export default function Matches() {
   const submitPrediction = useMutation({
     mutationFn: (data) => api.entities.Prediction.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-predictions'] });
+      queryClient.invalidateQueries({ queryKey: ['my-predictions', user?.email] });
+      setPredictionsState(prev => {
+        // Limpiar estado local para que muestre la predicción guardada
+        const next = { ...prev };
+        delete next[Object.keys(prev).find(k => prev[k]?.submitted)];
+        return next;
+      });
       toast.success('¡Pronóstico enviado!');
     },
     onError: (err) => toast.error(err?.message || 'Error al enviar pronóstico'),
