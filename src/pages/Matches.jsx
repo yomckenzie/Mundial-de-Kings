@@ -328,8 +328,15 @@ export default function Matches() {
   };
 
   const liveMatches = matches.filter(m => m.status === 'live');
-  const upcomingMatches = matches.filter(m => m.status === 'pending' || m.status === 'open');
-  const finishedMatches = matches.filter(m => m.status === 'finished');
+  const upcomingMatches = matches.filter(m => m.status === 'pending' || m.status === 'open')
+    .sort((a, b) => {
+      // Open matches first (ready for predictions), then pending
+      if (a.status === 'open' && b.status !== 'open') return -1;
+      if (a.status !== 'open' && b.status === 'open') return 1;
+      if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
+      return (a.match_time || '').localeCompare(b.match_time || '');
+    });
+  const finishedMatches = matches.filter(m => m.status === 'finished' || m.status === 'closed');
 
   if (isLoading) {
     return (
