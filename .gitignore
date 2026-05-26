@@ -39,3 +39,7 @@ shared-db.json
 # OS
 Thumbs.db
 .DS_Store
+
+# Playwright test artifacts
+.playwright-mcp/
+admin-matches*.png
