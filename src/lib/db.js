@@ -112,7 +112,10 @@ export const db = {
       this.seedIfEmpty();
       // Cargar datos desde Supabase en segundo plano
       // Los componentes React se actualizarán vía evento 'db-synced'
-      this._syncAllFromSupabase();
+      this._syncAllFromSupabase().then(() => {
+        // Subir datos locales que aun no esten en la nube (ej: cambios del admin antes del deploy)
+        this._syncAllToSupabase();
+      });
 
       // Polling automático cada 60s para detectar cambios de otros admins/dispositivos
       if (!_pollInterval) {

@@ -217,8 +217,8 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
         const contentChanged = JSON.stringify(a) !== JSON.stringify(b)
         
         if (contentChanged) {
-          // Si el contenido difiere, priorizamos el de Supabase
-          result.push({ ...local, ...remote })
+          // Local más reciente → mantener cambios del admin aunque no se hayan subido aún
+          result.push({ ...remote, ...local })
           changed = true
         } else {
           result.push(local)
