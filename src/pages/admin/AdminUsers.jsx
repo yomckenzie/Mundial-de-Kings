@@ -28,7 +28,7 @@ export default function AdminUsers() {
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => api.entities.User.filter({ profile_complete: true }, '-created_date'),
+    queryFn: () => api.entities.User.list('-created_date'),
   });
 
   const { data: predictions = [] } = useQuery({
