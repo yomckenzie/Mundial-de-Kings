@@ -331,7 +331,8 @@ export default function Matches() {
     const matchDateTime = getMatchDate(match.match_date, match.match_time);
     if (!matchDateTime) return false;
     const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
-    return new Date() >= openFrom;
+    const now = new Date();
+    return now >= openFrom && now < matchDateTime;
   };
 
   const liveMatches = matches.filter(m => m.status === 'live');
