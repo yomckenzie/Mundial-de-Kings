@@ -628,11 +628,7 @@ export const db = {
         { id: makeId(), key: 'tiktok_title', value: 'TikTok', created_date: getNow() },
         { id: makeId(), key: 'hero_subtitle', value: 'Síguenos, predice resultados y gana premios', created_date: getNow() },
         { id: makeId(), key: 'info_sections', value: infoSections, created_date: getNow() },
-        { id: makeId(), key: 'home_banners', value: JSON.stringify([
-          'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200&h=375&fit=crop',
-          'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1200&h=375&fit=crop',
-          'https://images.unsplash.com/photo-1511882150382-421056c89033?w=1200&h=375&fit=crop'
-        ]), created_date: getNow() },
+        { id: makeId(), key: 'home_banners', value: JSON.stringify([]), created_date: getNow() },
       );
       this._persist();
     }
