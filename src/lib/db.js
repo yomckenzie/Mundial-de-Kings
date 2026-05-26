@@ -634,7 +634,7 @@ export const db = {
       };
       d.users.push(admin);
       this._persist();
-      console.log('[DB] Admin user seeded: admin@chessking.com / admin123');
+      console.log('[DB] Admin user seeded');
     }
 
     const hasSettings = d.appSettings.length > 0;

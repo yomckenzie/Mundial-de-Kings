@@ -120,7 +120,12 @@ export default function AdminUsers() {
       canjesMap[u.email] || 0,
       u.created_date ? new Date(u.created_date).toLocaleDateString('es-PA') : '',
     ]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csvSafe = (v) => {
+    const s = String(v);
+    const escaped = s.replace(/"/g, '""');
+    return s.match(/^[=+\-@]/) ? `"'${escaped}"` : `"${escaped}"`;
+  };
+  const csv = [headers, ...rows].map(r => r.map(csvSafe).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
