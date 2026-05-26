@@ -1,7 +1,9 @@
 import {
+  supabase,
   isSupabaseAvailable,
   syncTableToSupabase,
   syncTableFromSupabase,
+  stripLocalFields,
   TABLES
 } from './supabase';
 
@@ -53,9 +55,12 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
   _syncInProgress[key] = true;
   try {
     if (jsKey === 'appSettings') {
-      // Para app_settings: upsert por KEY para evitar duplicados
-      // Requiere la constraint UNIQUE(key) en la tabla (ver supabase-cleanup.sql)
-      await syncTableToSupabase(tableName, records, 'key');
+      if (!supabase) return;
+      const keys = records.map(r => r.key).filter(Boolean);
+      if (keys.length === 0) return;
+      const cleaned = stripLocalFields(records);
+      await supabase.from(tableName).delete().in('key', keys);
+      await supabase.from(tableName).insert(cleaned);
     } else {
       await syncTableToSupabase(tableName, records);
     }
@@ -560,7 +565,8 @@ export const db = {
   // --- Seed ---
   seedIfEmpty() {
     const d = this._init();
-    const hasAdmin = d.users.some(u => u.role === 'admin');
+    // Solo seedear admin si no existe ni por email ni por rol
+    const hasAdmin = d.users.some(u => u.email === 'admin@chessking.com' || u.role === 'admin');
     if (!hasAdmin) {
       const admin = {
         id: makeId(),
@@ -622,47 +628,6 @@ export const db = {
       this._persist();
     }
 
-    const hasPrizes = d.prizes.length > 0;
-    if (!hasPrizes) {
-      d.prizes.push(
-        {
-          id: makeId(),
-          name: 'Tarjeta de Regalo $10',
-          description: 'Tarjeta de regalo para canjear en tus tiendas favoritas.',
-          points_cost: 200,
-          units_available: 10,
-          status: 'active',
-          created_date: getNow(),
-        },
-        {
-          id: makeId(),
-          name: 'Camiseta Oficial',
-          description: 'Camiseta oficial del Mundial de Kings 2026.',
-          points_cost: 500,
-          units_available: 5,
-          status: 'active',
-          created_date: getNow(),
-        },
-        {
-          id: makeId(),
-          name: 'Audífonos Inalámbricos',
-          description: 'Audífonos Bluetooth con cancelación de ruido.',
-          points_cost: 800,
-          units_available: 3,
-          status: 'active',
-          created_date: getNow(),
-        },
-        {
-          id: makeId(),
-          name: 'Tarjeta de Regalo $25',
-          description: 'Tarjeta de regalo por $25 para gastar donde quieras.',
-          points_cost: 1000,
-          units_available: 5,
-          status: 'active',
-          created_date: getNow(),
-        },
-      );
-      this._persist();
-    }
+    // NO seedear premios por defecto — el admin los crea desde el panel
   },
 };

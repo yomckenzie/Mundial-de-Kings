@@ -19,7 +19,7 @@ export const supabase = supabaseUrl && supabaseAnonKey
 export const isSupabaseAvailable = () => supabase !== null
 
 // Tablas en Supabase
-const TABLES = {
+export const TABLES = {
   users: 'users',
   matches: 'matches',
   predictions: 'predictions',
@@ -119,7 +119,7 @@ export async function deleteRecords(tableName, field, value) {
  * Limpiar campos locales que no existen en las tablas de Supabase
  * (created_date, updated_at son solo del localStorage local)
  */
-function stripLocalFields(records) {
+export function stripLocalFields(records) {
   return records.map(r => {
     const { created_date, updated_at, ...clean } = r
     return clean
@@ -270,6 +270,29 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
       }
     }
 
+    // Deduplicar usuarios por email (evita admins duplicados en el ranking)
+    if (changed && tableName === 'users') {
+      const emailMap = new Map()
+      for (const rec of result) {
+        const existing = emailMap.get(rec.email)
+        if (!existing) {
+          emailMap.set(rec.email, rec)
+        } else {
+          const existingFields = Object.keys(existing).length
+          const recFields = Object.keys(rec).length
+          if (recFields > existingFields) {
+            emailMap.set(rec.email, rec)
+          }
+        }
+      }
+      const deduped = Array.from(emailMap.values())
+      if (deduped.length !== result.length) {
+        console.log(`[Supabase] Deduplicados ${result.length - deduped.length} usuarios por email`)
+        result.length = 0
+        result.push(...deduped)
+      }
+    }
+
     if (changed) return result
     return localRecords
   } catch (err) {
@@ -311,5 +334,3 @@ export async function uploadImage(blob, originalFileName = 'image.jpg', bucket =
     return null
   }
 }
-
-export { TABLES }
