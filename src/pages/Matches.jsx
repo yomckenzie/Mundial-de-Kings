@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw } from 'lucide-react';
-import { formatDateMedium } from '@/lib/dateFormat';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale/es';
 import { toast } from 'sonner';
 
 const statusMap = {
@@ -73,7 +74,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="w-4 h-4" />
-              {match.match_date && (() => { const d = new Date(match.match_date); return isNaN(d.getTime()) ? match.match_date : formatDateMedium(d); })()}
+              {match.match_date && (() => { const d = new Date(match.match_date); return isNaN(d.getTime()) ? match.match_date : format(d, "d 'de' MMMM", { locale: es }); })()}
               <Clock className="w-4 h-4 ml-1" />
               {match.match_time}
             </div>

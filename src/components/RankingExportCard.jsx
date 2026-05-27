@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react';
-import { formatRankingDate } from '@/lib/dateFormat';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale/es';
 
 const LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Chess_klt45.svg/200px-Chess_klt45.svg.png';
 
@@ -11,7 +12,9 @@ const getRankStyle = (pos) => {
 };
 
 const RankingExportCard = forwardRef(({ topUsers, title, date }, ref) => {
-  const displayDate = date ? formatRankingDate(date) : formatRankingDate();
+  const displayDate = date
+    ? format(new Date(date + 'T12:00:00'), "d 'de' MMMM 'de' yyyy", { locale: es })
+    : format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es });
 
   return (
     <div

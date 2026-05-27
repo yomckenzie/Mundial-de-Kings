@@ -1,8 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { subDays } from 'date-fns';
-import { formatDayMonth } from '@/lib/dateFormat';
+import { format, subDays } from 'date-fns';
+import { es } from 'date-fns/locale/es';
 
 export default function DailyRegistrationsChart({ users }) {
   // Last 14 days
@@ -12,7 +12,7 @@ export default function DailyRegistrationsChart({ users }) {
   });
 
   const data = days.map(day => ({
-    day: formatDayMonth(new Date(day)),
+    day: format(new Date(day), 'dd/MM', { locale: es }),
     registros: users.filter(u => u.created_date?.slice(0, 10) === day).length,
   }));
 

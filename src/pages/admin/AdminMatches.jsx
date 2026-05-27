@@ -11,8 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Save, Calendar, Clock, Trash2, Database, Wifi, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { parse } from 'date-fns';
-import { formatDateLong } from '@/lib/dateFormat';
+import { format, parse } from 'date-fns';
+import { es } from 'date-fns/locale/es';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -619,7 +619,7 @@ export default function AdminMatches() {
               try {
                 const d = parse(dateStr, 'yyyy-MM-dd', new Date());
                 if (isNaN(d.getTime())) return dateStr;
-                return formatDateLong(d);
+                return format(d, "d 'de' MMMM yyyy", { locale: es });
               } catch {
                 return dateStr;
               }

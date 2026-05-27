@@ -1,8 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { subDays } from 'date-fns';
-import { formatDayMonth } from '@/lib/dateFormat';
+import { format, subDays } from 'date-fns';
+import { es } from 'date-fns/locale/es';
 
 export default function DailyWinnersChart({ predictions }) {
   // Winners = predictions with points_earned > 0
@@ -12,7 +12,7 @@ export default function DailyWinnersChart({ predictions }) {
   });
 
   const data = days.map(day => ({
-    day: formatDayMonth(new Date(day)),
+    day: format(new Date(day), 'dd/MM', { locale: es }),
     ganadores: predictions.filter(
       p => p.created_date?.slice(0, 10) === day && p.points_earned > 0
     ).length,
