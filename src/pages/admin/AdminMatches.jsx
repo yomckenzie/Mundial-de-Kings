@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { seedAllMatches } from '@/api/seedMatches';
@@ -15,6 +15,21 @@ import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const LOCK_HOURS = 24;
+
+/** Retorna true si el partido está bloqueado (24h+ después de su fecha/hora) */
+function isMatchLocked(match) {
+  if (!match.match_date) return false;
+  if (match.status !== 'finished' && match.status !== 'live') {
+    // Solo se bloquean partidos que ya deberían haberse jugado
+  }
+  const matchDate = new Date(`${match.match_date}T${match.match_time || '23:59'}:00`);
+  if (isNaN(matchDate.getTime())) return false;
+  const now = new Date();
+  const hoursSince = (now - matchDate) / (1000 * 60 * 60);
+  return hoursSince >= LOCK_HOURS;
+}
 
 const INITIAL = { team1: '', team2: '', match_date: '', match_time: '', group_stage: '', status: 'open' };
 
@@ -99,6 +114,9 @@ export default function AdminMatches() {
       return (a.match_time || '').localeCompare(b.match_time || '');
     }), [rawMatches]);
 
+  const lockedMatches = useMemo(() => matches.filter(isMatchLocked), [matches]);
+  const hasLockedMatches = lockedMatches.length > 0;
+
   const clearMatches = useMutation({
     mutationFn: () => api.entities.Match.clearAll(),
     onSuccess: () => {
@@ -119,6 +137,10 @@ export default function AdminMatches() {
   });
 
   const handleClearAll = () => {
+    if (hasLockedMatches) {
+      toast.error(`No puedes eliminar partidos. Hay ${lockedMatches.length} partido${lockedMatches.length > 1 ? 's' : ''} bloqueado${lockedMatches.length > 1 ? 's' : ''} (pasaron 24h+).`);
+      return;
+    }
     if (window.confirm('¿Eliminar TODOS los partidos? Esta acción no se puede deshacer.')) {
       clearMatches.mutate();
     }
@@ -439,7 +461,7 @@ export default function AdminMatches() {
           variant="outline"
           size="sm"
           onClick={() => seedMutation.mutate()}
-          disabled={seedMutation.isPending}
+          disabled={seedMutation.isPending || hasLockedMatches}
           className="gap-2"
         >
           <Database className="w-4 h-4" />
@@ -469,11 +491,20 @@ export default function AdminMatches() {
                 <div><Label>Equipo 2</Label><Input value={form.team2} onChange={e => setForm({...form, team2: e.target.value})} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>Fecha</Label><Input type="date" value={form.match_date} onChange={e => setForm({...form, match_date: e.target.value})} /></div>
+                <div><Label>Fecha</Label><Input type="date" value={form.match_date} max="2030-12-31" onChange={e => setForm({...form, match_date: e.target.value})} /></div>
                 <div><Label>Hora</Label><Input type="time" value={form.match_time} onChange={e => setForm({...form, match_time: e.target.value})} /></div>
               </div>
               <div><Label>Fase / Grupo</Label><Input placeholder="Ej: Grupo A, Octavos" value={form.group_stage} onChange={e => setForm({...form, group_stage: e.target.value})} /></div>
-              <Button className="w-full" onClick={() => createMatch.mutate(form)} disabled={createMatch.isPending}>
+              <Button className="w-full" onClick={() => {
+                if (form.match_date) {
+                  const matchDate = new Date(`${form.match_date}T${form.match_time || '23:59'}:00`);
+                  if (!isNaN(matchDate.getTime()) && matchDate < new Date()) {
+                    toast.error('No puedes crear partidos en el pasado. La fecha/hora debe ser futura.');
+                    return;
+                  }
+                }
+                createMatch.mutate(form);
+              }} disabled={createMatch.isPending}>
                 Crear Partido
               </Button>
             </div>
@@ -667,7 +698,10 @@ export default function AdminMatches() {
                     </Button>
                   </div>
 
-                  {match.fixture_id && (
+                  {hasLockedMatches && isMatchLocked(match) && (
+                    <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600 dark:text-amber-400 ml-auto">🔒 Bloqueado</Badge>
+                  )}
+                  {match.fixture_id && !isMatchLocked(match) && (
                     <span className="text-[10px] text-muted-foreground/50 ml-auto">ID: {match.fixture_id}</span>
                   )}
                 </div>
