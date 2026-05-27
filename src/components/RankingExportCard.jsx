@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { es } from 'date-fns/locale/es';
 
 const LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Chess_klt45.svg/200px-Chess_klt45.svg.png';
 

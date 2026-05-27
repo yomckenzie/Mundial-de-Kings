@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Save, Calendar, Clock, Trash2, Database, Wifi, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { format, parse } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { es } from 'date-fns/locale/es';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
