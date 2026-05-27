@@ -29,6 +29,26 @@ export default function AdminMatches() {
   const [showSources, setShowSources] = useState(true);
   const [bulkResults, setBulkResults] = useState({});
 
+  // Pre-fill resultForm con resultados existentes para poder editarlos
+  useEffect(() => {
+    setResultForm(prev => {
+      let changed = false;
+      const next = { ...prev };
+      matches.forEach(m => {
+        const hasT1 = m.result_team1 !== undefined && m.result_team1 !== null;
+        const hasT2 = m.result_team2 !== undefined && m.result_team2 !== null;
+        if ((hasT1 || hasT2) && !next[m.id]) {
+          next[m.id] = {
+            team1: hasT1 ? String(m.result_team1) : '',
+            team2: hasT2 ? String(m.result_team2) : '',
+          };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [matches]);
+
   // Cargar fuentes al montar
   useEffect(() => {
     loadSources();
@@ -136,6 +156,25 @@ export default function AdminMatches() {
     const resultTeam1 = Number(r.team1);
     const resultTeam2 = Number(r.team2);
 
+    const isCorrection = match.status === 'finished';
+
+    // Si ya estaba finalizado, revertir puntos de pronósticos acertados primero
+    if (isCorrection) {
+      const oldPreds = await api.entities.Prediction.filter({ match_id: match.id });
+      for (const pred of oldPreds) {
+        if (pred.scored && (pred.points_earned || 0) > 0) {
+          const users = await api.entities.User.filter({ email: pred.user_email });
+          if (users.length > 0) {
+            const u = users[0];
+            await api.entities.User.update(u.id, {
+              total_points: Math.max(0, (u.total_points || 0) - (pred.points_earned || 0)),
+              prediction_points: Math.max(0, (u.prediction_points || 0) - (pred.points_earned || 0)),
+            });
+          }
+        }
+      }
+    }
+
     await api.entities.Match.update(match.id, {
       result_team1: resultTeam1,
       result_team2: resultTeam2,
@@ -144,7 +183,10 @@ export default function AdminMatches() {
 
     const predictions = await api.entities.Prediction.filter({ match_id: match.id });
     for (const pred of predictions) {
-      if (pred.scored) continue;
+      // Si es corrección, re-evaluar todos (incluso los ya scorados)
+      // Si es primera vez, solo evaluar los no scorados
+      if (!isCorrection && pred.scored) continue;
+
       const isCorrect = pred.pred_team1 === resultTeam1 && pred.pred_team2 === resultTeam2;
       const pointsEarned = isCorrect ? 100 : 0;
 
@@ -166,8 +208,19 @@ export default function AdminMatches() {
       }
     }
 
+    // Limpiar resultForm para que recargue desde los datos actualizados
+    setResultForm(prev => {
+      const { [match.id]: _, ...rest } = prev;
+      return rest;
+    });
+
     queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
-    toast.success(`Resultado publicado. ${predictions.length} pronósticos evaluados.`);
+    queryClient.invalidateQueries({ queryKey: ['ranking'] });
+    toast.success(
+      isCorrection
+        ? `Resultado corregido. ${predictions.length} pronósticos re-evaluados.`
+        : `Resultado publicado. ${predictions.length} pronósticos evaluados.`
+    );
   };
 
   // Publicar resultados en batch
@@ -562,59 +615,57 @@ export default function AdminMatches() {
                   {match.team1} vs {match.team2}
                   {(match.status === 'finished' || match.status === 'live') && (
                     <p className={`text-xl mt-1 ${match.status === 'live' ? 'text-red-600' : 'text-primary'}`}>
-                      {(match.result_team1 ?? match.result_team1 === 0) ? match.result_team1 : '-'}
+                      {match.result_team1 ?? '-'}
                       {' - '}
-                      {(match.result_team2 ?? match.result_team2 === 0) ? match.result_team2 : '-'}
+                      {match.result_team2 ?? '-'}
                     </p>
                   )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* Controles de estado */}
-                  {match.status !== 'finished' && (
-                    <>
-                      <select
-                        className="text-xs border rounded-md px-2 py-1 bg-background"
-                        value={match.status}
-                        onChange={(e) => handleStatusChange(match, e.target.value)}
-                      >
-                        <option value="pending">Pendiente</option>
-                        <option value="open">Abierto</option>
-                        <option value="live">En Vivo</option>
-                        <option value="closed">Cerrado</option>
-                      </select>
+                  {/* Controles de estado - siempre visible */}
+                  <select
+                    className="text-xs border rounded-md px-2 py-1 bg-background"
+                    value={match.status}
+                    onChange={(e) => handleStatusChange(match, e.target.value)}
+                  >
+                    <option value="pending">Pendiente</option>
+                    <option value="open">Abierto</option>
+                    <option value="live">En Vivo</option>
+                    <option value="closed">Cerrado</option>
+                    <option value="finished">Finalizado</option>
+                  </select>
 
-                      {/* Resultado individual */}
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        <Input
-                          type="number"
-                          min="0"
-                          className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                          placeholder="0"
-                          value={resultForm[match.id]?.team1 ?? ''}
-                          onChange={(e) => setResultForm(prev => ({
-                            ...prev,
-                            [match.id]: { ...prev[match.id], team1: e.target.value }
-                          }))}
-                        />
-                        <span className="text-muted-foreground text-sm">-</span>
-                        <Input
-                          type="number"
-                          min="0"
-                          className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                          placeholder="0"
-                          value={resultForm[match.id]?.team2 ?? ''}
-                          onChange={(e) => setResultForm(prev => ({
-                            ...prev,
-                            [match.id]: { ...prev[match.id], team2: e.target.value }
-                          }))}
-                        />
-                        <Button size="sm" variant="secondary" onClick={() => handlePublishResult(match)} className="h-8 text-xs">
-                          <Save className="w-3 h-3 mr-1" /> Publicar
-                        </Button>
-                      </div>
-                    </>
-                  )}
+                  {/* Resultado - siempre visible para editar o corregir */}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <Input
+                      type="number"
+                      min="0"
+                      className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      placeholder="0"
+                      value={resultForm[match.id]?.team1 ?? (match.result_team1 ?? '')}
+                      onChange={(e) => setResultForm(prev => ({
+                        ...prev,
+                        [match.id]: { ...prev[match.id], team1: e.target.value }
+                      }))}
+                    />
+                    <span className="text-muted-foreground text-sm">-</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      placeholder="0"
+                      value={resultForm[match.id]?.team2 ?? (match.result_team2 ?? '')}
+                      onChange={(e) => setResultForm(prev => ({
+                        ...prev,
+                        [match.id]: { ...prev[match.id], team2: e.target.value }
+                      }))}
+                    />
+                    <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">
+                      <Save className="w-3 h-3 mr-1" />
+                      {match.status === 'finished' ? 'Corregir' : 'Publicar'}
+                    </Button>
+                  </div>
 
                   {match.fixture_id && (
                     <span className="text-[10px] text-muted-foreground/50 ml-auto">ID: {match.fixture_id}</span>
