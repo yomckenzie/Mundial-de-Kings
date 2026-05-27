@@ -70,7 +70,7 @@ const RankingExportCard = forwardRef(({ topUsers, title, date }, ref) => {
                 </p>
               </div>
               <div className={`font-bold text-sm flex-shrink-0 ${isTop3 ? style.text : 'text-yellow-400'}`}>
-                {u.total_points || 0} pts
+                {u.prediction_points || 0} pts
               </div>
             </div>
           );
