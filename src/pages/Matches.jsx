@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw, UserCheck } from 'lucide-react';
+import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -394,9 +394,7 @@ export default function Matches() {
                 <><Wifi className="w-3 h-3" /> {sourceStatus.bestSourceName}</>
               ) : sourceStatus?.hasAutoSync ? (
                 <><WifiOff className="w-3 h-3" /> Sin conexión</>
-              ) : (
-                <><UserCheck className="w-3 h-3" /> Manual</>
-              )}
+              ) : null}
             </div>
           </div>
         )}
