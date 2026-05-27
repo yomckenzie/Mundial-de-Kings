@@ -9,8 +9,6 @@
 // El sistema intenta usar la fuente de mayor prioridad primero.
 // Si falla, hace fallback automático a la siguiente.
 
-import { api } from './client';
-
 // ─── Importar fuentes dinámicamente ───
 let _sources = null;
 let _sourceStatus = {};
