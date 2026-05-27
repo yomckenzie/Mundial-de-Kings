@@ -131,8 +131,9 @@ export const db = {
 
   _persist() {
     save(this._data);
-    // Sincronizar cambios a Supabase INMEDIATAMENTE
-    this._syncAllToSupabase();
+    // Limpiar locks para que los cambios se suban a Supabase
+    _syncInProgress = {};
+    return this._syncAllToSupabase();
   },
 
   // Sincronizar TODAS las tablas desde Supabase
@@ -294,11 +295,11 @@ export const db = {
       }
       return d;
     },
-    create(data) {
+    async create(data) {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.users.push(record);
-      db._persist();
+      await db._persist();
       return record;
     },
     update(id, data) {
