@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '@/api/client';
+import { db } from '@/lib/db';
 import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -76,7 +77,10 @@ if (!form.email) errors.email = 'Campo obligatorio';
 
     setIsLoading(true);
     try {
-      await api.users.inviteUser({
+      // Generar ID primero para que coincida en Supabase y local
+      const recordId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const userData = {
+        id: recordId,
         email: form.email,
         role: 'user',
         full_name: form.full_name,
@@ -89,20 +93,18 @@ if (!form.email) errors.email = 'Campo obligatorio';
         prediction_points: 0,
         bonus_points: 0,
         profile_complete: false,
-      });
+      };
 
-      // Escribir directamente a Supabase para asegurar que quede en la nube
+      // Escribir a Supabase PRIMERO (sin locks de por medio)
       if (isSupabaseAvailable()) {
-        try {
-          const userInDb = db._init().users.find(u => u.email === form.email);
-          if (userInDb) {
-            const { password, created_date, updated_at, ...clean } = userInDb;
-            await supabase.from('users').upsert(clean, { onConflict: 'id' });
-          }
-        } catch (supaErr) {
-          console.warn('[Register] Supabase direct write failed (non-critical):', supaErr);
-        }
+        const { error } = await supabase.from('users').upsert(userData, { onConflict: 'id' });
+        if (error) throw new Error(error.message);
       }
+
+      // Escribir a localStorage directamente (evitar locks del motor de sync)
+      const d = db._init();
+      d.users.push(userData);
+      localStorage.setItem('chessking_db', JSON.stringify(d));
 
       toast.success('¡Cuenta creada exitosamente!');
       navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
