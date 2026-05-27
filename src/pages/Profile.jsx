@@ -211,9 +211,8 @@ export default function Profile() {
                 <InfoRow label="Nombre completo" value={user?.full_name} />
                 <InfoRow label="Correo electrónico" value={user?.email} />
                 <InfoRow label="Cédula" value={user?.cedula}>
-                  <span className="ml-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground cursor-help" title="Se usará para validar tu identidad al reclamar un premio si resultas ganador.">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-text-bottom"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    ¿Para qué?
+                  <span className="ml-1 cursor-help text-muted-foreground/60" title="Se usará para validar tu identidad al reclamar un premio si resultas ganador.">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-text-bottom"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                   </span>
                 </InfoRow>
                 <InfoRow label="Instagram" value={user?.instagram ? `@${user.instagram}` : null} />
