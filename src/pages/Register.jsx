@@ -84,14 +84,15 @@ if (!form.email) errors.email = 'Campo obligatorio';
         role: 'user',
         full_name: form.full_name,
         phone: form.phone,
+        whatsapp: form.phone,
         cedula: form.cedula,
         instagram: form.instagram_user.replace('@', ''),
         tiktok: form.tiktok_user.replace('@', ''),
         password: form.password,
-        total_points: 0,
+        total_points: 100,
         prediction_points: 0,
-        bonus_points: 0,
-        profile_complete: false,
+        bonus_points: 100,
+        profile_complete: true,
       };
 
       // Escribir a Supabase PRIMERO (sin locks de por medio)
@@ -100,9 +101,29 @@ if (!form.email) errors.email = 'Campo obligatorio';
         if (error) throw new Error(error.message);
       }
 
+      // Crear bono de bienvenida
+      const welcomeBonus = {
+        id: `welcome_${recordId}`,
+        user_email: form.email,
+        user_name: form.full_name,
+        points: 100,
+        reason: 'Bono de bienvenida',
+        type: 'welcome',
+        granted_by: 'system',
+        created_date: new Date().toISOString(),
+      };
+
+      // Guardar bono en Supabase
+      if (isSupabaseAvailable()) {
+        const { error: bonusError } = await supabase.from('pointsBonuses').upsert(welcomeBonus, { onConflict: 'id' });
+        if (bonusError) console.warn('[Register] Error al guardar bono en Supabase:', bonusError.message);
+      }
+
       // Escribir a localStorage directamente (evitar locks del motor de sync)
       const d = db._init();
       d.users.push(userData);
+      if (!d.pointsBonuses) d.pointsBonuses = [];
+      d.pointsBonuses.push(welcomeBonus);
       localStorage.setItem('chessking_db', JSON.stringify(d));
 
       // Iniciar sesión automáticamente
