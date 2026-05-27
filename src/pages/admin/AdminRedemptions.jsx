@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale/es';
+import { es as esLocale } from 'date-fns/locale';
 
 export default function AdminRedemptions() {
   const queryClient = useQueryClient();

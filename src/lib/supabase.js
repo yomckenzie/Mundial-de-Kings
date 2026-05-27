@@ -135,7 +135,6 @@ export function stripLocalFields(records) {
  */
 export async function syncTableToSupabase(tableName, records, conflictColumn = 'id') {
   if (!supabase || !records) return false
-  // Limpiar campos locales que no existen en Supabase
   const cleanedRecords = stripLocalFields(records)
   try {
     const { error } = await supabase
@@ -144,6 +143,11 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
     if (error) throw error
     return true
   } catch (err) {
+    // Si falla por violación de foreign key (prize_id no existe), omite el batch
+    if (err.code === '23503') {
+      console.warn(`[Supabase] FK violation en ${tableName}, omitiendo sync temporalmente`)
+      return false
+    }
     // Si falla por unique constraint (ej: email duplicado en users),
     // intentar uno por uno cambiando la columna de conflicto
     if (err.code === '23505' || err.status === 409) {
