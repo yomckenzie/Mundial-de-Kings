@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
@@ -14,7 +14,6 @@ import { UserPlus, ArrowLeft, Shield } from 'lucide-react';
 const normalizeCedula = (v) => (v || '').replace(/[\s-]/g, '').trim().toLowerCase();
 
 export default function Register() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
 
@@ -106,8 +105,12 @@ if (!form.email) errors.email = 'Campo obligatorio';
       d.users.push(userData);
       localStorage.setItem('chessking_db', JSON.stringify(d));
 
+      // Iniciar sesión automáticamente
+      db.setCurrentUserEmail(form.email);
+
       toast.success('¡Cuenta creada exitosamente!');
-      navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
+      // Recargar para que AuthContext detecte el usuario
+      window.location.href = redirect;
     } catch (err) {
       toast.error(err?.message || 'Error al crear la cuenta. Intenta de nuevo.');
     } finally {
