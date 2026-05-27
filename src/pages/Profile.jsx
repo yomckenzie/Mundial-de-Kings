@@ -210,11 +210,7 @@ export default function Profile() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
                 <InfoRow label="Nombre completo" value={user?.full_name} />
                 <InfoRow label="Correo electrónico" value={user?.email} />
-                <InfoRow label="Cédula" value={user?.cedula}>
-                  <span className="ml-1 cursor-help text-muted-foreground/60" title="Se usará para validar tu identidad al reclamar un premio si resultas ganador.">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-text-bottom"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                  </span>
-                </InfoRow>
+                <InfoRow label="Cédula" value={user?.cedula} />
                 <InfoRow label="Instagram" value={user?.instagram ? `@${user.instagram}` : null} />
                 <InfoRow label="TikTok" value={user?.tiktok ? `@${user.tiktok}` : null} />
                 <InfoRow label="WhatsApp" value={user?.phone || user?.whatsapp} />
