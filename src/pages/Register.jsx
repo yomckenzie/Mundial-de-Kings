@@ -162,7 +162,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
               <img
                 src="/logo.svg"
                 alt="ChessKing"
-                className="h-20 w-auto mx-auto mb-3 drop-shadow-lg transition-transform duration-300 hover:scale-105 cursor-pointer"
+                className="h-16 sm:h-20 md:h-24 w-auto mx-auto mb-3 drop-shadow-lg transition-transform duration-300 hover:scale-105 cursor-pointer"
               />
             </Link>
           </motion.div>
