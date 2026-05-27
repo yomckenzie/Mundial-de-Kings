@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '@/api/client';
+import { db } from '@/lib/db';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,12 +10,15 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { UserPlus, ArrowLeft, Shield } from 'lucide-react';
 
+const normalizeCedula = (v) => (v || '').replace(/[\s-]/g, '').trim().toLowerCase();
+
 export default function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
 
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [form, setForm] = useState({
     full_name: '',
     email: '',
@@ -27,18 +31,35 @@ export default function Register() {
 
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setFieldErrors(prev => ({ ...prev, [e.target.name]: '' }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.full_name || !form.email || !form.phone || !form.cedula || !form.instagram_user || !form.tiktok_user || !form.password) {
-      toast.error('Por favor completa todos los campos');
+    const errors = {};
+
+    if (!form.full_name) errors.full_name = 'Campo obligatorio';
+    if (!form.email) errors.email = 'Campo obligatorio';
+    if (!form.phone) errors.phone = 'Campo obligatorio';
+    if (!form.cedula) errors.cedula = 'Campo obligatorio';
+    if (!form.instagram_user) errors.instagram_user = 'Campo obligatorio';
+    if (!form.tiktok_user) errors.tiktok_user = 'Campo obligatorio';
+    if (!form.password) errors.password = 'Campo obligatorio';
+    else if (form.password.length < 6) errors.password = 'Mínimo 6 caracteres';
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
-    if (form.password.length < 6) {
-      toast.error('La contraseña debe tener al menos 6 caracteres');
-      return;
+    // Validar cédula duplicada
+    const cleanCedula = normalizeCedula(form.cedula);
+    if (cleanCedula) {
+      const existing = db._init().users.find(u => normalizeCedula(u.cedula) === cleanCedula);
+      if (existing) {
+        setFieldErrors({ cedula: 'Esta cédula/pasaporte ya está registrado' });
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -58,7 +79,7 @@ export default function Register() {
         profile_complete: false,
       });
 
-      toast.success('¡Cuenta creada exitosamente! Ahora inicia sesión.');
+      toast.success('¡Cuenta creada exitosamente!');
       navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
     } catch (err) {
       toast.error(err?.message || 'Error al crear la cuenta. Intenta de nuevo.');
@@ -123,8 +144,9 @@ export default function Register() {
                     placeholder="Tu nombre completo"
                     value={form.full_name}
                     onChange={handleChange}
-                    className="transition-all duration-200 focus:ring-2 focus:ring-secondary/30"
+                    className={`transition-all duration-200 focus:ring-2 focus:ring-secondary/30 ${fieldErrors.full_name ? 'border-destructive' : ''}`}
                   />
+                  {fieldErrors.full_name && <p className="text-[11px] text-destructive">{fieldErrors.full_name}</p>}
                 </div>
 
                 <div className="space-y-1.5">
@@ -136,8 +158,9 @@ export default function Register() {
                     placeholder="tu@correo.com"
                     value={form.email}
                     onChange={handleChange}
-                    className="transition-all duration-200 focus:ring-2 focus:ring-secondary/30"
+                    className={`transition-all duration-200 focus:ring-2 focus:ring-secondary/30 ${fieldErrors.email ? 'border-destructive' : ''}`}
                   />
+                  {fieldErrors.email && <p className="text-[11px] text-destructive">{fieldErrors.email}</p>}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -150,19 +173,23 @@ export default function Register() {
                       placeholder="+507 6000-0000"
                       value={form.phone}
                       onChange={handleChange}
+                      className={fieldErrors.phone ? 'border-destructive' : ''}
                     />
+                    {fieldErrors.phone && <p className="text-[11px] text-destructive">{fieldErrors.phone}</p>}
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="cedula">Cédula *</Label>
+                    <Label htmlFor="cedula">Cédula o Pasaporte *</Label>
                     <Input
                       id="cedula"
                       name="cedula"
                       placeholder="8-000-0000"
                       value={form.cedula}
                       onChange={handleChange}
+                      className={fieldErrors.cedula ? 'border-destructive' : ''}
                     />
+                    {fieldErrors.cedula && <p className="text-[11px] text-destructive">{fieldErrors.cedula}</p>}
                     <p className="text-[10px] text-muted-foreground/60 leading-tight">
-                      Se usará para validar tu identidad al reclamar premios.
+                      Sin espacios ni guiones. Se usará para validar tu identidad al reclamar premios.
                     </p>
                   </div>
                 </div>
@@ -176,7 +203,9 @@ export default function Register() {
                       placeholder="@tuusuario"
                       value={form.instagram_user}
                       onChange={handleChange}
+                      className={fieldErrors.instagram_user ? 'border-destructive' : ''}
                     />
+                    {fieldErrors.instagram_user && <p className="text-[11px] text-destructive">{fieldErrors.instagram_user}</p>}
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="tiktok_user">TikTok *</Label>
@@ -186,7 +215,9 @@ export default function Register() {
                       placeholder="@tuusuario"
                       value={form.tiktok_user}
                       onChange={handleChange}
+                      className={fieldErrors.tiktok_user ? 'border-destructive' : ''}
                     />
+                    {fieldErrors.tiktok_user && <p className="text-[11px] text-destructive">{fieldErrors.tiktok_user}</p>}
                   </div>
                 </div>
 
@@ -199,8 +230,9 @@ export default function Register() {
                     placeholder="Mínimo 6 caracteres"
                     value={form.password}
                     onChange={handleChange}
-                    className="transition-all duration-200 focus:ring-2 focus:ring-secondary/30"
+                    className={`transition-all duration-200 focus:ring-2 focus:ring-secondary/30 ${fieldErrors.password ? 'border-destructive' : ''}`}
                   />
+                  {fieldErrors.password && <p className="text-[11px] text-destructive">{fieldErrors.password}</p>}
                 </div>
 
                 <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>

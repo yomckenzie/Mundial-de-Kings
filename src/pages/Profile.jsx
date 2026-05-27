@@ -198,26 +198,24 @@ export default function Profile() {
         </Card>
       </motion.div>
 
-      {/* Personal Data (collapsible) */}
+      {/* Personal Data */}
       <motion.div variants={itemVariants}>
-        <details className="group">
-          <summary className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-muted-foreground hover:text-foreground transition mb-3">
-            <ChevronRight className="w-4 h-4 transition-transform group-open:rotate-90" />
-            Datos personales
-          </summary>
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
-                <InfoRow label="Nombre completo" value={user?.full_name} />
-                <InfoRow label="Correo electrónico" value={user?.email} />
-                <InfoRow label="Cédula" value={user?.cedula} />
-                <InfoRow label="Instagram" value={user?.instagram ? `@${user.instagram}` : null} />
-                <InfoRow label="TikTok" value={user?.tiktok ? `@${user.tiktok}` : null} />
-                <InfoRow label="WhatsApp" value={user?.phone || user?.whatsapp} />
-              </div>
-            </CardContent>
-          </Card>
-        </details>
+        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-3">
+          <User className="w-4 h-4" />
+          Datos personales
+        </div>
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+              <InfoRow label="Nombre completo" value={user?.full_name} />
+              <InfoRow label="Correo electrónico" value={user?.email} />
+              <InfoRow label="Cédula" value={user?.cedula} />
+              <InfoRow label="Instagram" value={user?.instagram ? `@${user.instagram}` : null} />
+              <InfoRow label="TikTok" value={user?.tiktok ? `@${user.tiktok}` : null} />
+              <InfoRow label="WhatsApp" value={user?.phone || user?.whatsapp} />
+            </div>
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Tabs */}
