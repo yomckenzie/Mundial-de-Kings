@@ -74,8 +74,36 @@ export default function Profile() {
       if (fresh) setUser(fresh);
     };
 
+    // Migración: si el usuario tiene total_points pero le falta bonus_points
+    // (ej: usuarios que se registraron antes de que se agregara el campo)
+    const migrateMissingBonus = () => {
+      const fresh = db.getCurrentUser();
+      if (!fresh) return;
+
+      const needsFix = fresh.total_points > 0 && fresh.id &&
+        (
+          fresh.bonus_points === undefined || fresh.bonus_points === null ||
+          (fresh.bonus_points === 0 && (fresh.prediction_points || 0) === 0 && fresh.total_points > 0)
+        );
+
+      if (needsFix) {
+        const inferredBonus = fresh.total_points - (fresh.prediction_points || 0);
+        if (inferredBonus > 0) {
+          db.users.update(fresh.id, {
+            bonus_points: inferredBonus,
+            prediction_points: fresh.prediction_points || 0,
+          });
+          // Actualizar el estado local
+          const updated = db.getCurrentUser();
+          if (updated) setUser(updated);
+        }
+      }
+    };
+
     // Refrescar al montar por si vienes del admin
     refreshUser();
+    // Corregir bonus_points faltantes en usuarios existentes
+    migrateMissingBonus();
 
     // Escuchar evento 'db-synced' que se dispara cuando se persisten cambios
     window.addEventListener('db-synced', refreshUser);

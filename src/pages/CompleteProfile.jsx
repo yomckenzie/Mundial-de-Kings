@@ -30,6 +30,8 @@ export default function CompleteProfile() {
       await api.auth.updateMe({
         whatsapp: wa,
         total_points: 100,
+        bonus_points: 100,
+        prediction_points: 0,
         profile_complete: true,
       });
 
