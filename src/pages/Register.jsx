@@ -189,7 +189,7 @@ export default function Register() {
                     />
                     {fieldErrors.cedula && <p className="text-[11px] text-destructive">{fieldErrors.cedula}</p>}
                     <p className="text-[10px] text-muted-foreground/60 leading-tight">
-                      Sin espacios ni guiones. Se usará para validar tu identidad al reclamar premios.
+                      Escríbela exactamente como aparece en tu documento. Se usará para validar tu identidad al reclamar premios.
                     </p>
                   </div>
                 </div>
