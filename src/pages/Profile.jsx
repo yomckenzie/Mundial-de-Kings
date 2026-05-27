@@ -170,6 +170,8 @@ export default function Profile() {
   const predictionPoints = user?.prediction_points || 0;
   const bonusPoints = user?.bonus_points || 0;
   const totalPoints = user?.total_points || 0;
+  const totalSpent = redemptions.reduce((sum, r) => sum + (r.points_spent || 0), 0);
+  const availablePoints = Math.max(0, totalPoints - totalSpent);
   const accuracy = scoredPreds.length > 0 ? Math.round((correctPreds.length / scoredPreds.length) * 100) : 0;
 
   const isLoading = loadingPreds || loadingRedeems;
@@ -198,7 +200,7 @@ export default function Profile() {
       <motion.div className="grid grid-cols-3 gap-3" variants={itemVariants}>
         <StatCard icon={Target} value={predictions.length} label="Pronósticos" color="blue" delay={0.1} />
         <StatCard icon={CheckCircle2} value={correctPreds.length} label="Aciertos" color="emerald" delay={0.15} />
-        <StatCard icon={Trophy} value={totalPoints} label="Puntos totales" color="amber" delay={0.2} />
+        <StatCard icon={Trophy} value={totalPoints} label="Puntos ganados" color="amber" delay={0.2} />
       </motion.div>
 
       {/* Points breakdown */}
@@ -233,10 +235,43 @@ export default function Profile() {
               </div>
               <span className="font-bold text-lg">{bonusPoints} pts</span>
             </div>
+            {/* Puntos usados en canjes */}
+            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                  <Gift className="w-4 h-4 text-red-500/70" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Usados en canjes</p>
+                  <p className="text-xs text-muted-foreground">Premios canjeados</p>
+                </div>
+              </div>
+              <span className="font-bold text-lg">{totalSpent} pts</span>
+            </div>
+
+            {/* Total ganado (nunca disminuye) */}
             <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
-              <span className="font-bold">Total acumulado</span>
+              <div>
+                <span className="font-bold">Total ganado</span>
+                <p className="text-xs text-muted-foreground">Nunca disminuye</p>
+              </div>
               <span className="font-black text-xl">{totalPoints} pts</span>
             </div>
+
+            {/* Puntos disponibles */}
+            <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Trophy className="w-4 h-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Disponibles para canjear</p>
+                  <p className="text-xs text-muted-foreground">Total − Usados</p>
+                </div>
+              </div>
+              <span className="font-black text-xl text-primary">{availablePoints} pts</span>
+            </div>
+
             {accuracy > 0 && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
                 <TrendingUp className="w-4 h-4 text-foreground" />

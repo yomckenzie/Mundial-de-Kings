@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
@@ -48,6 +48,8 @@ export default function Prizes() {
   const { user, setUser } = useOutletContext();
   const queryClient = useQueryClient();
 
+  const userEmail = user?.email || '';
+
   const [confirmPrize, setConfirmPrize] = useState(null);
   const [cedulaInput, setCedulaInput] = useState('');
   const [cedulaError, setCedulaError] = useState('');
@@ -71,10 +73,23 @@ export default function Prizes() {
     retry: 1,
   });
 
+  const { data: myRedemptions = [] } = useQuery({
+    queryKey: ['my-redemptions-prizes', userEmail],
+    queryFn: () => api.entities.Redemption.filter({ user_email: userEmail }),
+    enabled: !!userEmail,
+  });
+
+  const totalSpent = useMemo(() =>
+    myRedemptions.reduce((sum, r) => sum + (r.points_spent || 0), 0),
+    [myRedemptions]
+  );
+  const totalPoints = user?.total_points || 0;
+  const availablePoints = Math.max(0, totalPoints - totalSpent);
+
   const redeemMutation = useMutation({
     mutationFn: async (prize) => {
-      if ((user?.total_points || 0) < prize.points_cost) {
-        throw new Error('No tienes suficientes puntos');
+      if (availablePoints < prize.points_cost) {
+        throw new Error('No tienes suficientes puntos disponibles');
       }
       if (prize.units_available <= 0) {
         throw new Error('Este premio está agotado');
@@ -88,18 +103,20 @@ export default function Prizes() {
         status: 'pending',
       });
 
-      const newPoints = (user.total_points || 0) - prize.points_cost;
-      await api.auth.updateMe({ total_points: newPoints });
-
       await api.entities.Prize.update(prize.id, {
         units_available: prize.units_available - 1,
       });
 
-      return { prize, newPoints };
+      // NOTA: ya NO descontamos de total_points. total_points representa
+      // todos los puntos ganados (nunca disminuye). Los disponibles se
+      // calculan como total_points - puntos_gastados_en_canjes.
+
+      return { prize };
     },
-    onSuccess: ({ prize, newPoints }) => {
-      setUser(prev => ({ ...prev, total_points: newPoints }));
+    onSuccess: ({ prize }) => {
       queryClient.invalidateQueries({ queryKey: ['prizes'] });
+      queryClient.invalidateQueries({ queryKey: ['my-redemptions'] });
+      queryClient.invalidateQueries({ queryKey: ['my-bonuses'] });
       setConfirmPrize(null);
       setCedulaInput('');
       setCedulaError('');
@@ -153,7 +170,7 @@ export default function Prizes() {
   }
 
   const pointsProgress = prizes.length > 0
-    ? Math.min(100, Math.round(((user?.total_points || 0) / Math.max(...prizes.map(p => p.points_cost))) * 100))
+    ? Math.min(100, Math.round((availablePoints / Math.max(...prizes.map(p => p.points_cost))) * 100))
     : 0;
 
   return (
@@ -178,7 +195,8 @@ export default function Prizes() {
           >
             <Trophy className="w-4 h-4 text-foreground" />
             <span className="text-foreground">
-              <span className="font-black">{user?.total_points || 0}</span> pts
+              <span className="font-black">{availablePoints}</span> pts
+            <span className="text-xs text-muted-foreground ml-1 font-normal">disp.</span>
             </span>
           </motion.div>
         )}
@@ -194,7 +212,7 @@ export default function Prizes() {
                   <TrendingUp className="w-4 h-4 text-foreground" />
                   Tu progreso
                 </div>
-                <span className="text-xs font-medium">{user?.total_points || 0} pts acumulados</span>
+                <span className="text-xs font-medium">{totalPoints} pts ganados · {availablePoints} pts disp.</span>
               </div>
               <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                 <motion.div
@@ -228,7 +246,7 @@ export default function Prizes() {
         variants={containerVariants}
       >
         {prizes.map((prize, i) => {
-          const canRedeem = user && (user.total_points || 0) >= prize.points_cost;
+          const canRedeem = user && availablePoints >= prize.points_cost;
           const soldOut = prize.units_available <= 0;
 
           return (
@@ -299,7 +317,7 @@ export default function Prizes() {
                       ) : (
                         <>
                           <Trophy className="w-4 h-4" />
-                          Faltan {prize.points_cost - (user?.total_points || 0)} pts
+                          Faltan {prize.points_cost - availablePoints} pts
                         </>
                       )}
                     </Button>
