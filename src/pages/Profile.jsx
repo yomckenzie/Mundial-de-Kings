@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
+import { db } from '@/lib/db';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -61,10 +62,31 @@ function StatCard({ icon: Icon, value, label, color, delay = 0 }) {
 }
 
 export default function Profile() {
-  const { user } = useOutletContext();
+  const { user, setUser } = useOutletContext();
   const [activeTab, setActiveTab] = useState('overview');
 
   const userEmail = user?.email || '';
+
+  // Refrescar datos del usuario desde localStorage cuando cambien (ej: puntos extra otorgados por admin)
+  useEffect(() => {
+    const refreshUser = () => {
+      const fresh = db.getCurrentUser();
+      if (fresh) setUser(fresh);
+    };
+
+    // Refrescar al montar por si vienes del admin
+    refreshUser();
+
+    // Escuchar evento 'db-synced' que se dispara cuando se persisten cambios
+    window.addEventListener('db-synced', refreshUser);
+    // Refrescar al volver a la pestaña (por si otorgaron puntos en otra)
+    window.addEventListener('focus', refreshUser);
+
+    return () => {
+      window.removeEventListener('db-synced', refreshUser);
+      window.removeEventListener('focus', refreshUser);
+    };
+  }, []);
 
   const { data: predictions = [], isLoading: loadingPreds } = useQuery({
     queryKey: ['my-predictions-profile', userEmail],
