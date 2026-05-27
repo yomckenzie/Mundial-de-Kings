@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '@/api/client';
-import { db } from '@/lib/db';
+import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,6 +90,19 @@ if (!form.email) errors.email = 'Campo obligatorio';
         bonus_points: 0,
         profile_complete: false,
       });
+
+      // Escribir directamente a Supabase para asegurar que quede en la nube
+      if (isSupabaseAvailable()) {
+        try {
+          const userInDb = db._init().users.find(u => u.email === form.email);
+          if (userInDb) {
+            const { password, created_date, updated_at, ...clean } = userInDb;
+            await supabase.from('users').upsert(clean, { onConflict: 'id' });
+          }
+        } catch (supaErr) {
+          console.warn('[Register] Supabase direct write failed (non-critical):', supaErr);
+        }
+      }
 
       toast.success('¡Cuenta creada exitosamente!');
       navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
