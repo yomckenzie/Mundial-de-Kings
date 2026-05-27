@@ -330,7 +330,7 @@ export default function AdminMatches() {
 
   const sortedDates = Object.keys(groupedMatches).sort();
 
-  if (isLoading) return <p className="text-muted-foreground">Cargando...</p>;
+  if (isLoading) return <p className="text-muted-foreground">Cargando panel de administración de partidos...</p>;
 
   const sourceIcons = {
     'api-football': <Zap className="w-4 h-4" />,
