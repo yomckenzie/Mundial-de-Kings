@@ -249,11 +249,11 @@ export default function Profile() {
               <span className="font-bold text-lg">{totalSpent} pts</span>
             </div>
 
-            {/* Total ganado (nunca disminuye) */}
+            {/* Total ganado */}
             <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
               <div>
                 <span className="font-bold">Total ganado</span>
-                <p className="text-xs text-muted-foreground">Nunca disminuye</p>
+                <p className="text-xs text-muted-foreground">Para el ranking</p>
               </div>
               <span className="font-black text-xl">{totalPoints} pts</span>
             </div>
