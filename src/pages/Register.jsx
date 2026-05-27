@@ -160,7 +160,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
           >
             <Link to="/" className="inline-block">
               <img
-                src="/LOGOSCHESSKING_N2.png"
+                src="/logo.svg"
                 alt="ChessKing"
                 className="h-auto max-h-20 w-auto mx-auto mb-3 drop-shadow-lg transition-transform duration-300 hover:scale-105 cursor-pointer"
               />

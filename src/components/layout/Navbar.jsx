@@ -49,7 +49,7 @@ export default function Navbar({ user }) {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <img
-              src="/LOGOSCHESSKING_N2.png"
+              src="/logo.svg"
               alt="ChessKing"
               className="h-10 w-auto"
             />
