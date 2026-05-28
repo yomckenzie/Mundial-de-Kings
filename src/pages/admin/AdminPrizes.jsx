@@ -70,8 +70,8 @@ export default function AdminPrizes() {
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('La imagen no puede superar 2MB');
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La imagen no puede superar 5MB');
       return;
     }
     setUploading(true);
@@ -97,7 +97,7 @@ export default function AdminPrizes() {
             <div><Label>Nombre</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
             <div><Label>Descripción</Label><Textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} rows={2} /></div>
             <div>
-              <Label>Imagen (máx 2MB)</Label>
+              <Label>Imagen (máx 5MB)</Label>
               <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} />
               {uploading && <p className="text-xs text-muted-foreground mt-1">Subiendo imagen...</p>}
               {form.image_url && (
