@@ -99,7 +99,20 @@ export default function AdminPrizes() {
             <div>
               <Label>Imagen (máx 2MB)</Label>
               <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} />
-              {form.image_url && <img src={form.image_url} alt="" className="mt-2 w-24 h-24 rounded object-cover" />}
+              {uploading && <p className="text-xs text-muted-foreground mt-1">Subiendo imagen...</p>}
+              {form.image_url && (
+                <div className="mt-3 relative group rounded-lg overflow-hidden border border-border bg-muted/30">
+                  <img src={form.image_url} alt="Vista previa" className="w-full h-48 object-contain" />
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, image_url: '' }))}
+                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs hover:bg-black/80 cursor-pointer"
+                    aria-label="Eliminar imagen"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Puntos para canjear</Label><Input type="number" min="0" value={form.points_cost} onChange={e => setForm({...form, points_cost: e.target.value})} /></div>
@@ -127,7 +140,12 @@ export default function AdminPrizes() {
           <Card key={p.id}>
             <CardContent className="p-3 flex items-center gap-3">
               {p.image_url ? (
-                <img src={p.image_url} alt={p.name} className="w-14 h-14 rounded object-cover" />
+                <div
+                  className="w-14 h-14 rounded overflow-hidden cursor-pointer"
+                  onClick={() => window.open(p.image_url, '_blank')}
+                >
+                  <img src={p.image_url} alt={p.name} className="w-full h-full object-cover hover:scale-110 transition-transform duration-200" />
+                </div>
               ) : (
                 <div className="w-14 h-14 rounded bg-muted flex items-center justify-center">
                   <Gift className="w-6 h-6 text-muted-foreground" />

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 const containerVariants = {
@@ -54,6 +54,7 @@ export default function Prizes() {
   const [cedulaInput, setCedulaInput] = useState('');
   const [cedulaError, setCedulaError] = useState('');
   const [showSuccess, setShowSuccess] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const { data: prizes = [], isLoading } = useQuery({
     queryKey: ['prizes'],
@@ -259,8 +260,16 @@ export default function Prizes() {
             >
               <Card className="overflow-hidden h-full flex flex-col">
                 {prize.image_url ? (
-                  <div className="aspect-video w-full overflow-hidden">
-                    <img src={prize.image_url} alt={prize.name} className="w-full h-full object-cover" />
+                  <div
+                    className="aspect-video w-full overflow-hidden cursor-pointer group relative"
+                    onClick={() => setPreviewImage(prize)}
+                  >
+                    <img src={prize.image_url} alt={prize.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 group-hover:scale-100 duration-200">
+                        <Search className="w-[18px] h-[18px]" />
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="aspect-video w-full bg-muted flex items-center justify-center">
@@ -374,6 +383,25 @@ export default function Prizes() {
                   </>
                 )}
               </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => { if (!open) setPreviewImage(null); }}>
+        <DialogContent className="max-w-2xl p-1 bg-black/95 border-0">
+          {previewImage && (
+            <div className="relative">
+              <img
+                src={previewImage.image_url}
+                alt={previewImage.name}
+                className="w-full max-h-[75vh] object-contain rounded-lg"
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 rounded-b-lg">
+                <p className="text-white font-semibold text-lg">{previewImage.name}</p>
+                <p className="text-white/70 text-sm">{previewImage.points_cost} pts · {previewImage.units_available} {previewImage.units_available === 1 ? 'disponible' : 'disponibles'}</p>
+              </div>
             </div>
           )}
         </DialogContent>
