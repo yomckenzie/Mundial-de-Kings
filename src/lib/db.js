@@ -378,6 +378,92 @@ export const db = {
       db._persist();
       return records;
     },
+
+    /**
+     * Deduplicar partidos: agrupa por fixture_id, mantiene solo una copia,
+     * re-apunta predicciones a la copia conservada y elimina los duplicados.
+     * Retorna { deleted, repointed } con el conteo.
+     */
+    async deduplicate() {
+      const d = db._init();
+      const predictions = d.predictions || [];
+      const matches = d.matches;
+
+      // 1. Agrupar por fixture_id (los que no tienen fixture_id se tratan individualmente)
+      const groups = {};
+      const noFixture = [];
+      for (const m of matches) {
+        const key = m.fixture_id != null ? String(m.fixture_id) : null;
+        if (key == null) {
+          noFixture.push(m);
+          continue;
+        }
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(m);
+      }
+
+      const toDelete = []; // IDs a eliminar
+      const repointMap = {}; // matchIdViejo → matchIdNuevo
+
+      for (const key of Object.keys(groups)) {
+        const group = groups[key];
+        if (group.length <= 1) continue; // no hay duplicado
+
+        // Elegir cuál conservar: el que tenga predicciones; si varios, el más reciente
+        let keep = group[0];
+        for (const m of group) {
+          const hasPreds = predictions.some(p => p.match_id === m.id);
+          const currentHasPreds = predictions.some(p => p.match_id === keep.id);
+          if (hasPreds && !currentHasPreds) {
+            keep = m;
+          } else if (hasPreds === currentHasPreds) {
+            // Ambos tienen o no tienen predicciones → preferir el que tenga más datos
+            const keepScore = Object.keys(keep).length;
+            const mScore = Object.keys(m).length;
+            if (mScore > keepScore) keep = m;
+          }
+        }
+
+        // Marcar duplicados para eliminar y crear re-asignaciones
+        for (const m of group) {
+          if (m.id !== keep.id) {
+            toDelete.push(m.id);
+            repointMap[m.id] = keep.id;
+          }
+        }
+      }
+
+      if (toDelete.length === 0) {
+        return { deleted: 0, repointed: 0 };
+      }
+
+      // 2. Re-apuntar predicciones que referencien a un match eliminado
+      let repointed = 0;
+      for (const pred of predictions) {
+        const newMatchId = repointMap[pred.match_id];
+        if (newMatchId) {
+          pred.match_id = newMatchId;
+          pred.updated_at = getNow();
+          repointed++;
+        }
+      }
+
+      // 3. Eliminar duplicados del array local
+      const deleteSet = new Set(toDelete);
+      d.matches = d.matches.filter(m => !deleteSet.has(m.id));
+
+      // 4. Marcar eliminaciones pendientes para que se borren de Supabase
+      for (const id of toDelete) {
+        _pendingDeletes.push({ tableName: 'matches', id });
+      }
+
+      // 5. Persistir y sincronizar
+      save(d);
+      await db._syncAllToSupabase();
+      notifyReactComponents();
+
+      return { deleted: toDelete.length, repointed };
+    },
   },
 
   // --- Predictions ---

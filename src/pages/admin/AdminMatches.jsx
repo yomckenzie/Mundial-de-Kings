@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { seedAllMatches } from '@/api/seedMatches';
+import { db } from '@/lib/db';
 import { syncWithBestSource, checkAllSources, refreshStatus } from '@/api/dataSources';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Save, Calendar, Clock, Trash2, Database, Wifi, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Save, Calendar, Clock, Trash2, Database, Wifi, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp, Layers } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale/es';
@@ -43,6 +44,7 @@ export default function AdminMatches() {
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [showSources, setShowSources] = useState(true);
   const [bulkResults, setBulkResults] = useState({});
+  const [deduping, setDeduping] = useState(false);
 
   // ── Datos de partidos (deben declararse ANTES del useEffect que los usa) ──
   const { data: rawMatches = [], isLoading } = useQuery({
@@ -467,6 +469,32 @@ export default function AdminMatches() {
         >
           <Database className="w-4 h-4" />
           {seedMutation.isPending ? 'Sembrando...' : 'Seedear 104 partidos'}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={async () => {
+            setDeduping(true);
+            try {
+              const result = await db.matches.deduplicate();
+              if (result.deleted === 0) {
+                toast.success('No se encontraron partidos duplicados ✅');
+              } else {
+                toast.success(`🧹 ${result.deleted} duplicados eliminados · ${result.repointed} predicciones re-asignadas`);
+              }
+              queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
+              queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
+            } catch (e) {
+              toast.error('Error al deduplicar: ' + e.message);
+            } finally {
+              setDeduping(false);
+            }
+          }}
+          disabled={deduping || matches.length === 0}
+          className="gap-2"
+        >
+          <Layers className="w-4 h-4" />
+          {deduping ? 'Deduplicando...' : 'Deduplicar partidos'}
         </Button>
         <Button
           variant="destructive"
