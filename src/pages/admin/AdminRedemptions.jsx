@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { es as esLocale } from 'date-fns/locale';
+import { es as esLocale } from 'date-fns/locale/es';
 
 export default function AdminRedemptions() {
   const queryClient = useQueryClient();
@@ -55,7 +55,7 @@ export default function AdminRedemptions() {
                 <div>
                   <p className="font-medium text-sm">{r.user_email}</p>
                   <p className="text-xs text-muted-foreground">
-                    {r.created_date && format(new Date(r.created_date), "d MMM yyyy, HH:mm", { locale: es })}
+                    {r.created_date && format(new Date(r.created_date), "d MMM yyyy, HH:mm", { locale: esLocale })}
                   </p>
                 </div>
                 <Badge className={statusColors[r.status]}>{statusLabels[r.status]}</Badge>
