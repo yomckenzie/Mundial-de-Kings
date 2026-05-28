@@ -44,6 +44,18 @@ export default function AdminMatches() {
   const [showSources, setShowSources] = useState(true);
   const [bulkResults, setBulkResults] = useState({});
 
+  // ── Datos de partidos (deben declararse ANTES del useEffect que los usa) ──
+  const { data: rawMatches = [], isLoading } = useQuery({
+    queryKey: ['admin-matches-sorted'],
+    queryFn: () => api.entities.Match.list(),
+  });
+
+  const matches = React.useMemo(() =>
+    [...rawMatches].sort((a, b) => {
+      if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
+      return (a.match_time || '').localeCompare(b.match_time || '');
+    }), [rawMatches]);
+
   // Pre-fill resultForm con resultados existentes para poder editarlos
   useEffect(() => {
     setResultForm(prev => {
@@ -102,17 +114,6 @@ export default function AdminMatches() {
       setSyncing(false);
     }
   };
-
-  const { data: rawMatches = [], isLoading } = useQuery({
-    queryKey: ['admin-matches-sorted'],
-    queryFn: () => api.entities.Match.list(),
-  });
-
-  const matches = React.useMemo(() =>
-    [...rawMatches].sort((a, b) => {
-      if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
-      return (a.match_time || '').localeCompare(b.match_time || '');
-    }), [rawMatches]);
 
   const lockedMatches = useMemo(() => matches.filter(isMatchLocked), [matches]);
   const hasLockedMatches = lockedMatches.length > 0;
