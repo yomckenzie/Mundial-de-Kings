@@ -1,11 +1,13 @@
 import React from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Trophy, Target, Gift, Award, TrendingUp, Star } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import SocialFollow from '@/components/SocialFollow';
 import HomeBanner from '@/components/HomeBanner';
+import { api } from '@/api/client';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -32,6 +34,16 @@ const cardVariants = {
 
 export default function Home() {
   const { user } = useOutletContext();
+
+  const userEmail = user?.email || '';
+
+  const { data: predictions = [] } = useQuery({
+    queryKey: ['my-predictions-home', userEmail],
+    queryFn: () => api.entities.Prediction.filter({ user_email: userEmail }, '-created_date'),
+    enabled: !!userEmail,
+  });
+
+  const correctPreds = predictions.filter(p => p.is_correct);
 
   const cards = [
     { icon: Target, title: 'Partidos', desc: 'Haz tus pronósticos', to: '/matches' },
@@ -171,8 +183,8 @@ export default function Home() {
           variants={containerVariants}
         >
           {[
-            { icon: Target, label: 'Pronósticos', value: '—', color: 'text-foreground' },
-            { icon: TrendingUp, label: 'Aciertos', value: '—', color: 'text-foreground' },
+            { icon: Target, label: 'Pronósticos', value: predictions.length, color: 'text-foreground' },
+            { icon: TrendingUp, label: 'Aciertos', value: correctPreds.length, color: 'text-foreground' },
             { icon: Trophy, label: 'Puntos', value: user?.total_points || 0, color: 'text-foreground' },
           ].map((s, i) => (
             <motion.div
