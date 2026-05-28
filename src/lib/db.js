@@ -362,6 +362,13 @@ export const db = {
     bulkCreate(matchesArray) {
       const d = db._init();
       const now = getNow();
+
+      // Eliminar partidos existentes con mismo fixture_id para evitar duplicados
+      const newFixtureIds = new Set(matchesArray.map(m => m.fixture_id).filter(Boolean));
+      if (newFixtureIds.size > 0) {
+        d.matches = d.matches.filter(m => !newFixtureIds.has(m.fixture_id));
+      }
+
       const records = matchesArray.map(m => ({
         id: makeId(),
         created_date: now,

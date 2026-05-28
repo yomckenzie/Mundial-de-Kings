@@ -3,6 +3,8 @@
 // Los partidos de fase eliminatoria usan nombres descriptivos como "2° Grupo A" que se actualizarán
 // cuando se conecte la API. fixture_id = 1..104 para hacer match con la API.
 
+import { supabase } from '@/lib/supabase';
+
 const SEED_MATCHES = [
   // ═══════════════════════════════════════════════════════════════════
   // FASE DE GRUPOS (fixture_id 1-72)
@@ -163,8 +165,28 @@ const SEED_MATCHES = [
 ];
 
 export async function seedAllMatches(api) {
-  // Limpia partidos existentes y luego inserta los 104
+  // 1. Eliminar TODOS los partidos existentes en Supabase (para evitar duplicados al sincronizar)
+  if (supabase) {
+    try {
+      const { data: existing } = await supabase.from('matches').select('id');
+      if (existing && existing.length > 0) {
+        const ids = existing.map(r => r.id);
+        // Borrar en lotes de 100 para evitar problemas de URL length
+        for (let i = 0; i < ids.length; i += 100) {
+          const batch = ids.slice(i, i + 100);
+          await supabase.from('matches').delete().in('id', batch);
+        }
+        console.log(`[Seed] Eliminados ${ids.length} partidos de Supabase`);
+      }
+    } catch (err) {
+      console.warn('[Seed] Error al limpiar Supabase:', err);
+    }
+  }
+
+  // 2. Limpiar local
   await api.entities.Match.clearAll();
+
+  // 3. Insertar los 104 partidos
   const created = await api.entities.Match.bulkCreate(SEED_MATCHES);
   return created;
 }
