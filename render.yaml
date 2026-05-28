@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mundial-de-kings
+    env: node
+    buildCommand: npm run build
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
