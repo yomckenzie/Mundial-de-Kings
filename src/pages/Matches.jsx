@@ -175,28 +175,28 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
             </div>
           ) : isOpen ? (
             <motion.div
-              className="mt-3 flex items-center justify-center gap-3"
+              className="mt-3 flex flex-col items-center gap-3"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
-              <Input
-                type="number"
-                min="0"
-                className="w-16 text-center"
-                placeholder="0"
-                value={predictions[match.id]?.team1 ?? ''}
-                onChange={(e) => handlePredict(match.id, 'team1', e.target.value)}
-              />
-              <span className="text-muted-foreground font-bold">-</span>
-              <Input
-                type="number"
-                min="0"
-                className="w-16 text-center"
-                placeholder="0"
-                value={predictions[match.id]?.team2 ?? ''}
-                onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
-              />
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center justify-center gap-3">
+                <Input
+                  type="number"
+                  min="0"
+                  className="w-16 text-center"
+                  placeholder="0"
+                  value={predictions[match.id]?.team1 ?? ''}
+                  onChange={(e) => handlePredict(match.id, 'team1', e.target.value)}
+                />
+                <span className="text-muted-foreground font-bold">-</span>
+                <Input
+                  type="number"
+                  min="0"
+                  className="w-16 text-center"
+                  placeholder="0"
+                  value={predictions[match.id]?.team2 ?? ''}
+                  onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
+                />
                 <Button
                   size="sm"
                   onClick={() => handleSubmit({
@@ -211,11 +211,11 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                   <Send className="w-3.5 h-3.5" />
                   Enviar Pronóstico
                 </Button>
-                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-                  <Trophy className="w-3 h-3" />
-                  Ganas <strong>100 pts</strong> si aciertas el marcador exacto
-                </span>
               </div>
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-full">
+                <Trophy className="w-3.5 h-3.5" />
+                Ganas <strong>100 pts</strong> si aciertas el marcador exacto
+              </span>
             </motion.div>
           ) : (
             <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
@@ -325,7 +325,7 @@ export default function Matches() {
         delete next[Object.keys(prev).find(k => prev[k]?.submitted)];
         return next;
       });
-      toast.success('¡Pronóstico enviado!');
+      toast.success('¡Pronóstico enviado! 🏆 +100 pts si aciertas');
     },
     onError: (err) => toast.error(err?.message || 'Error al enviar pronóstico'),
   });
