@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Save, Calendar, Clock, Trash2, Database, Wifi, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp, Layers } from 'lucide-react';
+import { Plus, Save, Calendar, Clock, Database, Wifi, RefreshCw, Zap, Globe, UserCheck, ChevronDown, ChevronUp, Layers } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale/es';
@@ -133,11 +133,13 @@ export default function AdminMatches() {
   const lockedMatches = useMemo(() => matches.filter(isMatchLocked), [matches]);
   const hasLockedMatches = lockedMatches.length > 0;
 
-  const clearMatches = useMutation({
-    mutationFn: () => api.entities.Match.clearAll(),
+  const resetAllMatches = useMutation({
+    mutationFn: () => api.entities.Match.resetAll(),
     onSuccess: () => {
+      setResultForm({});
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
-      toast.success('Todos los partidos eliminados');
+      queryClient.invalidateQueries({ queryKey: ['ranking'] });
+      toast.success('✅ Todos los partidos reiniciados a Pendiente');
     },
   });
 
@@ -152,10 +154,10 @@ export default function AdminMatches() {
 
   const handleClearAll = () => {
     const msg = hasLockedMatches
-      ? `Hay ${lockedMatches.length} partido${lockedMatches.length > 1 ? 's' : ''} con más de 24h. ¿Eliminar TODOS de todas formas?`
-      : '¿Eliminar TODOS los partidos? Esta acción no se puede deshacer.';
+      ? `Hay ${lockedMatches.length} partido${lockedMatches.length > 1 ? 's' : ''} con más de 24h. ¿Reiniciar TODOS a Pendiente de todas formas?`
+      : '¿Reiniciar TODOS los partidos a Pendiente?\n\nSe borrarán resultados, tiempos en vivo y pronósticos de usuarios. Los partidos NO se eliminan.';
     if (window.confirm(msg)) {
-      clearMatches.mutate();
+      resetAllMatches.mutate();
     }
   };
 
@@ -515,11 +517,11 @@ export default function AdminMatches() {
           variant="destructive"
           size="sm"
           onClick={handleClearAll}
-          disabled={clearMatches.isPending || matches.length === 0}
+          disabled={resetAllMatches.isPending || matches.length === 0}
           className="gap-2"
         >
-          <Trash2 className="w-4 h-4" />
-          {clearMatches.isPending ? 'Eliminando...' : 'Limpiar todos'}
+          <RefreshCw className={`w-4 h-4 ${resetAllMatches.isPending ? 'animate-spin' : ''}`} />
+          {resetAllMatches.isPending ? 'Reiniciando...' : 'Limpiar todos'}
         </Button>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>

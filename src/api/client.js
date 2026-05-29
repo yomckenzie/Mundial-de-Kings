@@ -36,6 +36,7 @@ const client = {
       create: P((data) => db.matches.create(data)),
       update: P((id, data) => db.matches.update(id, data)),
       clearAll: P(() => db.matches.clearAll()),
+      resetAll: P(() => db.matches.resetAll()),
       bulkCreate: P((matches) => db.matches.bulkCreate(matches)),
     },
     Prediction: {

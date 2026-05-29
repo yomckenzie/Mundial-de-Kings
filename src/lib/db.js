@@ -371,6 +371,53 @@ export const db = {
       d.matches = [];
       db._persist();
     },
+
+    /**
+     * Reiniciar TODOS los partidos a estado Pendiente, limpiando resultados,
+     * tiempos en vivo, y reiniciando todas las predicciones asociadas.
+     * Los partidos NO se eliminan — solo se resetean.
+     */
+    async resetAll() {
+      const d = db._init();
+      if (d.matches.length === 0) return;
+
+      const now = new Date().toISOString();
+
+      // 1. Resetear todos los partidos a Pendiente, limpiar resultados y timer
+      for (const m of d.matches) {
+        m.status = 'pending';
+        m.result_team1 = null;
+        m.result_team2 = null;
+        m.elapsed = null;
+        m.live_started_at = null;
+        m.updated_at = now;
+      }
+
+      // 2. Resetear todas las predicciones (scored, is_correct, points_earned)
+      const matchIds = new Set(d.matches.map(m => m.id));
+      for (const p of d.predictions || []) {
+        if (matchIds.has(p.match_id)) {
+          p.scored = false;
+          p.is_correct = false;
+          p.points_earned = 0;
+          p.updated_at = now;
+        }
+      }
+
+      // 3. Recalcular puntos de usuarios — todas las predicciones se reiniciaron,
+      // así que los puntos de predicción vuelven a 0
+      for (const u of d.users || []) {
+        if (u.role === 'admin') continue;
+        u.prediction_points = 0;
+        u.total_points = u.bonus_points || 0;
+        u.updated_at = now;
+      }
+
+      // 4. Persistir y sincronizar a Supabase
+      save(d);
+      await db._syncAllToSupabase();
+      notifyReactComponents();
+    },
     bulkCreate(matchesArray) {
       const d = db._init();
       const now = getNow();
