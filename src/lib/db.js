@@ -377,9 +377,9 @@ export const db = {
      * tiempos en vivo, y reiniciando todas las predicciones asociadas.
      * Los partidos NO se eliminan — solo se resetean.
      *
-     * Usa upserts directos a Supabase en lotes de 50 para asegurar
-     * que los cambios persistan en la nube (evitando problemas con
-     * _syncAllToSupabase que silenciosamente falla con lotes grandes).
+     * Usa UPDATE directo a Supabase con solo las columnas que existen
+     * en la BD (evitando campos locales como live_started_at que no
+     * están en el esquema y causan fallos silenciosos con upsert).
      */
     async resetAll() {
       const d = db._init();
@@ -420,49 +420,67 @@ export const db = {
       // 4. Guardar en localStorage inmediatamente
       save(d);
 
-      // 5. Sincronizar a Supabase con upserts directos en lotes de 50
-      // (independiente de _syncAllToSupabase para evitar fallos silenciosos)
+      // 5. Actualizar Supabase con UPDATE directo de solo las columnas que existen
+      //    (evitando campos locales como live_started_at, updated_at, etc.)
       if (isSupabaseAvailable() && supabase) {
         const BATCH = 50;
 
-        // ── Matches ──
-        const matchClean = stripLocalFields(d.matches);
-        for (let i = 0; i < matchClean.length; i += BATCH) {
-          const batch = matchClean.slice(i, i + BATCH);
+        // ── Matches: UPDATE solo status, resultados y elapsed ──
+        const matchIds_batches = [];
+        const allMatchIds = d.matches.map(m => m.id);
+        for (let i = 0; i < allMatchIds.length; i += BATCH) {
+          matchIds_batches.push(allMatchIds.slice(i, i + BATCH));
+        }
+        for (const idBatch of matchIds_batches) {
           try {
-            const { error } = await supabase.from('matches').upsert(batch, { onConflict: 'id' });
-            if (error) console.warn('[resetAll] Error en matches batch:', error.message);
+            const { error } = await supabase
+              .from('matches')
+              .update({ status: 'pending', result_team1: null, result_team2: null, elapsed: null })
+              .in('id', idBatch);
+            if (error) console.warn('[resetAll] Error matches update:', error.message);
           } catch (err) {
-            console.warn('[resetAll] Error en matches batch:', err.message);
+            console.warn('[resetAll] Error matches update:', err.message);
           }
         }
 
-        // ── Predictions (solo las que referencian a los partidos reseteaods) ──
+        // ── Predictions: UPDATE scored, is_correct, points_earned ──
         const predsToSync = (d.predictions || []).filter(p => matchIds.has(p.match_id));
         if (predsToSync.length > 0) {
-          const predClean = stripLocalFields(predsToSync);
-          for (let i = 0; i < predClean.length; i += BATCH) {
-            const batch = predClean.slice(i, i + BATCH);
+          const predIdBatches = [];
+          const predIds = predsToSync.map(p => p.id);
+          for (let i = 0; i < predIds.length; i += BATCH) {
+            predIdBatches.push(predIds.slice(i, i + BATCH));
+          }
+          for (const idBatch of predIdBatches) {
             try {
-              const { error } = await supabase.from('predictions').upsert(batch, { onConflict: 'id' });
-              if (error) console.warn('[resetAll] Error en predictions batch:', error.message);
+              const { error } = await supabase
+                .from('predictions')
+                .update({ scored: false, is_correct: false, points_earned: 0 })
+                .in('id', idBatch);
+              if (error) console.warn('[resetAll] Error predictions update:', error.message);
             } catch (err) {
-              console.warn('[resetAll] Error en predictions batch:', err.message);
+              console.warn('[resetAll] Error predictions update:', err.message);
             }
           }
         }
 
-        // ── Users (solo no-admin, para reiniciar puntos) ──
+        // ── Users: UPDATE prediction_points, total_points ──
         const usersToSync = d.users.filter(u => u.role !== 'admin');
         if (usersToSync.length > 0) {
-          const userClean = stripLocalFields(usersToSync);
-          for (let i = 0; i < userClean.length; i += BATCH) {
-            const batch = userClean.slice(i, i + BATCH);
+          // Usar upserts pequeños con solo id + puntos (campos que existen en Supabase)
+          for (let i = 0; i < usersToSync.length; i += BATCH) {
+            const batch = usersToSync.slice(i, i + BATCH).map(u => ({
+              id: u.id,
+              prediction_points: 0,
+              total_points: u.bonus_points || 0,
+            }));
             try {
-              const { error } = await supabase.from('users').upsert(batch, { onConflict: 'id' });
-              if (error) console.warn('[resetAll] Error en users batch:', error.message);
+              const { error } = await supabase
+                .from('users')
+                .upsert(batch, { onConflict: 'id' });
+              if (error) console.warn('[resetAll] Error users upsert:', error.message);
             } catch (err) {
-              console.warn('[resetAll] Error en users batch:', err.message);
+              console.warn('[resetAll] Error users upsert:', err.message);
             }
           }
         }
