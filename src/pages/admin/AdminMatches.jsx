@@ -179,6 +179,14 @@ export default function AdminMatches() {
 
   const handleStatusChange = (match, newStatus) => {
     const extra = newStatus === 'live' ? { elapsed: '0', live_started_at: new Date().toISOString() } : {};
+    // Al cambiar a pendiente/abierto/cerrado, limpiar resultados y timer
+    if ((newStatus === 'pending' || newStatus === 'open' || newStatus === 'closed') &&
+        (match.status === 'live' || match.status === 'finished')) {
+      extra.result_team1 = null;
+      extra.result_team2 = null;
+      extra.elapsed = null;
+      extra.live_started_at = null;
+    }
     updateMatch.mutate({ id: match.id, data: { status: newStatus, ...extra } });
   };
 
