@@ -111,6 +111,8 @@ export const db = {
   _init() {
     if (!this._data) {
       this._data = load();
+      // Limpiar live_started_at para partidos que NO están en vivo (evita timers stale)
+      this._cleanStaleLiveTimers();
       this.seedIfEmpty();
       // Cargar datos desde Supabase en segundo plano
       // Los componentes React se actualizarán vía evento 'db-synced'
@@ -269,6 +271,25 @@ export const db = {
     return { success: true, results };
   },
 
+  /**
+   * Limpiar live_started_at de partidos cuyo status NO es 'live'.
+   * Esto evita que timers stale persistan en localStorage al recargar
+   * después de que un partido estuvo en vivo en una sesión anterior.
+   */
+  _cleanStaleLiveTimers() {
+    if (!this._data?.matches) return;
+    let changed = false;
+    for (const m of this._data.matches) {
+      if (m.status !== 'live' && m.live_started_at != null) {
+        m.live_started_at = null;
+        changed = true;
+      }
+    }
+    if (changed) {
+      save(this._data);
+    }
+  },
+
   reset() {
     this._data = getDefaults();
     this._persist();
@@ -397,16 +418,14 @@ export const db = {
         m.updated_at = now;
       }
 
-      // 2. Resetear todas las predicciones (scored, is_correct, points_earned)
+      // 2. Eliminar TODAS las predicciones de estos partidos (para que usuarios hagan nuevas)
       const matchIds = new Set(d.matches.map(m => m.id));
-      for (const p of d.predictions || []) {
-        if (matchIds.has(p.match_id)) {
-          p.scored = false;
-          p.is_correct = false;
-          p.points_earned = 0;
-          p.updated_at = now;
-        }
+      const predsToDelete = (d.predictions || []).filter(p => matchIds.has(p.match_id));
+      const deletedPredIds = new Set(predsToDelete.map(p => p.id));
+      for (const p of predsToDelete) {
+        _pendingDeletes.push({ tableName: 'predictions', id: p.id });
       }
+      d.predictions = (d.predictions || []).filter(p => !deletedPredIds.has(p.id));
 
       // 3. Recalcular puntos de usuarios — todas las predicciones se reiniciaron,
       // así que los puntos de predicción vuelven a 0
@@ -443,11 +462,10 @@ export const db = {
           }
         }
 
-        // ── Predictions: UPDATE scored, is_correct, points_earned ──
-        const predsToSync = (d.predictions || []).filter(p => matchIds.has(p.match_id));
-        if (predsToSync.length > 0) {
+        // ── Predictions: DELETE todas las predicciones de partidos afectados ──
+        if (predsToDelete.length > 0) {
           const predIdBatches = [];
-          const predIds = predsToSync.map(p => p.id);
+          const predIds = predsToDelete.map(p => p.id);
           for (let i = 0; i < predIds.length; i += BATCH) {
             predIdBatches.push(predIds.slice(i, i + BATCH));
           }
@@ -455,11 +473,11 @@ export const db = {
             try {
               const { error } = await supabase
                 .from('predictions')
-                .update({ scored: false, is_correct: false, points_earned: 0 })
+                .delete()
                 .in('id', idBatch);
-              if (error) console.warn('[resetAll] Error predictions update:', error.message);
+              if (error) console.warn('[resetAll] Error predictions delete:', error.message);
             } catch (err) {
-              console.warn('[resetAll] Error predictions update:', err.message);
+              console.warn('[resetAll] Error predictions delete:', err.message);
             }
           }
         }
