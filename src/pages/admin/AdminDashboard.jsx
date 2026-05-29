@@ -7,7 +7,7 @@ import TopUsersChart from '@/components/admin/TopUsersChart';
 import DailyRegistrationsChart from '@/components/admin/DailyRegistrationsChart';
 import DailyWinnersChart from '@/components/admin/DailyWinnersChart';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, CloudUpload } from 'lucide-react';
+import { RefreshCw, CloudUpload, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/lib/db';
 
@@ -38,6 +38,22 @@ export default function AdminDashboard() {
     } else {
       toast.error(res.data?.error || 'Error al recalcular');
     }
+  };
+
+  const [cleanLoading, setCleanLoading] = useState(false);
+
+  const handleCleanUserData = async () => {
+    const msg = '¿Eliminar TODOS los datos de usuarios?\n\nSe borrarán:\n• Todos los usuarios (excepto admin)\n• Todos los pronósticos\n• Todos los canjes\n• Todos los puntos extra\n\nLos partidos NO se modifican. Esta acción NO se puede deshacer.';
+    if (!window.confirm(msg)) return;
+    setCleanLoading(true);
+    try {
+      const result = await api.admin.cleanUserData();
+      toast.success(`✅ ${result.deletedUsers} usuarios, ${result.deletedPredictions} pronósticos, ${result.deletedRedemptions} canjes y ${result.deletedBonuses} puntos extra eliminados`);
+      queryClient.invalidateQueries();
+    } catch (err) {
+      toast.error('Error al limpiar datos: ' + (err.message || 'Error'));
+    }
+    setCleanLoading(false);
   };
 
   const [syncLoading, setSyncLoading] = useState(false);
@@ -73,6 +89,10 @@ export default function AdminDashboard() {
         <Button variant="outline" size="sm" onClick={handleRecalc} disabled={recalcLoading} className="gap-2">
           <RefreshCw className={`w-4 h-4 ${recalcLoading ? 'animate-spin' : ''}`} />
           {recalcLoading ? 'Recalculando...' : 'Recalcular puntos'}
+        </Button>
+        <Button variant="destructive" size="sm" onClick={handleCleanUserData} disabled={cleanLoading} className="gap-2">
+          <Trash2 className={`w-4 h-4 ${cleanLoading ? 'animate-pulse' : ''}`} />
+          {cleanLoading ? 'Limpiando...' : 'Limpiar datos usuarios'}
         </Button>
       </div>
       <StatsCards stats={stats} />

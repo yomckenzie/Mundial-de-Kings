@@ -76,6 +76,10 @@ const client = {
     },
   },
 
+  admin: {
+    cleanUserData: P(() => db.cleanUserData()),
+  },
+
   users: {
     inviteUser: async (data) => {
       const existing = db.users.findByEmail(data.email);

@@ -295,6 +295,162 @@ export const db = {
     this._persist();
   },
 
+  /**
+   * Eliminar todos los datos de usuarios NO admin:
+   * - Usuarios (excepto admin)
+   * - Pronósticos
+   * - Canjes
+   * - Puntos extra (pointsBonuses)
+   */
+  async cleanUserData() {
+    const d = this._init();
+    const now = getNow();
+
+    // 1. Identificar usuarios NO admin y sus emails
+    const nonAdminEmails = new Set();
+    const nonAdminIds = [];
+    for (const u of d.users || []) {
+      if (u.role !== 'admin') {
+        nonAdminEmails.add(u.email);
+        nonAdminIds.push(u.id);
+      }
+    }
+
+    const adminUsers = (d.users || []).filter(u => u.role === 'admin');
+    const hadUsers = d.users.length > 0;
+
+    // 2. Eliminar predicciones de usuarios no-admin
+    const predsToDelete = (d.predictions || []).filter(p => nonAdminEmails.has(p.user_email));
+    for (const p of predsToDelete) {
+      _pendingDeletes.push({ tableName: 'predictions', id: p.id });
+    }
+    d.predictions = (d.predictions || []).filter(p => !nonAdminEmails.has(p.user_email));
+
+    // 3. Eliminar canjes de usuarios no-admin
+    const redemptionsToDelete = (d.redemptions || []).filter(r => nonAdminEmails.has(r.user_email));
+    for (const r of redemptionsToDelete) {
+      _pendingDeletes.push({ tableName: 'redemptions', id: r.id });
+    }
+    d.redemptions = (d.redemptions || []).filter(r => !nonAdminEmails.has(r.user_email));
+
+    // 4. Eliminar todos los puntos extra (pointsBonuses)
+    const bonusesToDelete = (d.pointsBonuses || []);
+    for (const b of bonusesToDelete) {
+      _pendingDeletes.push({ tableName: 'points_bonuses', id: b.id });
+    }
+    d.pointsBonuses = [];
+
+    // 5. Eliminar usuarios NO admin
+    for (const id of nonAdminIds) {
+      _pendingDeletes.push({ tableName: 'users', id });
+    }
+    d.users = adminUsers;
+
+    // 6. Guardar en localStorage
+    save(d);
+
+    // 7. Sincronizar eliminaciones a Supabase
+    if (isSupabaseAvailable() && supabase) {
+      const BATCH = 50;
+
+      // ── Users: eliminar no-admin ──
+      if (nonAdminIds.length > 0) {
+        const idBatches = [];
+        for (let i = 0; i < nonAdminIds.length; i += BATCH) {
+          idBatches.push(nonAdminIds.slice(i, i + BATCH));
+        }
+        for (const idBatch of idBatches) {
+          try {
+            const { error } = await supabase.from('users').delete().in('id', idBatch);
+            if (error) console.warn('[cleanUserData] Error users delete:', error.message);
+          } catch (err) {
+            console.warn('[cleanUserData] Error users delete:', err.message);
+          }
+        }
+      }
+
+      // ── Predictions: eliminar ──
+      if (predsToDelete.length > 0) {
+        const idBatches = [];
+        const ids = predsToDelete.map(p => p.id);
+        for (let i = 0; i < ids.length; i += BATCH) {
+          idBatches.push(ids.slice(i, i + BATCH));
+        }
+        for (const idBatch of idBatches) {
+          try {
+            const { error } = await supabase.from('predictions').delete().in('id', idBatch);
+            if (error) console.warn('[cleanUserData] Error predictions delete:', error.message);
+          } catch (err) {
+            console.warn('[cleanUserData] Error predictions delete:', err.message);
+          }
+        }
+      }
+
+      // ── Redemptions: eliminar ──
+      if (redemptionsToDelete.length > 0) {
+        const idBatches = [];
+        const ids = redemptionsToDelete.map(r => r.id);
+        for (let i = 0; i < ids.length; i += BATCH) {
+          idBatches.push(ids.slice(i, i + BATCH));
+        }
+        for (const idBatch of idBatches) {
+          try {
+            const { error } = await supabase.from('redemptions').delete().in('id', idBatch);
+            if (error) console.warn('[cleanUserData] Error redemptions delete:', error.message);
+          } catch (err) {
+            console.warn('[cleanUserData] Error redemptions delete:', err.message);
+          }
+        }
+      }
+
+      // ── PointsBonuses: eliminar ──
+      if (bonusesToDelete.length > 0) {
+        const idBatches = [];
+        const ids = bonusesToDelete.map(b => b.id);
+        for (let i = 0; i < ids.length; i += BATCH) {
+          idBatches.push(ids.slice(i, i + BATCH));
+        }
+        for (const idBatch of idBatches) {
+          try {
+            const { error } = await supabase.from('points_bonuses').delete().in('id', idBatch);
+            if (error) console.warn('[cleanUserData] Error points_bonuses delete:', error.message);
+          } catch (err) {
+            console.warn('[cleanUserData] Error points_bonuses delete:', err.message);
+          }
+        }
+      }
+
+      // ── SupportTickets: eliminar tickets de usuarios no-admin ──
+      const ticketsToDelete = (d.supportTickets || []).filter(t => nonAdminEmails.has(t.user_email));
+      if (ticketsToDelete.length > 0) {
+        for (const t of ticketsToDelete) {
+          _pendingDeletes.push({ tableName: 'support_tickets', id: t.id });
+        }
+        d.supportTickets = (d.supportTickets || []).filter(t => !nonAdminEmails.has(t.user_email));
+
+        const idBatches = [];
+        const ids = ticketsToDelete.map(t => t.id);
+        for (let i = 0; i < ids.length; i += BATCH) {
+          idBatches.push(ids.slice(i, i + BATCH));
+        }
+        for (const idBatch of idBatches) {
+          try {
+            const { error } = await supabase.from('support_tickets').delete().in('id', idBatch);
+            if (error) console.warn('[cleanUserData] Error support_tickets delete:', error.message);
+          } catch (err) {
+            console.warn('[cleanUserData] Error support_tickets delete:', err.message);
+          }
+        }
+      }
+    }
+
+    // 8. Guardar de nuevo y notificar
+    save(d);
+    notifyReactComponents();
+
+    return { deletedUsers: nonAdminIds.length, deletedPredictions: predsToDelete.length, deletedRedemptions: redemptionsToDelete.length, deletedBonuses: bonusesToDelete.length };
+  },
+
   // --- Users ---
   users: {
     list(order) {
