@@ -22,14 +22,14 @@ const LOCK_HOURS = 24;
 /** Retorna true si el partido está bloqueado (24h+ después de su fecha/hora) */
 function isMatchLocked(match) {
   if (!match.match_date) return false;
-  if (match.status !== 'finished' && match.status !== 'live') {
-    // Solo se bloquean partidos que ya deberían haberse jugado
-  }
   const matchDate = new Date(`${match.match_date}T${match.match_time || '23:59'}:00`);
   if (isNaN(matchDate.getTime())) return false;
   const now = new Date();
   const hoursSince = (now - matchDate) / (1000 * 60 * 60);
   return hoursSince >= LOCK_HOURS;
+}  /** Retorna true si se puede actualizar marcador (solo en vivo o finalizado) */
+function canPublishResult(match) {
+  return match.status === 'live' || match.status === 'finished';
 }
 
 const INITIAL = { team1: '', team2: '', match_date: '', match_time: '', group_stage: '', status: 'open' };
@@ -45,6 +45,20 @@ export default function AdminMatches() {
   const [showSources, setShowSources] = useState(true);
   const [bulkResults, setBulkResults] = useState({});
   const [deduping, setDeduping] = useState(false);
+  const [liveNow, setLiveNow] = useState(Date.now());
+
+  // Timer en tiempo real para calcular elapsed desde live_started_at
+  useEffect(() => {
+    const interval = setInterval(() => setLiveNow(Date.now()), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const getElapsed = (match) => {
+    if (match.status === 'live' && match.live_started_at) {
+      return Math.floor((liveNow - new Date(match.live_started_at).getTime()) / 60000);
+    }
+    return match.elapsed;
+  };
 
   // ── Datos de partidos (deben declararse ANTES del useEffect que los usa) ──
   const { data: rawMatches = [], isLoading } = useQuery({
@@ -96,7 +110,6 @@ export default function AdminMatches() {
       const result = await syncWithBestSource();
       refreshStatus();
       await loadSources();
-      queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
 
       if (result.source === 'manual' && (!result.errors || result.errors.length === 0)) {
@@ -123,7 +136,6 @@ export default function AdminMatches() {
   const clearMatches = useMutation({
     mutationFn: () => api.entities.Match.clearAll(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       toast.success('Todos los partidos eliminados');
     },
@@ -132,7 +144,6 @@ export default function AdminMatches() {
   const seedMutation = useMutation({
     mutationFn: () => seedAllMatches(api),
     onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       toast.success(`✅ ¡${created.length} partidos del Mundial 2026 creados!`);
     },
@@ -140,11 +151,10 @@ export default function AdminMatches() {
   });
 
   const handleClearAll = () => {
-    if (hasLockedMatches) {
-      toast.error(`No puedes eliminar partidos. Hay ${lockedMatches.length} partido${lockedMatches.length > 1 ? 's' : ''} bloqueado${lockedMatches.length > 1 ? 's' : ''} (pasaron 24h+).`);
-      return;
-    }
-    if (window.confirm('¿Eliminar TODOS los partidos? Esta acción no se puede deshacer.')) {
+    const msg = hasLockedMatches
+      ? `Hay ${lockedMatches.length} partido${lockedMatches.length > 1 ? 's' : ''} con más de 24h. ¿Eliminar TODOS de todas formas?`
+      : '¿Eliminar TODOS los partidos? Esta acción no se puede deshacer.';
+    if (window.confirm(msg)) {
       clearMatches.mutate();
     }
   };
@@ -152,7 +162,7 @@ export default function AdminMatches() {
   const createMatch = useMutation({
     mutationFn: (data) => api.entities.Match.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       setForm(INITIAL);
       setDialogOpen(false);
       toast.success('Partido creado');
@@ -162,16 +172,21 @@ export default function AdminMatches() {
   const updateMatch = useMutation({
     mutationFn: ({ id, data }) => api.entities.Match.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       toast.success('Partido actualizado');
     },
   });
 
   const handleStatusChange = (match, newStatus) => {
-    updateMatch.mutate({ id: match.id, data: { status: newStatus } });
+    const extra = newStatus === 'live' ? { elapsed: '0', live_started_at: new Date().toISOString() } : {};
+    updateMatch.mutate({ id: match.id, data: { status: newStatus, ...extra } });
   };
 
   const handlePublishResult = async (match) => {
+    if (!canPublishResult(match)) {
+      toast.error('El partido debe estar EN VIVO o FINALIZADO para actualizar el marcador.');
+      return;
+    }
     const r = resultForm[match.id];
     if (r?.team1 === undefined || r?.team2 === undefined || r.team1 === '' || r.team2 === '') {
       toast.error('Ingresa el resultado de ambos equipos');
@@ -181,10 +196,26 @@ export default function AdminMatches() {
     const resultTeam1 = Number(r.team1);
     const resultTeam2 = Number(r.team2);
 
-    const isCorrection = match.status === 'finished';
+    const isLiveUpdate = match.status === 'live';
+
+    if (isLiveUpdate) {
+      // Solo actualizar marcador, sin cambiar estado ni evaluar pronósticos
+      await api.entities.Match.update(match.id, {
+        result_team1: resultTeam1,
+        result_team2: resultTeam2,
+      });
+
+      setResultForm(prev => {
+        const { [match.id]: _, ...rest } = prev;
+        return rest;
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
+      toast.success('Marcador actualizado (en vivo).');
+      return;
+    }
 
     // Si ya estaba finalizado, revertir puntos de pronósticos acertados primero
-    if (isCorrection) {
+    if (match.status === 'finished') {
       const oldPreds = await api.entities.Prediction.filter({ match_id: match.id });
       for (const pred of oldPreds) {
         if (pred.scored && (pred.points_earned || 0) > 0) {
@@ -208,9 +239,8 @@ export default function AdminMatches() {
 
     const predictions = await api.entities.Prediction.filter({ match_id: match.id });
     for (const pred of predictions) {
-      // Si es corrección, re-evaluar todos (incluso los ya scorados)
-      // Si es primera vez, solo evaluar los no scorados
-      if (!isCorrection && pred.scored) continue;
+      // Re-evaluar todas las predicciones (incluso las ya scoradas)
+      // porque esto es una corrección de un partido finalizado
 
       const isCorrect = pred.pred_team1 === resultTeam1 && pred.pred_team2 === resultTeam2;
       const pointsEarned = isCorrect ? 100 : 0;
@@ -238,13 +268,10 @@ export default function AdminMatches() {
       const { [match.id]: _, ...rest } = prev;
       return rest;
     });
-
-    queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
     queryClient.invalidateQueries({ queryKey: ['ranking'] });
     toast.success(
-      isCorrection
-        ? `Resultado corregido. ${predictions.length} pronósticos re-evaluados.`
-        : `Resultado publicado. ${predictions.length} pronósticos evaluados.`
+      `Marcador corregido. ${predictions.length} pronósticos re-evaluados.`
     );
   };
 
@@ -263,43 +290,24 @@ export default function AdminMatches() {
       try {
         const match = matches.find(m => m.id === matchId);
         if (!match) continue;
+        if (!canPublishResult(match)) {
+          console.warn(`Saltando match ${matchId}: no está en vivo ni finalizado`);
+          continue;
+        }
 
         await api.entities.Match.update(matchId, {
           result_team1: Number(r.team1),
           result_team2: Number(r.team2),
-          status: 'finished',
         });
-
-        const predictions = await api.entities.Prediction.filter({ match_id: matchId });
-        for (const pred of predictions) {
-          if (pred.scored) continue;
-          const isCorrect = pred.pred_team1 === Number(r.team1) && pred.pred_team2 === Number(r.team2);
-          const pointsEarned = isCorrect ? 100 : 0;
-
-          await api.entities.Prediction.update(pred.id, {
-            is_correct: isCorrect,
-            points_earned: pointsEarned,
-            scored: true,
-          });
-
-          if (isCorrect) {
-            const users = await api.entities.User.filter({ email: pred.user_email });
-            if (users.length > 0) {
-              const u = users[0];
-              await api.entities.User.update(u.id, {
-                total_points: (u.total_points || 0) + 100,
-                prediction_points: (u.prediction_points || 0) + 100,
-              });
-            }
-          }
-        }
         published++;
-      } catch {}
+      } catch (e) {
+        console.error(`Error publicando resultado para match ${matchId}:`, e);
+      }
     }
 
-    queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
     setBulkResults({});
-    toast.success(`✅ ${published} resultados publicados y pronósticos evaluados`);
+    toast.success(`✅ ${published} marcadores actualizados y pronósticos evaluados`);
   };
 
   const statusColors = {
@@ -482,7 +490,6 @@ export default function AdminMatches() {
               } else {
                 toast.success(`🧹 ${result.deleted} duplicados eliminados · ${result.repointed} predicciones re-asignadas`);
               }
-              queryClient.invalidateQueries({ queryKey: ['admin-matches'] });
               queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
             } catch (e) {
               toast.error('Error al deduplicar: ' + e.message);
@@ -544,27 +551,27 @@ export default function AdminMatches() {
       {/* ═══════════════════════════════════════
          PUBLICACIÓN RÁPIDA EN BATCH
          ═══════════════════════════════════════ */}
-      {matches.filter(m => m.status !== 'finished').length > 0 && (
+      {matches.filter(m => canPublishResult(m) && m.status !== 'finished').length > 0 && (
         <Card className="border-2 border-dashed border-primary/30 bg-primary/5">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Zap className="w-5 h-5 text-primary" />
-                <span className="font-medium text-sm">Publicación Rápida de Resultados</span>
+                <span className="font-medium text-sm">Actualización Rápida de Marcadores</span>
               </div>
               {pendingPublishCount > 0 && (
                 <Button size="sm" onClick={handleBatchPublish} className="gap-2">
                   <Save className="w-4 h-4" />
-                  Publicar {pendingPublishCount} resultado{pendingPublishCount > 1 ? 's' : ''}
+                  Actualizar {pendingPublishCount} marcador{pendingPublishCount > 1 ? 'es' : ''}
                 </Button>
               )}
             </div>
             <p className="text-xs text-muted-foreground mb-2">
-              Ingresa los marcadores y publica todos de una sola vez
+              Ingresa los marcadores de los partidos en vivo para actualizarlos
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
               {matches
-                .filter(m => m.status !== 'finished')
+                .filter(m => canPublishResult(m) && m.status !== 'finished')
                 .slice(0, 30)
                 .map(match => (
                 <div key={match.id} className="flex items-center gap-1.5 text-xs bg-background rounded-md p-1.5 border">
@@ -667,7 +674,7 @@ export default function AdminMatches() {
                   </div>
                   <Badge className={statusColors[match.status] || 'bg-muted'}>
                     {statusLabels[match.status] || match.status}
-                    {match.status === 'live' && match.elapsed && ` ${match.elapsed}'`}
+                    {match.status === 'live' && getElapsed(match) != null && ` ${getElapsed(match)}'`}
                   </Badge>
                 </div>
 
@@ -696,35 +703,52 @@ export default function AdminMatches() {
                     <option value="finished">Finalizado</option>
                   </select>
 
-                  {/* Resultado - siempre visible para editar o corregir */}
+                  {match.status === 'live' && (
+                    <div className="flex items-center gap-1 text-xs font-mono bg-red-50 dark:bg-red-950/20 px-2 py-1 rounded-md border border-red-200 dark:border-red-900">
+                      <span className="font-semibold text-red-600">{getElapsed(match) ?? '0'}'</span>
+                    </div>
+                  )}
+
+                  {/* Resultado - solo editar si el partido está en vivo o finalizado */}
                   <div className="flex items-center gap-1.5 ml-auto">
-                    <Input
-                      type="number"
-                      min="0"
-                      className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      placeholder="0"
-                      value={resultForm[match.id]?.team1 ?? (match.result_team1 ?? '')}
-                      onChange={(e) => setResultForm(prev => ({
-                        ...prev,
-                        [match.id]: { ...prev[match.id], team1: e.target.value }
-                      }))}
-                    />
-                    <span className="text-muted-foreground text-sm">-</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      placeholder="0"
-                      value={resultForm[match.id]?.team2 ?? (match.result_team2 ?? '')}
-                      onChange={(e) => setResultForm(prev => ({
-                        ...prev,
-                        [match.id]: { ...prev[match.id], team2: e.target.value }
-                      }))}
-                    />
-                    <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">
-                      <Save className="w-3 h-3 mr-1" />
-                      {match.status === 'finished' ? 'Corregir' : 'Publicar'}
-                    </Button>
+                    {canPublishResult(match) ? (
+                      <>
+                        <Input
+                          type="number"
+                          min="0"
+                          className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          placeholder="0"
+                          value={resultForm[match.id]?.team1 ?? (match.result_team1 ?? '')}
+                          onChange={(e) => setResultForm(prev => ({
+                            ...prev,
+                            [match.id]: { ...prev[match.id], team1: e.target.value }
+                          }))}
+                        />
+                        <span className="text-muted-foreground text-sm">-</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          placeholder="0"
+                          value={resultForm[match.id]?.team2 ?? (match.result_team2 ?? '')}
+                          onChange={(e) => setResultForm(prev => ({
+                            ...prev,
+                            [match.id]: { ...prev[match.id], team2: e.target.value }
+                          }))}
+                        />
+                        <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">
+                          <Save className="w-3 h-3 mr-1" />
+                          Actualizar
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/60 italic">
+                        {match.status === 'closed'
+                          ? 'Partido cerrado sin resultado'
+                          : 'Cambia a "En Vivo" para actualizar marcador'
+                        }
+                      </span>
+                    )}
                   </div>
 
                   {hasLockedMatches && isMatchLocked(match) && (

@@ -354,8 +354,20 @@ export const db = {
       db._persist();
       return d.matches[idx];
     },
-    clearAll() {
+    async clearAll() {
       const d = db._init();
+      // Eliminar directamente de Supabase si está disponible (await para evitar race condition con polling)
+      if (isSupabaseAvailable() && supabase && d.matches.length > 0) {
+        const matchIds = d.matches.map(m => m.id);
+        // Eliminar en lotes para evitar URLs too long
+        const batchSize = 50;
+        const promises = [];
+        for (let i = 0; i < matchIds.length; i += batchSize) {
+          const batch = matchIds.slice(i, i + batchSize);
+          promises.push(supabase.from('matches').delete().in('id', batch));
+        }
+        await Promise.all(promises);
+      }
       d.matches = [];
       db._persist();
     },
