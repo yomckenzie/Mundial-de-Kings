@@ -121,7 +121,7 @@ export async function deleteRecords(tableName, field, value) {
  */
 export function stripLocalFields(records) {
   return records.map(r => {
-    const { created_date, updated_at, ...clean } = r
+    const { created_date, updated_at, live_started_at, ...clean } = r
     return clean
   })
 }
