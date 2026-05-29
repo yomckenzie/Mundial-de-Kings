@@ -376,6 +376,10 @@ export const db = {
      * Reiniciar TODOS los partidos a estado Pendiente, limpiando resultados,
      * tiempos en vivo, y reiniciando todas las predicciones asociadas.
      * Los partidos NO se eliminan — solo se resetean.
+     *
+     * Usa upserts directos a Supabase en lotes de 50 para asegurar
+     * que los cambios persistan en la nube (evitando problemas con
+     * _syncAllToSupabase que silenciosamente falla con lotes grandes).
      */
     async resetAll() {
       const d = db._init();
@@ -413,9 +417,58 @@ export const db = {
         u.updated_at = now;
       }
 
-      // 4. Persistir y sincronizar a Supabase
+      // 4. Guardar en localStorage inmediatamente
       save(d);
-      await db._syncAllToSupabase();
+
+      // 5. Sincronizar a Supabase con upserts directos en lotes de 50
+      // (independiente de _syncAllToSupabase para evitar fallos silenciosos)
+      if (isSupabaseAvailable() && supabase) {
+        const BATCH = 50;
+
+        // ── Matches ──
+        const matchClean = stripLocalFields(d.matches);
+        for (let i = 0; i < matchClean.length; i += BATCH) {
+          const batch = matchClean.slice(i, i + BATCH);
+          try {
+            const { error } = await supabase.from('matches').upsert(batch, { onConflict: 'id' });
+            if (error) console.warn('[resetAll] Error en matches batch:', error.message);
+          } catch (err) {
+            console.warn('[resetAll] Error en matches batch:', err.message);
+          }
+        }
+
+        // ── Predictions (solo las que referencian a los partidos reseteaods) ──
+        const predsToSync = (d.predictions || []).filter(p => matchIds.has(p.match_id));
+        if (predsToSync.length > 0) {
+          const predClean = stripLocalFields(predsToSync);
+          for (let i = 0; i < predClean.length; i += BATCH) {
+            const batch = predClean.slice(i, i + BATCH);
+            try {
+              const { error } = await supabase.from('predictions').upsert(batch, { onConflict: 'id' });
+              if (error) console.warn('[resetAll] Error en predictions batch:', error.message);
+            } catch (err) {
+              console.warn('[resetAll] Error en predictions batch:', err.message);
+            }
+          }
+        }
+
+        // ── Users (solo no-admin, para reiniciar puntos) ──
+        const usersToSync = d.users.filter(u => u.role !== 'admin');
+        if (usersToSync.length > 0) {
+          const userClean = stripLocalFields(usersToSync);
+          for (let i = 0; i < userClean.length; i += BATCH) {
+            const batch = userClean.slice(i, i + BATCH);
+            try {
+              const { error } = await supabase.from('users').upsert(batch, { onConflict: 'id' });
+              if (error) console.warn('[resetAll] Error en users batch:', error.message);
+            } catch (err) {
+              console.warn('[resetAll] Error en users batch:', err.message);
+            }
+          }
+        }
+      }
+
+      // 6. Notificar a componentes React
       notifyReactComponents();
     },
     bulkCreate(matchesArray) {
