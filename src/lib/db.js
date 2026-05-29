@@ -337,108 +337,31 @@ export const db = {
     // 6. Eliminar usuarios NO admin
     d.users = adminUsers;
 
-    // ── Sincronizar a Supabase ──
-    if (isSupabaseAvailable() && supabase) {
-      const BATCH = 50;
-
-      // Users: eliminar no-admin de Supabase + upsert admin para que persista
-      if (nonAdminIds.length > 0) {
-        // batch delete
-        for (let i = 0; i < nonAdminIds.length; i += BATCH) {
-          const batch = nonAdminIds.slice(i, i + BATCH);
-          try {
-            const { error } = await supabase.from('users').delete().in('id', batch);
-            if (error) console.warn('[cleanUserData] Error users delete:', error.message);
-          } catch (err) {
-            console.warn('[cleanUserData] Error users delete:', err.message);
-          }
-        }
-      }
-      // Upsert admin user para que exista en Supabase después de las eliminaciones
-      for (const admin of adminUsers) {
-        try {
-          const { error } = await supabase.from('users').upsert({
-            id: admin.id,
-            email: admin.email,
-            password: admin.password,
-            role: admin.role,
-            full_name: admin.full_name,
-            cedula: admin.cedula,
-            instagram: admin.instagram,
-            tiktok: admin.tiktok,
-            phone: admin.phone,
-            total_points: admin.total_points || 0,
-            prediction_points: admin.prediction_points || 0,
-            bonus_points: admin.bonus_points || 0,
-            profile_complete: admin.profile_complete || false,
-          }, { onConflict: 'id' });
-          if (error) console.warn('[cleanUserData] Error admin upsert:', error.message);
-        } catch (err) {
-          console.warn('[cleanUserData] Error admin upsert:', err.message);
-        }
-      }
-
-      // Predictions: eliminar de Supabase
-      if (predsToDelete.length > 0) {
-        const ids = predsToDelete.map(p => p.id);
-        for (let i = 0; i < ids.length; i += BATCH) {
-          const batch = ids.slice(i, i + BATCH);
-          try {
-            const { error } = await supabase.from('predictions').delete().in('id', batch);
-            if (error) console.warn('[cleanUserData] Error predictions delete:', error.message);
-          } catch (err) {
-            console.warn('[cleanUserData] Error predictions delete:', err.message);
-          }
-        }
-      }
-
-      // Redemptions: eliminar de Supabase
-      if (redemptionsToDelete.length > 0) {
-        const ids = redemptionsToDelete.map(r => r.id);
-        for (let i = 0; i < ids.length; i += BATCH) {
-          const batch = ids.slice(i, i + BATCH);
-          try {
-            const { error } = await supabase.from('redemptions').delete().in('id', batch);
-            if (error) console.warn('[cleanUserData] Error redemptions delete:', error.message);
-          } catch (err) {
-            console.warn('[cleanUserData] Error redemptions delete:', err.message);
-          }
-        }
-      }
-
-      // PointsBonuses: eliminar de Supabase
-      if (bonusesToDelete.length > 0) {
-        const ids = bonusesToDelete.map(b => b.id);
-        for (let i = 0; i < ids.length; i += BATCH) {
-          const batch = ids.slice(i, i + BATCH);
-          try {
-            const { error } = await supabase.from('points_bonuses').delete().in('id', batch);
-            if (error) console.warn('[cleanUserData] Error points_bonuses delete:', error.message);
-          } catch (err) {
-            console.warn('[cleanUserData] Error points_bonuses delete:', err.message);
-          }
-        }
-      }
-
-      // SupportTickets: eliminar de Supabase
-      if (ticketsToDelete.length > 0) {
-        const ids = ticketsToDelete.map(t => t.id);
-        for (let i = 0; i < ids.length; i += BATCH) {
-          const batch = ids.slice(i, i + BATCH);
-          try {
-            const { error } = await supabase.from('support_tickets').delete().in('id', batch);
-            if (error) console.warn('[cleanUserData] Error support_tickets delete:', error.message);
-          } catch (err) {
-            console.warn('[cleanUserData] Error support_tickets delete:', err.message);
-          }
-        }
-      }
+    // ── Marcar eliminaciones pendientes para que _syncAllToSupabase las procese ──
+    // Usamos _pendingDeletes en vez de direct deletes con .in('id', batch)
+    // porque el mecanismo individual .eq('id', id) dentro de _syncAllToSupabase
+    // es más fiable y es el mismo que usan deduplicate(), prizes.remove(), etc.
+    for (const id of nonAdminIds) {
+      _pendingDeletes.push({ tableName: 'users', id });
+    }
+    for (const p of predsToDelete) {
+      _pendingDeletes.push({ tableName: 'predictions', id: p.id });
+    }
+    for (const r of redemptionsToDelete) {
+      _pendingDeletes.push({ tableName: 'redemptions', id: r.id });
+    }
+    for (const b of bonusesToDelete) {
+      _pendingDeletes.push({ tableName: 'points_bonuses', id: b.id });
+    }
+    for (const t of ticketsToDelete) {
+      _pendingDeletes.push({ tableName: 'support_tickets', id: t.id });
     }
 
-    // 8. Guardar en localStorage y sincronizar a Supabase vía _persist()
+    // 8. Guardar en localStorage
     save(d);
     _syncInProgress = {};
-    // Procesar _pendingDeletes y upsertear tablas restantes
+    // _syncAllToSupabase procesa _pendingDeletes primero (individual .eq('id',id))
+    // y luego hace upsert de las tablas restantes (admin user, matches, prizes, etc.)
     await this._syncAllToSupabase();
     notifyReactComponents();
 
