@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw, Trophy } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { toast } from 'sonner';
@@ -119,6 +119,38 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               Partido en curso — pronósticos cerrados
             </div>
+          ) : existing ? (
+            <motion.div
+              className="mt-3 p-3 rounded-xl bg-muted/50 text-center text-sm"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <p className="text-muted-foreground mb-1">Tu pronóstico:</p>
+              <p className="font-bold text-foreground text-base">
+                {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
+              </p>
+              {existing.scored ? (
+                <motion.div
+                  className={`mt-2 flex items-center justify-center gap-1.5 ${existing.is_correct ? 'text-foreground' : 'text-destructive'}`}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                >
+                  {existing.is_correct ? (
+                    <><CheckCircle2 className="w-4 h-4" /> ¡Acertaste! +100 pts</>
+                  ) : (
+                    <><X className="w-4 h-4" /> No acertaste</>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.p
+                  className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  ⏳ Pendiente de evaluar — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
+                </motion.p>
+              )}
+            </motion.div>
           ) : match.status === 'finished' ? (
             <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
               <Lock className="w-4 h-4" />
@@ -141,30 +173,6 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                 </Button>
               </Link>
             </div>
-          ) : existing ? (
-            <motion.div
-              className="mt-3 p-3 rounded-xl bg-muted/50 text-center text-sm"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <p className="text-muted-foreground mb-1">Tu pronóstico:</p>
-              <p className="font-bold text-foreground text-base">
-                {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
-              </p>
-              {existing.scored && (
-                <motion.div
-                  className={`mt-2 flex items-center justify-center gap-1.5 ${existing.is_correct ? 'text-foreground' : 'text-destructive'}`}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                >
-                  {existing.is_correct ? (
-                    <><CheckCircle2 className="w-4 h-4" /> ¡Acertaste! +100 pts</>
-                  ) : (
-                    <><X className="w-4 h-4" /> No acertaste</>
-                  )}
-                </motion.div>
-              )}
-            </motion.div>
           ) : isOpen ? (
             <motion.div
               className="mt-3 flex items-center justify-center gap-3"
@@ -188,20 +196,26 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                 value={predictions[match.id]?.team2 ?? ''}
                 onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
               />
-              <Button
-                size="sm"
-                onClick={() => handleSubmit({
-                  match_id: match.id,
-                  user_email: user.email,
-                  pred_team1: Number(predictions[match.id]?.team1),
-                  pred_team2: Number(predictions[match.id]?.team2),
-                })}
-                disabled={submitPrediction.isPending}
-                className="gap-1.5"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Enviar Pronóstico
-              </Button>
+              <div className="flex flex-col items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => handleSubmit({
+                    match_id: match.id,
+                    user_email: user.email,
+                    pred_team1: Number(predictions[match.id]?.team1),
+                    pred_team2: Number(predictions[match.id]?.team2),
+                  })}
+                  disabled={submitPrediction.isPending}
+                  className="gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Enviar Pronóstico
+                </Button>
+                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                  <Trophy className="w-3 h-3" />
+                  Ganas <strong>100 pts</strong> si aciertas el marcador exacto
+                </span>
+              </div>
             </motion.div>
           ) : (
             <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
