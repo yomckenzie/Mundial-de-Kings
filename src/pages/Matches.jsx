@@ -60,6 +60,19 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   const isLive = match.status === 'live';
 
+  // ─── Timer en tiempo real desde live_started_at ───
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!isLive) return;
+    const interval = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(interval);
+  }, [isLive]);
+
+  const displayElapsed = isLive && match.live_started_at
+    ? String(Math.floor((now - new Date(match.live_started_at).getTime()) / 60000))
+    : match.elapsed;
+
   return (
     <motion.div
       layout
@@ -79,7 +92,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               {match.match_time}
             </div>
             <Badge className={`${st.class} border-0`}>
-              {isLive ? (match.elapsed ? `${match.elapsed}'` : 'EN VIVO') : st.label}
+              {isLive ? 'EN VIVO' : st.label}
             </Badge>
           </div>
 
@@ -91,33 +104,77 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
           <div className="flex items-center justify-center gap-3 md:gap-6 py-4">
             <span className="font-bold text-base md:text-lg text-right flex-1">{match.team1}</span>
 
-            {match.status === 'finished' || isLive ? (
-              <motion.div
-                className={`font-bold px-5 py-2.5 rounded-xl text-lg min-w-[90px] text-center ${
-                  isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
-                }`}
-                initial={isLive ? { scale: 1 } : undefined}
-                animate={isLive ? { scale: [1, 1.03, 1] } : undefined}
-                transition={isLive ? { repeat: Infinity, duration: 2 } : undefined}
-              >
-                {(match.result_team1 ?? match.result_team1 === 0) ? match.result_team1 : '-'}
-                {' - '}
-                {(match.result_team2 ?? match.result_team2 === 0) ? match.result_team2 : '-'}
-              </motion.div>
-            ) : (
-              <div className="px-5 py-2.5 rounded-xl bg-muted/50">
-                <span className="text-muted-foreground font-bold text-lg">VS</span>
-              </div>
-            )}
+            <div className="flex flex-col items-center gap-1">
+              {/* Tiempo transcurrido arriba del marcador */}
+              {isLive && displayElapsed && (
+                <div className="text-[11px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider">
+                  {displayElapsed}'
+                </div>
+              )}
+
+              {match.status === 'finished' || isLive ? (
+                <motion.div
+                  className={`font-bold px-5 py-2.5 rounded-xl text-lg min-w-[90px] text-center ${
+                    isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
+                  }`}
+                  initial={isLive ? { scale: 1 } : undefined}
+                  animate={isLive ? { scale: [1, 1.03, 1] } : undefined}
+                  transition={isLive ? { repeat: Infinity, duration: 2 } : undefined}
+                >
+                  {match.result_team1 != null ? match.result_team1 : '-'}
+                  {' - '}
+                  {match.result_team2 != null ? match.result_team2 : '-'}
+                </motion.div>
+              ) : (
+                <div className="px-5 py-2.5 rounded-xl bg-muted/50">
+                  <span className="text-muted-foreground font-bold text-lg">VS</span>
+                </div>
+              )}
+            </div>
 
             <span className="font-bold text-base md:text-lg text-left flex-1">{match.team2}</span>
           </div>
 
           {/* Status / Prediction area */}
           {isLive ? (
-            <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-red-50 dark:bg-red-950/20 rounded-lg">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              Partido en curso — pronósticos cerrados
+            <div className="mt-3 space-y-2">
+              <div className="text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                Partido en curso — pronósticos cerrados
+              </div>
+              {existing && (
+                <motion.div
+                  className="p-3 rounded-xl bg-muted/50 text-center text-sm"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <p className="text-muted-foreground mb-1">Tu pronóstico:</p>
+                  <p className="font-bold text-foreground text-base">
+                    {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
+                  </p>
+                  {existing.scored ? (
+                    <motion.div
+                      className={`mt-2 flex items-center justify-center gap-1.5 ${existing.is_correct ? 'text-foreground' : 'text-destructive'}`}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                    >
+                      {existing.is_correct ? (
+                        <><CheckCircle2 className="w-4 h-4" /> ¡Acertaste! +100 pts</>
+                      ) : (
+                        <><X className="w-4 h-4" /> No acertaste</>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.p
+                      className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    >
+                      ⏳ Pendiente del resultado final — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
+                    </motion.p>
+                  )}
+                </motion.div>
+              )}
             </div>
           ) : existing ? (
             <motion.div
@@ -147,7 +204,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                 >
-                  ⏳ Pendiente de evaluar — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
+                  ⏳ Pendiente del resultado final — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
                 </motion.p>
               )}
             </motion.div>
@@ -197,21 +254,21 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                   value={predictions[match.id]?.team2 ?? ''}
                   onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
                 />
-                <Button
-                  size="sm"
-                  onClick={() => handleSubmit({
-                    match_id: match.id,
-                    user_email: user.email,
-                    pred_team1: Number(predictions[match.id]?.team1),
-                    pred_team2: Number(predictions[match.id]?.team2),
-                  })}
-                  disabled={submitPrediction.isPending}
-                  className="gap-1.5"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  Enviar Pronóstico
-                </Button>
               </div>
+              <Button
+                size="sm"
+                onClick={() => handleSubmit({
+                  match_id: match.id,
+                  user_email: user.email,
+                  pred_team1: Number(predictions[match.id]?.team1),
+                  pred_team2: Number(predictions[match.id]?.team2),
+                })}
+                disabled={submitPrediction.isPending}
+                className="gap-1.5 w-full max-w-[200px]"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Enviar Pronóstico
+              </Button>
               <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-full">
                 <Trophy className="w-3.5 h-3.5" />
                 Ganas <strong>100 pts</strong> si aciertas el marcador exacto
