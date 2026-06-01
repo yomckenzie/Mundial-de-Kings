@@ -48,7 +48,7 @@ app.use(
 // ──────────────────────────────────────────
 // SPA fallback — all routes serve index.html
 // ──────────────────────────────────────────
-app.get('*', (_req, res) => {
+app.get('*path', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
