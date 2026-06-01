@@ -261,25 +261,25 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       const remoteIds = new Set(remoteData.map(r => r.id))
       const userGeneratedTables = ['predictions', 'support_tickets', 'redemptions', 'users']
       
+      // Si hay lastCleanAt activo y es una tabla userGenerated,
+      // la nube es la autoridad: NO preservar registros locales ausentes.
+      // Esto garantiza que las limpiezas se propaguen entre dispositivos.
+      const isCleanActive = options.lastCleanAt && userGeneratedTables.includes(tableName)
+      
       for (const local of localRecords) {
         if (!remoteIds.has(local.id)) {
-          const isUserGenerated = userGeneratedTables.includes(tableName)
-          const isRecent = local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)
-          
-          // Si hay un lastCleanAt, no preservar registros anteriores a la limpieza
-          // Esto previene que otros dispositivos re-suban datos que fueron eliminados
-          const isBeforeClean = options.lastCleanAt && (
-            !local.created_date || // sin fecha = asumir creado antes de la limpieza
-            new Date(local.created_date).getTime() < new Date(options.lastCleanAt).getTime()
-          )
-          
-          if (isBeforeClean) {
-            // Registro creado antes de la limpieza — descartar, no re-subir
+          if (isCleanActive) {
+            // Limpieza activa — descartar todos los registros ausentes en remoto
             changed = true
-          } else if (isUserGenerated || isRecent) {
+          } else if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)) {
+            // Registro recien creado localmente — preservar
             result.push(local)
-          } else {
+          } else if (!userGeneratedTables.includes(tableName)) {
+            // Tabla de admin — la nube manda
             changed = true
+          } else {
+            // Tabla userGenerated sin limpieza activa — preservar (modo offline)
+            result.push(local)
           }
         }
       }
