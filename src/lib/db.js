@@ -63,12 +63,13 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
       if (!supabase) return;
       const cleaned = stripLocalFields(records);
       if (cleaned.length === 0) return;
-      // Usar UPSERT en vez de DELETE+INSERT para no perder registros
-      // (como last_clean) si el INSERT falla por RLS o schema
-      const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: 'key' });
-      if (error) {
-        console.warn('[Sync] Error upserting appSettings:', error.message);
+      // DELETE+INSERT: borrar todas las keys existentes y re-insertar
+      // Es más confiable que UPSERT (no hay UNIQUE constraint en key)
+      const keys = cleaned.map(r => r.key).filter(Boolean);
+      if (keys.length > 0) {
+        await supabase.from(tableName).delete().in('key', keys);
       }
+      await supabase.from(tableName).insert(cleaned);
     } else {
       await syncTableToSupabase(tableName, records);
     }
