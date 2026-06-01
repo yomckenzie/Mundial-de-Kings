@@ -451,6 +451,16 @@ export const db = {
         } else {
           await supabase.from('app_settings').insert({ id: makeId(), key: 'last_clean', value: cleanTimestamp });
         }
+        // Agregar last_clean al array local de appSettings para que
+        // _syncAllToSupabase() lo sincronice correctamente (no lo borre)
+        const existingLocal = d.appSettings.findIndex(s => s.key === 'last_clean');
+        const cleanRecord = { id: makeId(), key: 'last_clean', value: cleanTimestamp, created_date: now };
+        if (existingLocal >= 0) {
+          d.appSettings[existingLocal] = { ...d.appSettings[existingLocal], value: cleanTimestamp };
+        } else {
+          d.appSettings.push(cleanRecord);
+        }
+        save(d);
         console.log('[cleanUserData] Timestamp de limpieza guardado:', cleanTimestamp);
       } catch (err) {
         console.warn('[cleanUserData] Error guardando last_clean:', err.message);
