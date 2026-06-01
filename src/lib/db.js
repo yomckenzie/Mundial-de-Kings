@@ -61,11 +61,14 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
   try {
     if (jsKey === 'appSettings') {
       if (!supabase) return;
-      const keys = records.map(r => r.key).filter(Boolean);
-      if (keys.length === 0) return;
       const cleaned = stripLocalFields(records);
-      await supabase.from(tableName).delete().in('key', keys);
-      await supabase.from(tableName).insert(cleaned);
+      if (cleaned.length === 0) return;
+      // Usar UPSERT en vez de DELETE+INSERT para no perder registros
+      // (como last_clean) si el INSERT falla por RLS o schema
+      const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: 'key' });
+      if (error) {
+        console.warn('[Sync] Error upserting appSettings:', error.message);
+      }
     } else {
       await syncTableToSupabase(tableName, records);
     }
