@@ -295,7 +295,7 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       }
       const deduped = Array.from(keyMap.values())
       if (deduped.length !== result.length) {
-        console.log(`[Supabase] Deduplicados ${result.length - deduped.length} registros en ${tableName}`)
+
         result.length = 0
         result.push(...deduped)
       }
@@ -318,7 +318,7 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       }
       const deduped = Array.from(emailMap.values())
       if (deduped.length !== result.length) {
-        console.log(`[Supabase] Deduplicados ${result.length - deduped.length} usuarios por email`)
+
         result.length = 0
         result.push(...deduped)
       }

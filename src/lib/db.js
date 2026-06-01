@@ -13,7 +13,6 @@ const makeId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 const getNow = () => new Date().toISOString();
 
-let _syncTimers = {};
 let _syncInProgress = {};
 let _pollInterval = null;
 let _syncToSupabaseInProgress = false;
@@ -151,7 +150,7 @@ export const db = {
     if (!isSupabaseAvailable()) return;
     // Evitar race condition: si estamos subiendo datos, no bajar al mismo tiempo
     if (_syncToSupabaseInProgress) {
-      console.log('[DB] Sync a Supabase en progreso, saltando polling');
+
       return;
     }
     // Bloqueado durante operaciones destructivas (cleanUserData)
@@ -183,7 +182,7 @@ export const db = {
               if (!_lastCleanAt || new Date(remoteCleanAt).getTime() > new Date(_lastCleanAt).getTime()) {
                 _lastCleanAt = remoteCleanAt;
                 try { localStorage.setItem(CLEAN_AT_KEY, _lastCleanAt); } catch {}
-                console.log('[DB] Limpieza remota detectada:', _lastCleanAt);
+
               }
             }
           }
@@ -215,7 +214,7 @@ export const db = {
 
       if (changed) {
         save(this._data);
-        console.log('[DB] Datos sincronizados desde Supabase');
+
         this._notifyReactComponents();
       }
     } catch (err) {
@@ -379,64 +378,46 @@ export const db = {
     // Esto es más fiable que filtros neq/gt que pueden fallar por nulls o RLS.
     if (isSupabaseAvailable() && supabase) {
       const BATCH = 100;
-      const log = {};
 
       // Helper: fetch all IDs then batch-delete
-      const deleteAllFromTable = async (table, label) => {
+      const deleteAllFromTable = async (table) => {
         try {
-          // 1. Obtener todos los IDs
           const { data: rows, error: fetchErr } = await supabase
             .from(table).select('id').limit(5000);
-          if (fetchErr) { log[label] = 'FETCH_ERR: ' + fetchErr.message; return; }
-          if (!rows || rows.length === 0) { log[label] = 'empty (0 rows)'; return; }
-          // 2. Borrar en lotes
-          let deleted = 0;
+          if (fetchErr || !rows || rows.length === 0) return;
           for (let i = 0; i < rows.length; i += BATCH) {
             const ids = rows.slice(i, i + BATCH).map(r => r.id);
             const { error } = await supabase.from(table).delete().in('id', ids);
             if (error) {
-              console.warn(`[cleanUserData] Error deleting ${label} batch:`, error.message);
-            } else {
-              deleted += ids.length;
+              console.warn(`[cleanUserData] Error deleting ${table} batch:`, error.message);
             }
           }
-          log[label] = `deleted ${deleted}/${rows.length} rows`;
-        } catch (err) {
-          log[label] = 'EXC: ' + err.message;
-        }
+        } catch {}
       };
 
       // 1. Eliminar usuarios NO admin: fetch IDs, filter out admin, batch-delete
       try {
         const { data: allUsers, error: fetchErr } = await supabase
           .from('users').select('id, role').limit(5000);
-        if (fetchErr) {
-          log.users = 'FETCH_ERR: ' + fetchErr.message;
-        } else if (!allUsers || allUsers.length === 0) {
-          log.users = 'empty';
-        } else {
+        if (!fetchErr && allUsers && allUsers.length > 0) {
           const nonAdminIds = allUsers.filter(u => u.role !== 'admin').map(u => u.id);
-          let deleted = 0;
           for (let i = 0; i < nonAdminIds.length; i += BATCH) {
             const batch = nonAdminIds.slice(i, i + BATCH);
             const { error } = await supabase.from('users').delete().in('id', batch);
             if (error) {
               console.warn('[cleanUserData] Error users batch:', error.message);
-            } else {
-              deleted += batch.length;
             }
           }
-          log.users = `deleted ${deleted}/${nonAdminIds.length} (of ${allUsers.length} total)`;
         }
-      } catch (err) { log.users = 'EXC: ' + err.message; }
+      } catch {}
 
       // 2-5. Eliminar TODO de tablas secundarias
-      await deleteAllFromTable('predictions', 'predictions');
-      await deleteAllFromTable('redemptions', 'redemptions');
-      await deleteAllFromTable('points_bonuses', 'bonuses');
-      await deleteAllFromTable('support_tickets', 'tickets');
+      await deleteAllFromTable('predictions');
+      await deleteAllFromTable('redemptions');
+      await deleteAllFromTable('points_bonuses');
+      await deleteAllFromTable('support_tickets');
 
-      console.log('[cleanUserData] Resultado Supabase:', log);
+
 
       // Limpiar _pendingDeletes
       _pendingDeletes.length = 0;
@@ -465,7 +446,7 @@ export const db = {
           d.appSettings.push(cleanRecord);
         }
         save(d);
-        console.log('[cleanUserData] Timestamp de limpieza guardado:', cleanTimestamp);
+
       } catch (err) {
         console.warn('[cleanUserData] Error guardando last_clean:', err.message);
       }
@@ -1061,7 +1042,7 @@ export const db = {
       };
       d.users.push(admin);
       this._persist();
-      console.log('[DB] Admin user seeded');
+
     }
 
     const hasSettings = d.appSettings.length > 0;
