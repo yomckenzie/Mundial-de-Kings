@@ -154,13 +154,13 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
   } catch (err) {
     // Si falla por violación de foreign key (prize_id no existe), omite el batch
     if (err.code === '23503') {
-      console.warn(`[Supabase] FK violation en ${tableName}, omitiendo sync temporalmente`)
+      console.log(`[Supabase] FK violation en ${tableName}, omitiendo sync temporalmente`)
       return false
     }
     // Si falla por unique constraint (ej: email duplicado en users),
     // intentar uno por uno cambiando la columna de conflicto
     if (err.code === '23505' || err.status === 409) {
-      console.warn(`[Supabase] Conflict en ${tableName}, intentando individual por email...`)
+      console.log(`[Supabase] Conflict en ${tableName}, intentando individual por email...`)
       let successCount = 0
       for (const record of cleanedRecords) {
         try {
@@ -186,13 +186,13 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
           }
         } catch {}
       }
-      console.warn(`[Supabase] Sincronizados ${successCount}/${cleanedRecords.length} en ${tableName}`)
+      console.log(`[Supabase] Sincronizados ${successCount}/${cleanedRecords.length} en ${tableName}`)
       return successCount > 0
     }
     // Fallback: si no existe la constraint UNIQUE para la columna de conflicto (ej: key)
     // reintentar con 'id' como columna de conflicto
     if (conflictColumn !== 'id' && (err.code === '42P10' || err.message?.includes('ON CONFLICT'))) {
-      console.warn(`[Supabase] No hay UNIQUE en ${conflictColumn} para ${tableName}, reintentando con id...`)
+      console.log(`[Supabase] No hay UNIQUE en ${conflictColumn} para ${tableName}, reintentando con id...`)
       return await syncTableToSupabase(tableName, records, 'id')
     }
     console.warn(`[Supabase] Error syncing ${tableName}:`, err.message)
