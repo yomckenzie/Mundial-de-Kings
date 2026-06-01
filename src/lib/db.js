@@ -381,35 +381,32 @@ export const db = {
         try {
           const { data: rows, error: fetchErr } = await supabase
             .from(table).select('id').limit(5000);
-          if (fetchErr) { console.error(`[cleanUserData] Error fetching ${table}:`, fetchErr.message); return; }
-          if (!rows || rows.length === 0) return;
+          if (fetchErr || !rows || rows.length === 0) return;
           for (let i = 0; i < rows.length; i += BATCH) {
             const ids = rows.slice(i, i + BATCH).map(r => r.id);
             const { error } = await supabase.from(table).delete().in('id', ids);
             if (error) {
-              console.error(`[cleanUserData] Error deleting ${table} batch:`, error.message, error.code, error.details);
+              console.warn(`[cleanUserData] Error deleting ${table} batch:`, error.message);
             }
           }
-        } catch (err) { console.error(`[cleanUserData] Exception deleting ${table}:`, err.message); }
+        } catch {}
       };
 
       // 1. Eliminar usuarios NO admin: fetch IDs, filter out admin, batch-delete
       try {
         const { data: allUsers, error: fetchErr } = await supabase
           .from('users').select('id, role').limit(5000);
-        if (fetchErr) { console.error('[cleanUserData] Error fetching users:', fetchErr.message, fetchErr.code); }
-        else if (allUsers && allUsers.length > 0) {
+        if (!fetchErr && allUsers && allUsers.length > 0) {
           const nonAdminIds = allUsers.filter(u => u.role !== 'admin').map(u => u.id);
-          console.error(`[cleanUserData] Deleting ${nonAdminIds.length} non-admin users from Supabase`);
           for (let i = 0; i < nonAdminIds.length; i += BATCH) {
             const batch = nonAdminIds.slice(i, i + BATCH);
             const { error } = await supabase.from('users').delete().in('id', batch);
             if (error) {
-              console.error('[cleanUserData] Error users batch:', error.message, error.code, error.details);
+              console.warn('[cleanUserData] Error users batch:', error.message);
             }
           }
         }
-      } catch (err) { console.error('[cleanUserData] Exception users:', err.message); }
+      } catch {}
 
       // 2-5. Eliminar TODO de tablas secundarias
       await deleteAllFromTable('predictions');
@@ -448,7 +445,7 @@ export const db = {
         save(d);
 
       } catch (err) {
-        console.error('[cleanUserData] Error guardando last_clean:', err.message, err.code, err.details);
+        console.warn('[cleanUserData] Error guardando last_clean:', err.message);
       }
 
       // Subir admin user + tablas que NO se limpiaron (matches, prizes, appSettings)

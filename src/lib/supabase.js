@@ -24,9 +24,6 @@ export const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null
 
-// Debug: expose for diagnostic queries (remove after testing)
-if (typeof window !== 'undefined') window.__supabase = supabase
-
 // Helper para determinar si Supabase está disponible
 export const isSupabaseAvailable = () => supabase !== null
 
