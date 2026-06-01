@@ -43,3 +43,4 @@ Thumbs.db
 # Playwright test artifacts
 .playwright-mcp/
 admin-matches*.png
+.claude/
