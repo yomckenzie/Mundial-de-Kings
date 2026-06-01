@@ -21,6 +21,8 @@ let _syncFromSupabaseInProgress = false;
 let _resyncQueued = false;
 let _blockFromSync = false; // Bloquea sync FROM Supabase durante operaciones destructivas
 const _pendingDeletes = []; // { tableName, id }[]
+const CLEAN_AT_KEY = 'chessking_last_clean_at';
+let _lastCleanAt = (() => { try { return localStorage.getItem(CLEAN_AT_KEY) || null; } catch { return null; } })();
 
 const load = () => {
   try {
@@ -78,7 +80,7 @@ const syncTableFromSupabaseFn = async (jsKey, localRecords) => {
   const tableName = tableNameToSupabase(jsKey);
   if (!tableName || !isSupabaseAvailable()) return localRecords;
   try {
-    const result = await syncTableFromSupabase(tableName, localRecords);
+    const result = await syncTableFromSupabase(tableName, localRecords, { lastCleanAt: _lastCleanAt });
     if (result) return result;
   } catch {}
   return localRecords;
@@ -165,6 +167,25 @@ export const db = {
 
     _syncFromSupabaseInProgress = true;
     try {
+      // 0. Verificar si hay un timestamp de limpieza en Supabase
+      //    más reciente que el local — evita que clientes re-suban datos borrados
+      if (supabase) {
+        try {
+          const { data: settings } = await supabase.from('app_settings').select('key, value');
+          if (settings) {
+            const cleanSetting = settings.find(s => s.key === 'last_clean');
+            if (cleanSetting?.value) {
+              const remoteCleanAt = cleanSetting.value;
+              if (!_lastCleanAt || new Date(remoteCleanAt).getTime() > new Date(_lastCleanAt).getTime()) {
+                _lastCleanAt = remoteCleanAt;
+                try { localStorage.setItem(CLEAN_AT_KEY, _lastCleanAt); } catch {}
+                console.log('[DB] Limpieza remota detectada:', _lastCleanAt);
+              }
+            }
+          }
+        } catch {}
+      }
+
       const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
       let changed = false;
 
@@ -415,6 +436,25 @@ export const db = {
 
       // Limpiar _pendingDeletes
       _pendingDeletes.length = 0;
+
+      // Guardar timestamp de limpieza en Supabase (app_settings)
+      // para que TODOS los clientes sepan que no deben re-subir datos viejos
+      try {
+        const cleanTimestamp = getNow();
+        _lastCleanAt = cleanTimestamp;
+        try { localStorage.setItem(CLEAN_AT_KEY, _lastCleanAt); } catch {}
+        // Upsert del setting last_clean
+        const { data: existingSettings } = await supabase
+          .from('app_settings').select('id').eq('key', 'last_clean');
+        if (existingSettings && existingSettings.length > 0) {
+          await supabase.from('app_settings').update({ value: cleanTimestamp }).eq('id', existingSettings[0].id);
+        } else {
+          await supabase.from('app_settings').insert({ id: makeId(), key: 'last_clean', value: cleanTimestamp });
+        }
+        console.log('[cleanUserData] Timestamp de limpieza guardado:', cleanTimestamp);
+      } catch (err) {
+        console.warn('[cleanUserData] Error guardando last_clean:', err.message);
+      }
 
       // Subir admin user + tablas que NO se limpiaron (matches, prizes, appSettings)
       await this._syncAllToSupabase();

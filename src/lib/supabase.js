@@ -205,7 +205,7 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
  * Maneja: nuevos registros remotos, actualizaciones a existentes.
  * RETORNA SIEMPRE UN NUEVO ARRAY si hubo cambios (no muta localRecords).
  */
-export async function syncTableFromSupabase(tableName, localRecords = []) {
+export async function syncTableFromSupabase(tableName, localRecords = [], options = {}) {
   if (!supabase) return null
   try {
     const remoteData = await fetchAll(tableName)
@@ -266,7 +266,14 @@ export async function syncTableFromSupabase(tableName, localRecords = []) {
           const isUserGenerated = userGeneratedTables.includes(tableName)
           const isRecent = local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)
           
-          if (isUserGenerated || isRecent) {
+          // Si hay un lastCleanAt, no preservar registros anteriores a la limpieza
+          // Esto previene que otros dispositivos re-suban datos que fueron eliminados
+          const isBeforeClean = options.lastCleanAt && local.created_date && new Date(local.created_date).getTime() < new Date(options.lastCleanAt).getTime()
+          
+          if (isBeforeClean) {
+            // Registro creado antes de la limpieza — descartar, no re-subir
+            changed = true
+          } else if (isUserGenerated || isRecent) {
             result.push(local)
           } else {
             changed = true
