@@ -92,6 +92,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
         prediction_points: 0,
         bonus_points: 100,
         profile_complete: true,
+        created_date: new Date().toISOString(),
       };
 
       // Escribir a Supabase PRIMERO (sin locks de por medio)

@@ -268,7 +268,10 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
           
           // Si hay un lastCleanAt, no preservar registros anteriores a la limpieza
           // Esto previene que otros dispositivos re-suban datos que fueron eliminados
-          const isBeforeClean = options.lastCleanAt && local.created_date && new Date(local.created_date).getTime() < new Date(options.lastCleanAt).getTime()
+          const isBeforeClean = options.lastCleanAt && (
+            !local.created_date || // sin fecha = asumir creado antes de la limpieza
+            new Date(local.created_date).getTime() < new Date(options.lastCleanAt).getTime()
+          )
           
           if (isBeforeClean) {
             // Registro creado antes de la limpieza — descartar, no re-subir
