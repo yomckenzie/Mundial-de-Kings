@@ -19,6 +19,7 @@ let _pollInterval = null;
 let _syncToSupabaseInProgress = false;
 let _syncFromSupabaseInProgress = false;
 let _resyncQueued = false;
+let _blockFromSync = false; // Bloquea sync FROM Supabase durante operaciones destructivas
 const _pendingDeletes = []; // { tableName, id }[]
 
 const load = () => {
@@ -108,18 +109,19 @@ export const db = {
     window.dispatchEvent(new CustomEvent('db-synced'));
   },
 
-  _init() {
+  _init(opts) {
     if (!this._data) {
       this._data = load();
       // Limpiar live_started_at para partidos que NO están en vivo (evita timers stale)
       this._cleanStaleLiveTimers();
       this.seedIfEmpty();
-      // Cargar datos desde Supabase en segundo plano
-      // Los componentes React se actualizarán vía evento 'db-synced'
-      this._syncAllFromSupabase().then(() => {
-        // Subir datos locales que aun no esten en la nube (ej: cambios del admin antes del deploy)
-        this._syncAllToSupabase();
-      });
+      // Cargar datos desde Supabase en segundo plano (skipSync para operaciones destructivas)
+      if (!opts?.skipSync) {
+        this._syncAllFromSupabase().then(() => {
+          // Subir datos locales que aun no esten en la nube (ej: cambios del admin antes del deploy)
+          this._syncAllToSupabase();
+        });
+      }
 
       // Polling automático cada 60s para detectar cambios de otros admins/dispositivos
       if (!_pollInterval) {
@@ -146,6 +148,8 @@ export const db = {
       console.log('[DB] Sync a Supabase en progreso, saltando polling');
       return;
     }
+    // Bloqueado durante operaciones destructivas (cleanUserData)
+    if (_blockFromSync) return;
     return this._syncAllFromSupabaseInternal();
   },
 
@@ -157,7 +161,7 @@ export const db = {
 
   // Implementación interna de sincronización desde Supabase
   async _syncAllFromSupabaseInternal() {
-    if (_syncFromSupabaseInProgress) return;
+    if (_syncFromSupabaseInProgress || _blockFromSync) return;
 
     _syncFromSupabaseInProgress = true;
     try {
@@ -303,7 +307,13 @@ export const db = {
    * - Puntos extra (pointsBonuses)
    */
   async cleanUserData() {
-    const d = this._init();
+    // Bloquear sync FROM Supabase para evitar race condition:
+    // _init() lanza _syncAllFromSupabase() en background que restauraría
+    // los usuarios borrados desde Supabase después de la limpieza local.
+    // Usamos _blockFromSync (no _syncToSupabaseInProgress) para que
+    // _syncAllToSupabase() siga funcionando normalmente.
+    _blockFromSync = true;
+    const d = this._init({ skipSync: true });
     const now = getNow();
 
     // 1. Identificar usuarios NO admin y sus emails
@@ -362,8 +372,13 @@ export const db = {
     _syncInProgress = {};
     // _syncAllToSupabase procesa _pendingDeletes primero (individual .eq('id',id))
     // y luego hace upsert de las tablas restantes (admin user, matches, prizes, etc.)
-    if (isSupabaseAvailable()) {
-      await this._syncAllToSupabase();
+    try {
+      if (isSupabaseAvailable()) {
+        await this._syncAllToSupabase();
+      }
+    } finally {
+      // Liberar bloqueo SIEMPRE (incluso si _syncAllToSupabase falla)
+      _blockFromSync = false;
     }
     notifyReactComponents();
 
