@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { api } from '@/api/client';
 import { db } from '@/lib/db';
 import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

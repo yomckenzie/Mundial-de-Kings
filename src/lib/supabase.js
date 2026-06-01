@@ -1,7 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+let supabaseUrl = ''
+let supabaseAnonKey = ''
+try {
+  // In Vite/Esm environment
+  supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+} catch {
+  // Fallback to Node env variables (e.g., when running scripts)
+  supabaseUrl = process.env.VITE_SUPABASE_URL || ''
+  supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || ''
+}
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(

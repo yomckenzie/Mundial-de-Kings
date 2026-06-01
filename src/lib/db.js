@@ -5,7 +5,7 @@ import {
   syncTableFromSupabase,
   stripLocalFields,
   TABLES
-} from './supabase';
+} from './supabase.js';
 
 const STORAGE_KEY = 'chessking_db';
 
@@ -362,7 +362,9 @@ export const db = {
     _syncInProgress = {};
     // _syncAllToSupabase procesa _pendingDeletes primero (individual .eq('id',id))
     // y luego hace upsert de las tablas restantes (admin user, matches, prizes, etc.)
-    await this._syncAllToSupabase();
+    if (isSupabaseAvailable()) {
+      await this._syncAllToSupabase();
+    }
     notifyReactComponents();
 
     return { deletedUsers: nonAdminIds.length, deletedPredictions: predsToDelete.length, deletedRedemptions: redemptionsToDelete.length, deletedBonuses: bonusesToDelete.length };

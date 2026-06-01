@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, ChevronRight, Sparkles, LogIn } from 'lucide-react';
+import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, Sparkles, LogIn } from 'lucide-react';
 
 const tabs = [
   { id: 'overview', label: 'Resumen', icon: User },
