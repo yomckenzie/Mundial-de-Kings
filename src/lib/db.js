@@ -310,8 +310,6 @@ export const db = {
     // Bloquear sync FROM Supabase para evitar race condition:
     // _init() lanza _syncAllFromSupabase() en background que restauraría
     // los usuarios borrados desde Supabase después de la limpieza local.
-    // Usamos _blockFromSync (no _syncToSupabaseInProgress) para que
-    // _syncAllToSupabase() siga funcionando normalmente.
     _blockFromSync = true;
     const d = this._init({ skipSync: true });
     const now = getNow();
@@ -328,9 +326,9 @@ export const db = {
 
     const adminUsers = (d.users || []).filter(u => u.role === 'admin');
 
-    // 2. Eliminar predicciones de usuarios no-admin
-    const predsToDelete = (d.predictions || []).filter(p => nonAdminEmails.has(p.user_email));
-    d.predictions = (d.predictions || []).filter(p => !nonAdminEmails.has(p.user_email));
+    // 2. Eliminar TODAS las predicciones (incluye admin)
+    const predsToDelete = [...(d.predictions || [])];
+    d.predictions = [];
 
     // 3. Eliminar canjes de usuarios no-admin
     const redemptionsToDelete = (d.redemptions || []).filter(r => nonAdminEmails.has(r.user_email));
@@ -347,39 +345,68 @@ export const db = {
     // 6. Eliminar usuarios NO admin
     d.users = adminUsers;
 
-    // ── Marcar eliminaciones pendientes para que _syncAllToSupabase las procese ──
-    // Usamos _pendingDeletes en vez de direct deletes con .in('id', batch)
-    // porque el mecanismo individual .eq('id', id) dentro de _syncAllToSupabase
-    // es más fiable y es el mismo que usan deduplicate(), prizes.remove(), etc.
-    for (const id of nonAdminIds) {
-      _pendingDeletes.push({ tableName: 'users', id });
-    }
-    for (const p of predsToDelete) {
-      _pendingDeletes.push({ tableName: 'predictions', id: p.id });
-    }
-    for (const r of redemptionsToDelete) {
-      _pendingDeletes.push({ tableName: 'redemptions', id: r.id });
-    }
-    for (const b of bonusesToDelete) {
-      _pendingDeletes.push({ tableName: 'points_bonuses', id: b.id });
-    }
-    for (const t of ticketsToDelete) {
-      _pendingDeletes.push({ tableName: 'support_tickets', id: t.id });
-    }
-
-    // 8. Guardar en localStorage
+    // 7. Guardar en localStorage
     save(d);
     _syncInProgress = {};
-    // _syncAllToSupabase procesa _pendingDeletes primero (individual .eq('id',id))
-    // y luego hace upsert de las tablas restantes (admin user, matches, prizes, etc.)
-    try {
-      if (isSupabaseAvailable()) {
-        await this._syncAllToSupabase();
+
+    // ── Eliminar DIRECTAMENTE de Supabase en batch (no depender de _pendingDeletes) ──
+    if (isSupabaseAvailable() && supabase) {
+      const BATCH = 50;
+      const log = { users: 0, predictions: 0, redemptions: 0, bonuses: 0, tickets: 0 };
+
+      // Helper: eliminar en lotes por ID
+      const batchDelete = async (tableName, ids) => {
+        for (let i = 0; i < ids.length; i += BATCH) {
+          const batch = ids.slice(i, i + BATCH);
+          try {
+            const { error } = await supabase.from(tableName).delete().in('id', batch);
+            if (error) {
+              console.warn(`[cleanUserData] Error deleting ${tableName}:`, error.message);
+            } else {
+              log[tableName === 'points_bonuses' ? 'bonuses' : tableName === 'support_tickets' ? 'tickets' : tableName] += batch.length;
+            }
+          } catch (err) {
+            console.warn(`[cleanUserData] Exception deleting ${tableName}:`, err.message);
+          }
+        }
+      };
+
+      // Eliminar predicciones de usuarios no-admin
+      if (predsToDelete.length > 0) {
+        await batchDelete('predictions', predsToDelete.map(p => p.id));
       }
-    } finally {
-      // Liberar bloqueo SIEMPRE (incluso si _syncAllToSupabase falla)
-      _blockFromSync = false;
+
+      // Eliminar canjes de usuarios no-admin
+      if (redemptionsToDelete.length > 0) {
+        await batchDelete('redemptions', redemptionsToDelete.map(r => r.id));
+      }
+
+      // Eliminar puntos extra
+      if (bonusesToDelete.length > 0) {
+        await batchDelete('points_bonuses', bonusesToDelete.map(b => b.id));
+      }
+
+      // Eliminar tickets de soporte
+      if (ticketsToDelete.length > 0) {
+        await batchDelete('support_tickets', ticketsToDelete.map(t => t.id));
+      }
+
+      // Eliminar usuarios no-admin
+      if (nonAdminIds.length > 0) {
+        await batchDelete('users', nonAdminIds);
+      }
+
+      console.log('[cleanUserData] Eliminaciones Supabase:', log);
+
+      // Limpiar _pendingDeletes ya que acabamos de eliminar directamente
+      _pendingDeletes.length = 0;
+
+      // Subir solo admin user + tablas que NO se limpiaron (matches, prizes, appSettings)
+      // para que Supabase refleje el estado local limpio
+      await this._syncAllToSupabase();
     }
+
+    _blockFromSync = false;
     notifyReactComponents();
 
     return { deletedUsers: nonAdminIds.length, deletedPredictions: predsToDelete.length, deletedRedemptions: redemptionsToDelete.length, deletedBonuses: bonusesToDelete.length };
