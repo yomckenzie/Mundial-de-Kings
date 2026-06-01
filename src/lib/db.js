@@ -330,17 +330,17 @@ export const db = {
     const predsToDelete = [...(d.predictions || [])];
     d.predictions = [];
 
-    // 3. Eliminar canjes de usuarios no-admin
-    const redemptionsToDelete = (d.redemptions || []).filter(r => nonAdminEmails.has(r.user_email));
-    d.redemptions = (d.redemptions || []).filter(r => !nonAdminEmails.has(r.user_email));
+    // 3. Eliminar TODOS los canjes
+    const redemptionsToDelete = [...(d.redemptions || [])];
+    d.redemptions = [];
 
     // 4. Eliminar todos los puntos extra (pointsBonuses)
     const bonusesToDelete = (d.pointsBonuses || []);
     d.pointsBonuses = [];
 
-    // 5. Eliminar tickets de soporte de usuarios no-admin
-    const ticketsToDelete = (d.supportTickets || []).filter(t => nonAdminEmails.has(t.user_email));
-    d.supportTickets = (d.supportTickets || []).filter(t => !nonAdminEmails.has(t.user_email));
+    // 5. Eliminar TODOS los tickets de soporte
+    const ticketsToDelete = [...(d.supportTickets || [])];
+    d.supportTickets = [];
 
     // 6. Eliminar usuarios NO admin
     d.users = adminUsers;
