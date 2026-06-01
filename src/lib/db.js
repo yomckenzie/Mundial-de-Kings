@@ -349,60 +349,69 @@ export const db = {
     save(d);
     _syncInProgress = {};
 
-    // ── Eliminar DIRECTAMENTE de Supabase en batch (no depender de _pendingDeletes) ──
+    // ── Eliminar DIRECTAMENTE de Supabase usando filtros server-side ──
+    // NO dependemos de IDs locales — usamos .delete() con filtros para que
+    // Supabase borre todo lo que no sea admin directamente en la BD.
+    // NOTA: NO usar head:true — convierte el request en HEAD y no borra nada.
     if (isSupabaseAvailable() && supabase) {
-      const BATCH = 50;
-      const log = { users: 0, predictions: 0, redemptions: 0, bonuses: 0, tickets: 0 };
+      const log = {};
 
-      // Helper: eliminar en lotes por ID
-      const batchDelete = async (tableName, ids) => {
-        for (let i = 0; i < ids.length; i += BATCH) {
-          const batch = ids.slice(i, i + BATCH);
-          try {
-            const { error } = await supabase.from(tableName).delete().in('id', batch);
-            if (error) {
-              console.warn(`[cleanUserData] Error deleting ${tableName}:`, error.message);
-            } else {
-              log[tableName === 'points_bonuses' ? 'bonuses' : tableName === 'support_tickets' ? 'tickets' : tableName] += batch.length;
-            }
-          } catch (err) {
-            console.warn(`[cleanUserData] Exception deleting ${tableName}:`, err.message);
-          }
-        }
-      };
+      // 1. Eliminar usuarios NO admin (neq role=admin)
+      try {
+        const { count, error } = await supabase
+          .from('users')
+          .delete({ count: 'exact' })
+          .neq('role', 'admin');
+        log.users = error ? 'ERROR: ' + error.message : (count ?? 'ok');
+        if (error) console.warn('[cleanUserData] Error users:', error.message);
+      } catch (err) { log.users = 'EXC: ' + err.message; }
 
-      // Eliminar predicciones de usuarios no-admin
-      if (predsToDelete.length > 0) {
-        await batchDelete('predictions', predsToDelete.map(p => p.id));
-      }
+      // 2. Eliminar TODAS las predicciones (incluye admin)
+      try {
+        const { count, error } = await supabase
+          .from('predictions')
+          .delete({ count: 'exact' })
+          .neq('id', '__none__');
+        log.predictions = error ? 'ERROR: ' + error.message : (count ?? 'ok');
+        if (error) console.warn('[cleanUserData] Error predictions:', error.message);
+      } catch (err) { log.predictions = 'EXC: ' + err.message; }
 
-      // Eliminar canjes de usuarios no-admin
-      if (redemptionsToDelete.length > 0) {
-        await batchDelete('redemptions', redemptionsToDelete.map(r => r.id));
-      }
+      // 3. Eliminar TODOS los canjes
+      try {
+        const { count, error } = await supabase
+          .from('redemptions')
+          .delete({ count: 'exact' })
+          .neq('id', '__none__');
+        log.redemptions = error ? 'ERROR: ' + error.message : (count ?? 'ok');
+        if (error) console.warn('[cleanUserData] Error redemptions:', error.message);
+      } catch (err) { log.redemptions = 'EXC: ' + err.message; }
 
-      // Eliminar puntos extra
-      if (bonusesToDelete.length > 0) {
-        await batchDelete('points_bonuses', bonusesToDelete.map(b => b.id));
-      }
+      // 4. Eliminar TODOS los puntos extra
+      try {
+        const { count, error } = await supabase
+          .from('points_bonuses')
+          .delete({ count: 'exact' })
+          .neq('id', '__none__');
+        log.bonuses = error ? 'ERROR: ' + error.message : (count ?? 'ok');
+        if (error) console.warn('[cleanUserData] Error bonuses:', error.message);
+      } catch (err) { log.bonuses = 'EXC: ' + err.message; }
 
-      // Eliminar tickets de soporte
-      if (ticketsToDelete.length > 0) {
-        await batchDelete('support_tickets', ticketsToDelete.map(t => t.id));
-      }
+      // 5. Eliminar TODOS los tickets de soporte
+      try {
+        const { count, error } = await supabase
+          .from('support_tickets')
+          .delete({ count: 'exact' })
+          .neq('id', '__none__');
+        log.tickets = error ? 'ERROR: ' + error.message : (count ?? 'ok');
+        if (error) console.warn('[cleanUserData] Error tickets:', error.message);
+      } catch (err) { log.tickets = 'EXC: ' + err.message; }
 
-      // Eliminar usuarios no-admin
-      if (nonAdminIds.length > 0) {
-        await batchDelete('users', nonAdminIds);
-      }
-
-      console.log('[cleanUserData] Eliminaciones Supabase:', log);
+      console.log('[cleanUserData] Resultado Supabase:', log);
 
       // Limpiar _pendingDeletes ya que acabamos de eliminar directamente
       _pendingDeletes.length = 0;
 
-      // Subir solo admin user + tablas que NO se limpiaron (matches, prizes, appSettings)
-      // para que Supabase refleje el estado local limpio
+      // Subir admin user + tablas que NO se limpiaron (matches, prizes, appSettings)
       await this._syncAllToSupabase();
     }
 
