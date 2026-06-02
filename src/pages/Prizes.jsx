@@ -238,7 +238,7 @@ export default function Prizes() {
         >
           <Gift className="w-14 h-14 text-muted-foreground/20 mx-auto" />
           <p className="text-muted-foreground">No hay premios disponibles en este momento.</p>
-          <p className="text-xs text-muted-foreground/60">Vuelve pronto — el administrador puede agregar nuevos premios.</p>
+          <p className="text-xs text-muted-foreground/60">Vuelve pronto — estamos preparando nuevos premios para ti.</p>
         </motion.div>
       )}
 
