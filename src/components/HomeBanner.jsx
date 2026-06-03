@@ -55,6 +55,10 @@ export default function HomeBanner() {
               src={BANNERS[current]}
               alt={`Banner ${current + 1}`}
               className="w-full h-full object-cover"
+              // Primer banner: alta prioridad (es la imagen LCP). Resto: lazy.
+              loading={current === 0 ? 'eager' : 'lazy'}
+              fetchPriority={current === 0 ? 'high' : 'auto'}
+              decoding="async"
             />
           </motion.div>
         </AnimatePresence>

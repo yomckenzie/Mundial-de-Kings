@@ -102,7 +102,7 @@ export default function AdminPrizes() {
               {uploading && <p className="text-xs text-muted-foreground mt-1">Subiendo imagen...</p>}
               {form.image_url && (
                 <div className="mt-3 relative group rounded-lg overflow-hidden border border-border bg-muted/30">
-                  <img src={form.image_url} alt="Vista previa" className="w-full h-48 object-contain" />
+                  <img src={form.image_url} alt="Vista previa" loading="lazy" decoding="async" className="w-full h-48 object-contain" />
                   <button
                     type="button"
                     onClick={() => setForm(prev => ({ ...prev, image_url: '' }))}
@@ -144,7 +144,7 @@ export default function AdminPrizes() {
                   className="w-14 h-14 rounded overflow-hidden cursor-pointer"
                   onClick={() => window.open(p.image_url, '_blank')}
                 >
-                  <img src={p.image_url} alt={p.name} className="w-full h-full object-cover hover:scale-110 transition-transform duration-200" />
+                  <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover hover:scale-110 transition-transform duration-200" />
                 </div>
               ) : (
                 <div className="w-14 h-14 rounded bg-muted flex items-center justify-center">

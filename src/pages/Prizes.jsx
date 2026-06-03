@@ -264,7 +264,7 @@ export default function Prizes() {
                     className="aspect-video w-full overflow-hidden cursor-pointer group relative"
                     onClick={() => setPreviewImage(prize)}
                   >
-                    <img src={prize.image_url} alt={prize.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    <img src={prize.image_url} alt={prize.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                       <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 group-hover:scale-100 duration-200">
                         <Search className="w-[18px] h-[18px]" />

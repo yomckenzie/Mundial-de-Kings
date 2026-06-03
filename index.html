@@ -5,6 +5,11 @@
     <link rel="icon" type="image/png" href="/LOGOSCHESSKING_N2.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kings World Cup - ChessKing</title>
+    <!-- Preconnect to Supabase storage so banner/prize images start downloading ASAP -->
+    <link rel="preconnect" href="https://khrxddafhzvfdyivysay.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://khrxddafhzvfdyivysay.supabase.co" />
+    <!-- Preload the first banner (LCP image) -->
+    <link rel="preload" as="image" href="https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/1779747733118_eomu63.jpg" fetchpriority="high" />
     <!-- Anti-FOUC: apply dark mode before React hydrates -->
     <script>
       (function() {
