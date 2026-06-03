@@ -1,15 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { api } from '@/api/client';
 import Navbar from './Navbar';
 import PanamaClockWidget from '@/components/PanamaClockWidget';
-
-const pageVariants = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.2, ease: 'easeIn' } },
-};
 
 export default function AppLayout() {
   const [user, setUser] = useState(null);
@@ -51,17 +45,14 @@ export default function AppLayout() {
         <PanamaClockWidget />
       </div>
       <main className="max-w-6xl mx-auto px-4 py-6">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            variants={pageVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-          >
-            <Outlet context={{ user, setUser }} />
-          </motion.div>
-        </AnimatePresence>
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+        >
+          <Outlet context={{ user, setUser }} />
+        </motion.div>
       </main>
     </div>
   );
