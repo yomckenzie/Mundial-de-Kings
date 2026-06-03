@@ -93,18 +93,18 @@
 }
 
 /* ──────────────────────────────────────────────
-   Safety net: framer-motion a veces no dispara su
-   animación en hard reload y deja elementos con
-   style="opacity:0" inline (invisibles). Esta regla
-   fuerza la visibilidad después de 100ms, dejando
-   que la animación JS de FM ocurra primero si funciona.
+   Safety net: framer-motion deja elementos con
+   style="opacity:0" inline cuando su animación JS
+   no se dispara en hard reload (contenido invisible
+   pero presente). Un !important dentro de @keyframes
+   es IGNORADO por el spec de CSS, así que usamos una
+   regla normal con !important — que SÍ sobrescribe el
+   inline style. Scopeada a <main> para no afectar
+   diálogos/modales (que portalean fuera de main).
    ────────────────────────────────────────────── */
-@keyframes fm-fallback {
-  to { opacity: 1 !important; transform: none !important; }
-}
-
-[style*="opacity: 0"] {
-  animation: fm-fallback 0.35s ease-out 0.1s forwards;
+main [style*="opacity: 0"],
+main [style*="opacity:0"] {
+  opacity: 1 !important;
 }
 
 @layer utilities {
