@@ -130,22 +130,8 @@ CREATE INDEX IF NOT EXISTS idx_points_bonuses_user ON points_bonuses(user_email)
 
 
 -- ============================================================
--- POLÍTICAS DE SEGURIDAD (RLS)
--- Permitir todas las operaciones con la anon key
+-- NOTA: La app usa la anon key de Supabase y la seguridad se
+-- maneja a nivel de aplicación (flag role='admin' en la tabla users).
+-- RLS queda DESHABILITADO. Para aplicarlo, ejecutá después:
+--   supabase-fix-all-rls.sql
 -- ============================================================
-
--- Helper: eliminar política existente si existe y crear una nueva permisiva
-DO $$
-DECLARE
-  tbl TEXT;
-BEGIN
-  FOR tbl IN SELECT unnest(ARRAY['users', 'matches', 'predictions', 'prizes', 'redemptions', 'support_tickets', 'points_bonuses', 'app_settings'])
-  LOOP
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', tbl);
-    EXECUTE format('DROP POLICY IF EXISTS allow_all ON %I;', tbl);
-    EXECUTE format(
-      'CREATE POLICY allow_all ON %I FOR ALL USING (true) WITH CHECK (true);',
-      tbl
-    );
-  END LOOP;
-END $$;

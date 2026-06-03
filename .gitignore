@@ -1,10 +1,14 @@
 # Dependencias
 node_modules
+.pnpm-store
 
 # Build output
 dist
 dist-ssr
 *.local
+
+# pnpm
+.pnpm-debug.log*
 
 # Variables de entorno
 .env

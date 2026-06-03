@@ -1,4 +1,0 @@
-
-> chessking-app@0.0.0 typecheck
-> tsc -p ./jsconfig.json
-
