@@ -3,9 +3,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const BANNERS = [
-  'https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/1779747733118_eomu63.jpg',
-  'https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/1779747739288_tr78xa.jpg',
-  'https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/1779747744244_a9v85b.jpg',
+  'https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/Banner1.webp',
+  'https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/Banner2.webp',
+  'https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/Banner3.webp',
 ];
 
 export default function HomeBanner() {
