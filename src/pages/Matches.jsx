@@ -32,10 +32,13 @@ const getMatchDate = (match_date, match_time) => {
   return new Date(year, month - 1, day, hour, minute, 0);
 };
 
+const VISIBILITY_WINDOW_HOURS = 48; // Partido aparece en la lista
+const PREDICTION_WINDOW_HOURS = 24; // Usuario puede enviar pronóstico
+
 const getTimeUntilOpen = (match_date, match_time) => {
   const matchDateTime = getMatchDate(match_date, match_time);
   if (!matchDateTime) return null;
-  const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
+  const openFrom = new Date(matchDateTime.getTime() - PREDICTION_WINDOW_HOURS * 60 * 60 * 1000);
   const now = new Date();
   const diff = openFrom - now;
   if (diff <= 0) return null;
@@ -50,7 +53,7 @@ const isMatchOpenForPredictions = (match) => {
   if (match.status === 'open') return true;
   const matchDateTime = getMatchDate(match.match_date, match.match_time);
   if (!matchDateTime) return false;
-  const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
+  const openFrom = new Date(matchDateTime.getTime() - PREDICTION_WINDOW_HOURS * 60 * 60 * 1000);
   const now = new Date();
   return now >= openFrom && now < matchDateTime;
 };
@@ -406,19 +409,19 @@ export default function Matches() {
     submitPrediction.mutate(data);
   };
 
-  const isWithin24h = (match) => {
+  const isWithinVisibilityWindow = (match) => {
     // Si el admin lo abrió manualmente, se muestra siempre
     if (match.status === 'open') return true;
     const matchDateTime = getMatchDate(match.match_date, match.match_time);
     if (!matchDateTime) return false;
-    const openFrom = new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000);
+    const visibleFrom = new Date(matchDateTime.getTime() - VISIBILITY_WINDOW_HOURS * 60 * 60 * 1000);
     const now = new Date();
-    return now >= openFrom && now < matchDateTime;
+    return now >= visibleFrom && now < matchDateTime;
   };
 
   const liveMatches = matches.filter(m => m.status === 'live');
   const upcomingMatches = matches
-    .filter(m => m.status === 'pending' || m.status === 'open')
+    .filter(m => (m.status === 'pending' || m.status === 'open') && isWithinVisibilityWindow(m))
     .sort((a, b) => {
       if (a.status === 'open' && b.status !== 'open') return -1;
       if (a.status !== 'open' && b.status === 'open') return 1;
