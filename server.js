@@ -37,6 +37,20 @@ app.use(
 );
 
 // ──────────────────────────────────────────
+// index.html → must NEVER be cached (otherwise Cloudflare serves
+// stale HTML pointing to old asset hashes after a deploy, causing
+// blank pages on hard reload of deep links like /ranking, /prizes).
+// ──────────────────────────────────────────
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path === '/index.html') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
+// ──────────────────────────────────────────
 // Other static files (images, fonts, etc.)
 // ──────────────────────────────────────────
 app.use(
@@ -46,9 +60,13 @@ app.use(
 );
 
 // ──────────────────────────────────────────
-// SPA fallback — all routes serve index.html
+// SPA fallback — use middleware (more reliable than a wildcard route
+// in Express 5 / path-to-regexp v6+) and never cache.
 // ──────────────────────────────────────────
-app.get('*path', (_req, res) => {
+app.use((_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
