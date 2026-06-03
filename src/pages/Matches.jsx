@@ -417,7 +417,8 @@ export default function Matches() {
   };
 
   const liveMatches = matches.filter(m => m.status === 'live');
-  const upcomingMatches = matches.filter(m => (m.status === 'pending' || m.status === 'open') && isWithin24h(m))
+  const upcomingMatches = matches
+    .filter(m => m.status === 'pending' || m.status === 'open')
     .sort((a, b) => {
       if (a.status === 'open' && b.status !== 'open') return -1;
       if (a.status !== 'open' && b.status === 'open') return 1;
