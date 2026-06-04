@@ -1,25 +1,26 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
 import { db } from '@/lib/db';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(() => db.getCurrentUser());
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!db.getCurrentUser());
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     const stored = db.getCurrentUser();
-    if (stored) {
+    if (stored && !user) {
       setUser(stored);
       setIsAuthenticated(true);
-    } else {
+    } else if (!stored) {
       setIsAuthenticated(false);
     }
     setIsLoadingAuth(false);
     setAuthChecked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const logout = useCallback((shouldRedirect = true) => {
@@ -43,21 +44,23 @@ export const AuthProvider = ({ children }) => {
     return current;
   }, []);
 
+  const value = useMemo(() => ({
+    user,
+    isAuthenticated,
+    isLoadingAuth,
+    isLoadingPublicSettings: false,
+    authError,
+    appPublicSettings: null,
+    authChecked,
+    logout,
+    navigateToLogin,
+    checkUserAuth: refreshUser,
+    checkAppState: () => {},
+    refreshUser,
+  }), [user, isAuthenticated, isLoadingAuth, authError, authChecked, logout, navigateToLogin, refreshUser]);
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      isAuthenticated,
-      isLoadingAuth,
-      isLoadingPublicSettings: false,
-      authError,
-      appPublicSettings: null,
-      authChecked,
-      logout,
-      navigateToLogin,
-      checkUserAuth: refreshUser,
-      checkAppState: () => {},
-      refreshUser,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

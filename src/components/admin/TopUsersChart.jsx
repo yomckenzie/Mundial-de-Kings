@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function TopUsersChart({ users }) {
-  const data = [...users]
-    .sort((a, b) => (b.total_points || 0) - (a.total_points || 0))
+  const data = users
+    .toSorted((a, b) => (b.total_points || 0) - (a.total_points || 0))
     .slice(0, 10)
     .map(u => ({
       name: `@${u.instagram || u.email?.split('@')[0]}`,

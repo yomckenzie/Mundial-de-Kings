@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Trophy } from 'lucide-react';
 
 const FIRST_MATCH_UTC = Date.UTC(2026, 5, 11, 19, 0, 0); // 11 jun 2026 14:00 Panamá = 19:00 UTC
+const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const pad = (n) => String(n).padStart(2, '0');
 
 function diffParts(targetMs, nowMs) {
   const diff = Math.max(0, targetMs - nowMs);
@@ -12,10 +15,12 @@ function diffParts(targetMs, nowMs) {
   return { diff, days, hours, minutes, seconds };
 }
 
+const INITIAL_COUNTDOWN = { diff: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
+
 export default function PanamaClockWidget() {
   const [time, setTime] = useState('');
   const [date, setDate] = useState('');
-  const [countdown, setCountdown] = useState({ diff: 0, days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [countdown, setCountdown] = useState(INITIAL_COUNTDOWN);
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
@@ -23,14 +28,8 @@ export default function PanamaClockWidget() {
       const now = new Date();
       const panamaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Panama' }));
 
-      const hh = String(panamaTime.getHours()).padStart(2, '0');
-      const mm = String(panamaTime.getMinutes()).padStart(2, '0');
-      const ss = String(panamaTime.getSeconds()).padStart(2, '0');
-      setTime(`${hh}:${mm}:${ss}`);
-
-      const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-      const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-      setDate(`${dayNames[panamaTime.getDay()]} ${panamaTime.getDate()} ${monthNames[panamaTime.getMonth()]} ${panamaTime.getFullYear()}`);
+      setTime(`${pad(panamaTime.getHours())}:${pad(panamaTime.getMinutes())}:${pad(panamaTime.getSeconds())}`);
+      setDate(`${DAY_NAMES[panamaTime.getDay()]} ${panamaTime.getDate()} ${MONTH_NAMES[panamaTime.getMonth()]} ${panamaTime.getFullYear()}`);
 
       const parts = diffParts(FIRST_MATCH_UTC, now.getTime());
       setCountdown(parts);
@@ -40,8 +39,6 @@ export default function PanamaClockWidget() {
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  const pad = (n) => String(n).padStart(2, '0');
 
   return (
     <div className="flex items-center gap-3 bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-sm font-mono">

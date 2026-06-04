@@ -127,12 +127,14 @@ const client = {
   integrations: {
     Core: {
       UploadFile: async ({ file }) => {
-        // 1. Comprimir imagen en cliente para reducir tamaño
-        const compressedBlob = await compressImage(file, 1200, 0.8);
+      // 1. Comprimir imagen en cliente para reducir tamaño
+      const [compressedBlob, { uploadImage }] = await Promise.all([
+        compressImage(file, 1200, 0.8),
+        import('@/lib/supabase'),
+      ]);
 
-        // 2. Subir a Supabase Storage (fallback DataURL eliminado — causaba problemas de sync)
-        const { uploadImage } = await import('@/lib/supabase');
-        const publicUrl = await uploadImage(compressedBlob, file.name, 'banners');
+      // 2. Subir a Supabase Storage (fallback DataURL eliminado — causaba problemas de sync)
+      const publicUrl = await uploadImage(compressedBlob, file.name, 'banners');
         if (!publicUrl) {
           throw new Error('No se pudo subir la imagen a Supabase Storage. Verifica que el bucket "banners" exista y tenga políticas INSERT + SELECT para anon.');
         }

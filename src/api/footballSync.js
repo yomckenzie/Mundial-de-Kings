@@ -209,34 +209,64 @@ async function _doSync() {
   let totalUpdated = 0;
   const errors = [];
 
-  for (const [dateStr, matches] of Object.entries(byDate)) {
-    try {
-      const fixtures = await fetchFixtures(dateStr);
-      if (fixtures.length === 0) continue;
-
-      for (const localMatch of matches) {
-        // Buscar fixture por equipos
-        const fixture = fixtures.find(f => {
-          const home = f.teams?.home?.name || '';
-          const away = f.teams?.away?.name || '';
-          return (
-            (matchTeam(home, localMatch.team1) && matchTeam(away, localMatch.team2)) ||
-            (matchTeam(home, localMatch.team2) && matchTeam(away, localMatch.team1))
-          );
-        });
-
-        if (!fixture) continue;
-        totalSynced++;
-
-        const updates = {};
-        const goals = fixture.goals || {};
-        const apiStatus = fixture.fixture?.status || {};
-
-        // Resultados
-        if (goals.home !== null && goals.home !== undefined) {
-          const newScore = Number(goals.home);
-          if (newScore !== localMatch.result_team1) updates.result_team1 = newScore;
+  const dateResults = await Promise.all(
+    Object.entries(byDate).map(async ([dateStr, matches]) => {
+      try {
+        const fixtures = await fetchFixtures(dateStr);
+        if (fixtures.length === 0) return { synced: 0, updated: 0, errs: [] };
+        let synced = 0;
+        let updated = 0;
+        const errs = [];
+        for (const localMatch of matches) {
+          // O(n) fixture lookup per local match — acceptable since fixtures per day is small (~10)
+          const fixture = fixtures.find(f => {
+            const home = f.teams?.home?.name || '';
+            const away = f.teams?.away?.name || '';
+            return (
+              (matchTeam(home, localMatch.team1) && matchTeam(away, localMatch.team2)) ||
+              (matchTeam(home, localMatch.team2) && matchTeam(away, localMatch.team1))
+            );
+          });
+          if (!fixture) continue;
+          synced++;
+          const updates = {};
+          const goals = fixture.goals || {};
+          const apiStatus = fixture.fixture?.status || {};
+          const newHome = goals.home ?? null;
+          const newAway = goals.away ?? null;
+          if (newHome !== null && newAway !== null &&
+              (newHome !== (localMatch.result_team1 ?? -1) || newAway !== (localMatch.result_team2 ?? -1))) {
+            updates.result_team1 = newHome;
+            updates.result_team2 = newAway;
+          }
+          const short = apiStatus.short || '';
+          if (['FT', 'AET', 'PEN'].includes(short) && localMatch.status !== 'finished') updates.status = 'finished';
+          else if (['1H', '2H', 'LIVE', 'ET', 'P', 'BT'].includes(short) && localMatch.status !== 'live') updates.status = 'live';
+          else if (short === 'NS' && localMatch.status === 'pending') updates.status = 'open';
+          if (fixture.fixture?.id && !localMatch.fixture_id) {
+            updates.fixture_id = fixture.fixture.id;
+          }
+          if (Object.keys(updates).length > 0) {
+            try {
+              await api.entities.Match.update(localMatch.id, updates);
+              updated++;
+            } catch (e) {
+              errs.push(`Error actualizando match ${localMatch.fixture_id}: ${e.message}`);
+            }
+          }
         }
+        return { synced, updated, errs };
+      } catch (e) {
+        return { synced: 0, updated: 0, errs: [`Error en fecha ${dateStr}: ${e.message}`] };
+      }
+    })
+  );
+
+  for (const r of dateResults) {
+    totalSynced += r.synced;
+    totalUpdated += r.updated;
+    errors.push(...r.errs);
+  }
         if (goals.away !== null && goals.away !== undefined) {
           const newScore = Number(goals.away);
           if (newScore !== localMatch.result_team2) updates.result_team2 = newScore;
@@ -254,20 +284,6 @@ async function _doSync() {
         if (fixture.fixture?.id && !localMatch.fixture_api_id) {
           updates.fixture_api_id = fixture.fixture.id;
         }
-
-        if (Object.keys(updates).length > 0) {
-          try {
-            await api.entities.Match.update(localMatch.id, updates);
-            totalUpdated++;
-          } catch (e) {
-            errors.push(`Error actualizando match ${localMatch.fixture_id}: ${e.message}`);
-          }
-        }
-      }
-    } catch (e) {
-      errors.push(`Error en fecha ${dateStr}: ${e.message}`);
-    }
-  }
 
   _connected = true;
   _lastSync = {

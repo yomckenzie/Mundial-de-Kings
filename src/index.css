@@ -107,6 +107,26 @@ main [style*="opacity:0"] {
   opacity: 1 !important;
 }
 
+/* ──────────────────────────────────────────────
+   WCAG 2.3.3 — Respect users who prefer reduced
+   motion. Disables framer-motion's stuck-state
+   fallback too (motion stays invisible, so the
+   !important override above is not needed).
+   ────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  main [style*="opacity: 0"],
+  main [style*="opacity:0"] {
+    opacity: 1 !important;
+  }
+}
+
 @layer utilities {
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-secondary via-yellow-400 to-amber-500;

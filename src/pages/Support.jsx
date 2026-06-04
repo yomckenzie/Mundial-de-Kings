@@ -73,8 +73,9 @@ export default function Support() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
-                <label className="text-sm font-medium mb-1 block">Asunto</label>
+                <label htmlFor="support-subject" className="text-sm font-medium mb-1 block">Asunto</label>
                 <Input
+                  id="support-subject"
                   value={subject}
                   onChange={e => setSubject(e.target.value)}
                   placeholder="¿Sobre qué trata tu consulta?"
@@ -82,8 +83,9 @@ export default function Support() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Mensaje</label>
+                <label htmlFor="support-message" className="text-sm font-medium mb-1 block">Mensaje</label>
                 <textarea
+                  id="support-message"
                   value={message}
                   onChange={e => setMessage(e.target.value)}
                   placeholder="Describe tu consulta con detalle..."

@@ -161,6 +161,16 @@ export async function syncResults() {
   const allMatches = await api.entities.Match.list();
   if (allMatches.length === 0) return { synced: 0, message: 'No hay partidos' };
 
+  // O(1) lookup map by fixture_id and by team-pair key
+  const localByFixture = new Map();
+  const localByTeams = new Map();
+  for (const m of allMatches) {
+    if (m.fixture_id != null) localByFixture.set(m.fixture_id, m);
+    if (m.team1 && m.team2) localByTeams.set(`${m.team1}|${m.team2}`, m);
+  }
+  const findLocalMatch = (fdId, homeTeam, awayTeam) =>
+    localByFixture.get(fdId) || localByTeams.get(`${homeTeam}|${awayTeam}`);
+
   // Partidos hoy, ayer y anteayer (para resultados recientes)
   const dates = [];
   for (let i = -1; i <= 0; i++) {
@@ -173,64 +183,69 @@ export async function syncResults() {
   let totalUpdated = 0;
   const errors = [];
 
-  for (const dateStr of dates) {
-    try {
-      const matches = await fetchMatchesByDate(dateStr);
-      if (!matches.length) continue;
+  const dateResults = await Promise.all(
+    dates.map(async (dateStr) => {
+      try {
+        const matches = await fetchMatchesByDate(dateStr);
+        if (!matches.length) return { totalSynced: 0, totalUpdated: 0, errors: [] };
+        let synced = 0;
+        let updated = 0;
+        const errs = [];
+        for (const fdMatch of matches) {
+          const homeTeam = fdMatch.homeTeam?.name || '';
+          const awayTeam = fdMatch.awayTeam?.name || '';
+          if (!homeTeam || !awayTeam) continue;
 
-      for (const fdMatch of matches) {
-        const homeTeam = fdMatch.homeTeam?.name || '';
-        const awayTeam = fdMatch.awayTeam?.name || '';
-        if (!homeTeam || !awayTeam) continue;
+          const localMatch = findLocalMatch(fdMatch.id, homeTeam, awayTeam);
+          if (!localMatch) continue;
+          synced++;
 
-        // Buscar match local por nombre de equipo
-        const localMatch = allMatches.find(m =>
-          matchTeams(homeTeam, awayTeam, m.team1, m.team2)
-        );
+          const scoreHome = fdMatch.score?.fullTime?.home;
+          const scoreAway = fdMatch.score?.fullTime?.away;
+          const status = fdMatch.status || '';
+          const isFinished = status === 'FINISHED';
+          const isLive = ['LIVE', 'IN_PLAY', 'PAUSED'].includes(status);
+          const isScheduled = status === 'SCHEDULED' || status === 'TIMED';
 
-        if (!localMatch) continue;
-        totalSynced++;
+          const updates = {};
 
-        const scoreHome = fdMatch.score?.fullTime?.home;
-        const scoreAway = fdMatch.score?.fullTime?.away;
-        const status = fdMatch.status || '';
-        const isFinished = status === 'FINISHED';
-        const isLive = ['LIVE', 'IN_PLAY', 'PAUSED'].includes(status);
-        const isScheduled = status === 'SCHEDULED' || status === 'TIMED';
+          if (scoreHome !== null && scoreHome !== undefined && scoreAway !== null && scoreAway !== undefined) {
+            const newHome = Number(scoreHome);
+            const newAway = Number(scoreAway);
+            if (newHome !== (localMatch.result_team1 ?? -1) || newAway !== (localMatch.result_team2 ?? -1)) {
+              updates.result_team1 = newHome;
+              updates.result_team2 = newAway;
+            }
+          }
 
-        const updates = {};
+          if (isFinished && localMatch.status !== 'finished') updates.status = 'finished';
+          else if (isLive && localMatch.status !== 'live') updates.status = 'live';
+          else if (isScheduled && localMatch.status === 'open') updates.status = 'open';
 
-        if (scoreHome !== null && scoreHome !== undefined && scoreAway !== null && scoreAway !== undefined) {
-          const newHome = Number(scoreHome);
-          const newAway = Number(scoreAway);
-          if (newHome !== localMatch.result_team1) updates.result_team1 = newHome;
-          if (newAway !== localMatch.result_team2) updates.result_team2 = newAway;
-        }
+          if (fdMatch.id && !localMatch.fd_id) {
+            updates.fd_id = fdMatch.id;
+          }
 
-        if (isFinished && localMatch.status !== 'finished') {
-          updates.status = 'finished';
-        } else if (isLive && localMatch.status !== 'live') {
-          updates.status = 'live';
-        } else if (isScheduled && localMatch.status === 'pending') {
-          updates.status = 'open';
-        }
-
-        if (fdMatch.id && !localMatch.fd_id) {
-          updates.fd_id = fdMatch.id;
-        }
-
-        if (Object.keys(updates).length > 0) {
-          try {
-            await api.entities.Match.update(localMatch.id, updates);
-            totalUpdated++;
-          } catch (e) {
-            errors.push(`Error actualizando match ${localMatch.fixture_id || localMatch.id}: ${e.message}`);
+          if (Object.keys(updates).length > 0) {
+            try {
+              await api.entities.Match.update(localMatch.id, updates);
+              updated++;
+            } catch (e) {
+              errs.push(`Error actualizando match ${localMatch.fixture_id || localMatch.id}: ${e.message}`);
+            }
           }
         }
+        return { totalSynced: synced, totalUpdated: updated, errors: errs };
+      } catch (e) {
+        return { totalSynced: 0, totalUpdated: 0, errors: [`Error en fecha ${dateStr}: ${e.message}`] };
       }
-    } catch (e) {
-      errors.push(`Error en fecha ${dateStr}: ${e.message}`);
-    }
+    })
+  );
+
+  for (const r of dateResults) {
+    totalSynced += r.totalSynced;
+    totalUpdated += r.totalUpdated;
+    errors.push(...r.errors);
   }
 
   _connected = true;

@@ -67,7 +67,7 @@ export default function AdminMatches() {
   });
 
   const matches = React.useMemo(() =>
-    [...rawMatches].sort((a, b) => {
+    rawMatches.toSorted((a, b) => {
       if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
       return (a.match_time || '').localeCompare(b.match_time || '');
     }), [rawMatches]);
@@ -227,18 +227,24 @@ export default function AdminMatches() {
     // Si ya estaba finalizado, revertir puntos de pronósticos acertados primero
     if (match.status === 'finished') {
       const oldPreds = await api.entities.Prediction.filter({ match_id: match.id });
-      for (const pred of oldPreds) {
-        if (pred.scored && (pred.points_earned || 0) > 0) {
-          const users = await api.entities.User.filter({ email: pred.user_email });
-          if (users.length > 0) {
-            const u = users[0];
-            await api.entities.User.update(u.id, {
-              total_points: Math.max(0, (u.total_points || 0) - (pred.points_earned || 0)),
-              prediction_points: Math.max(0, (u.prediction_points || 0) - (pred.points_earned || 0)),
-            });
-          }
-        }
-      }
+      const usersToRevert = await Promise.all(
+        oldPreds
+          .filter(p => p.scored && (p.points_earned || 0) > 0)
+          .map(async (pred) => {
+            const users = await api.entities.User.filter({ email: pred.user_email });
+            return users[0] ? { user: users[0], pred } : null;
+          })
+      );
+      await Promise.all(
+        usersToRevert
+          .filter(Boolean)
+          .map(({ user, pred }) =>
+            api.entities.User.update(user.id, {
+              total_points: Math.max(0, (user.total_points || 0) - (pred.points_earned || 0)),
+              prediction_points: Math.max(0, (user.prediction_points || 0) - (pred.points_earned || 0)),
+            })
+          )
+      );
     }
 
     await api.entities.Match.update(match.id, {
@@ -295,30 +301,45 @@ export default function AdminMatches() {
       return;
     }
 
+    // O(1) lookup map for matches
+    const matchById = new Map(matches.map(m => [m.id, m]));
     let published = 0;
-    for (const [matchId, r] of matchesToPublish) {
-      try {
-        const match = matches.find(m => m.id === matchId);
-        if (!match) continue;
+    const publishResults = await Promise.allSettled(
+      matchesToPublish.map(async ([matchId, r]) => {
+        const match = matchById.get(matchId);
+        if (!match) return;
         if (!canPublishResult(match)) {
           console.warn(`Saltando match ${matchId}: no está en vivo ni finalizado`);
-          continue;
+          return;
         }
-
         await api.entities.Match.update(matchId, {
           result_team1: Number(r.team1),
           result_team2: Number(r.team2),
         });
-        published++;
-      } catch (e) {
-        console.error(`Error publicando resultado para match ${matchId}:`, e);
-      }
-    }
+        return matchId;
+      })
+    );
+    published = publishResults.filter(r => r.status === 'fulfilled' && r.value).length;
 
     queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
     setBulkResults({});
     toast.success(`✅ ${published} marcadores actualizados y pronósticos evaluados`);
   };
+
+  // Contar partidos con pronósticos pendientes
+  const pendingPublishCount = Object.entries(bulkResults)
+    .filter(([_, r]) => r.team1 !== '' && r.team1 !== undefined && r.team2 !== '' && r.team2 !== undefined)
+    .length;
+
+  // Agrupar partidos por fecha para mejor visualización
+  const groupedMatches = React.useMemo(() => matches.reduce((acc, m) => {
+    const date = m.match_date || 'sin-fecha';
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(m);
+    return acc;
+  }, {}), [matches]);
+
+  const sortedDates = React.useMemo(() => Object.keys(groupedMatches).toSorted(), [groupedMatches]);
 
   const statusColors = {
     pending: 'bg-muted text-muted-foreground',
@@ -336,23 +357,6 @@ export default function AdminMatches() {
     finished: 'Finalizado',
   };
 
-  // Contar partidos con pronósticos pendientes
-  const pendingPublishCount = Object.entries(bulkResults)
-    .filter(([_, r]) => r.team1 !== '' && r.team1 !== undefined && r.team2 !== '' && r.team2 !== undefined)
-    .length;
-
-  // Agrupar partidos por fecha para mejor visualización
-  const groupedMatches = matches.reduce((acc, m) => {
-    const date = m.match_date || 'sin-fecha';
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(m);
-    return acc;
-  }, {});
-
-  const sortedDates = Object.keys(groupedMatches).sort();
-
-  if (isLoading) return <p className="text-muted-foreground">Cargando panel de administración de partidos...</p>;
-
   const sourceIcons = {
     'api-football': <Zap className="w-4 h-4" />,
     'football-data': <Globe className="w-4 h-4" />,
@@ -364,6 +368,8 @@ export default function AdminMatches() {
     configured_offline: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800',
     not_configured: 'bg-muted text-muted-foreground border-border',
   };
+
+  if (isLoading) return <p className="text-muted-foreground">Cargando panel de administración de partidos...</p>;
 
   return (
     <div className="space-y-4">

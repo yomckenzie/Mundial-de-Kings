@@ -25,6 +25,7 @@ export default function AppLayout() {
       setLoading(false);
     };
     loadUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {

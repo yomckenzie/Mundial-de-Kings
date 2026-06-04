@@ -23,6 +23,13 @@ const _pendingDeletes = []; // { tableName, id }[]
 const CLEAN_AT_KEY = 'chessking_last_clean_at';
 let _lastCleanAt = (() => { try { return localStorage.getItem(CLEAN_AT_KEY) || null; } catch { return null; } })();
 
+function sortBy(arr, order) {
+  if (!order) return [...arr];
+  const field = order.startsWith('-') ? order.slice(1) : order;
+  const dir = order.startsWith('-') ? -1 : 1;
+  return arr.toSorted((a, b) => ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir);
+}
+
 const load = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -234,19 +241,19 @@ export const db = {
       // Procesar eliminaciones pendientes primero
       if (_pendingDeletes.length > 0 && supabase) {
         const deletes = _pendingDeletes.splice(0);
-        for (const { tableName, id } of deletes) {
-          try {
-            await supabase.from(tableName).delete().eq('id', id);
-          } catch {}
-        }
+        await Promise.all(
+          deletes.map(({ tableName, id }) =>
+            supabase.from(tableName).delete().eq('id', id).then(() => null).catch(() => null)
+          )
+        );
       }
       const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
-      for (const jsKey of tablesToSync) {
-        const records = this._data[jsKey] || [];
-        if (records.length > 0) {
-          await syncTableToSupabaseFn(jsKey, records);
-        }
-      }
+      const tablesWithData = tablesToSync
+        .map(jsKey => ({ jsKey, records: this._data[jsKey] || [] }))
+        .filter(({ records }) => records.length > 0);
+      await Promise.all(
+        tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
+      );
     } finally {
       _syncToSupabaseInProgress = false;
       if (_resyncQueued) {
@@ -397,22 +404,23 @@ export const db = {
         const { data: allUsers, error: fetchErr } = await supabase
           .from('users').select('id, role').limit(5000);
         if (!fetchErr && allUsers && allUsers.length > 0) {
-          const nonAdminIds = allUsers.filter(u => u.role !== 'admin').map(u => u.id);
+          const nonAdminIds = [];
+          for (const u of allUsers) if (u.role !== 'admin') nonAdminIds.push(u.id);
+          const batches = [];
           for (let i = 0; i < nonAdminIds.length; i += BATCH) {
-            const batch = nonAdminIds.slice(i, i + BATCH);
-            const { error } = await supabase.from('users').delete().in('id', batch);
-            if (error) {
-              console.warn('[cleanUserData] Error users batch:', error.message);
-            }
+            batches.push(nonAdminIds.slice(i, i + BATCH));
           }
+          await Promise.all(batches.map(batch => supabase.from('users').delete().in('id', batch)));
         }
       } catch {}
 
-      // 2-5. Eliminar TODO de tablas secundarias
-      await deleteAllFromTable('predictions');
-      await deleteAllFromTable('redemptions');
-      await deleteAllFromTable('points_bonuses');
-      await deleteAllFromTable('support_tickets');
+      // 2-5. Eliminar TODO de tablas secundarias en paralelo
+      await Promise.all([
+        deleteAllFromTable('predictions'),
+        deleteAllFromTable('redemptions'),
+        deleteAllFromTable('points_bonuses'),
+        deleteAllFromTable('support_tickets'),
+      ]);
 
 
 
@@ -462,11 +470,7 @@ export const db = {
   users: {
     list(order) {
       const d = db._init().users;
-      return order ? [...d].sort((a, b) => {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        return ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir;
-      }) : [...d];
+      return sortBy(d, order);
     },
     filter(fields, order) {
       let d = db._init().users.filter(u =>
@@ -506,11 +510,7 @@ export const db = {
   matches: {
     list(order) {
       const d = db._init().matches;
-      return order ? [...d].sort((a, b) => {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        return ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir;
-      }) : [...d];
+      return sortBy(d, order);
     },
     filter(fields, order) {
       let d = db._init().matches.filter(m =>
@@ -675,7 +675,7 @@ export const db = {
       const now = getNow();
 
       // Eliminar partidos existentes con mismo fixture_id para evitar duplicados
-      const newFixtureIds = new Set(matchesArray.map(m => m.fixture_id).filter(Boolean));
+      const newFixtureIds = new Set(matchesArray.flatMap(m => m.fixture_id ? [m.fixture_id] : []));
       if (newFixtureIds.size > 0) {
         d.matches = d.matches.filter(m => !newFixtureIds.has(m.fixture_id));
       }
@@ -781,11 +781,7 @@ export const db = {
   predictions: {
     list(order) {
       const d = db._init().predictions;
-      return order ? [...d].sort((a, b) => {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        return ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir;
-      }) : [...d];
+      return sortBy(d, order);
     },
     filter(fields, order) {
       let d = db._init().predictions.filter(p =>
@@ -827,11 +823,7 @@ export const db = {
   prizes: {
     list(order) {
       const d = db._init().prizes;
-      return order ? [...d].sort((a, b) => {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        return ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir;
-      }) : [...d];
+      return sortBy(d, order);
     },
     filter(fields, order) {
       let d = db._init().prizes.filter(p =>
@@ -874,11 +866,7 @@ export const db = {
   redemptions: {
     list(order) {
       const d = db._init().redemptions;
-      return order ? [...d].sort((a, b) => {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        return ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir;
-      }) : [...d];
+      return sortBy(d, order);
     },
     filter(fields, order) {
       let d = db._init().redemptions.filter(r =>
@@ -912,11 +900,7 @@ export const db = {
   supportTickets: {
     list(order) {
       const d = db._init().supportTickets;
-      return order ? [...d].sort((a, b) => {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        return ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir;
-      }) : [...d];
+      return sortBy(d, order);
     },
     filter(fields, order) {
       let d = db._init().supportTickets.filter(t =>
@@ -950,11 +934,7 @@ export const db = {
   pointsBonuses: {
     list(order) {
       const d = db._init().pointsBonuses;
-      return order ? [...d].sort((a, b) => {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        return ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir;
-      }) : [...d];
+      return sortBy(d, order);
     },
     filter(fields, order) {
       let d = db._init().pointsBonuses.filter(b =>

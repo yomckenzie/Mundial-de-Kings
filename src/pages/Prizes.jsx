@@ -261,8 +261,12 @@ export default function Prizes() {
               <Card className="overflow-hidden h-full flex flex-col">
                 {prize.image_url ? (
                   <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver imagen de ${prize.name}`}
                     className="aspect-video w-full overflow-hidden cursor-pointer group relative"
                     onClick={() => setPreviewImage(prize)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPreviewImage(prize); } }}
                   >
                     <img src={prize.image_url} alt={prize.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -354,11 +358,12 @@ export default function Prizes() {
                 <p><span className="text-muted-foreground">Puntos a canjear:</span> <strong>{confirmPrize.points_cost} pts</strong></p>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">
+                <label htmlFor="cedula-confirm" className="text-sm font-medium">
                   Confirma tu número de cédula
                   <span className="ml-1 text-xs text-muted-foreground font-normal">(debe coincidir con la que registraste)</span>
                 </label>
                 <Input
+                  id="cedula-confirm"
                   value={cedulaInput}
                   onChange={(e) => { setCedulaInput(e.target.value); setCedulaError(''); }}
                   placeholder="8-000-0000"

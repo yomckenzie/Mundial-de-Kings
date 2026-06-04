@@ -74,13 +74,17 @@ export default function HomeBanner() {
         {BANNERS.length > 1 && (
           <>
             <button
+              type="button"
               onClick={prev}
+              aria-label="Banner anterior"
               className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-all duration-300 backdrop-blur-sm"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <button
+              type="button"
               onClick={next}
+              aria-label="Banner siguiente"
               className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-all duration-300 backdrop-blur-sm"
             >
               <ChevronRight className="w-5 h-5" />
@@ -89,10 +93,14 @@ export default function HomeBanner() {
         )}
 
         {BANNERS.length > 1 && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-            {BANNERS.map((_, i) => (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2" role="tablist">
+            {BANNERS.map((src, i) => (
               <button
-                key={i}
+                key={src}
+                type="button"
+                role="tab"
+                aria-selected={i === current}
+                aria-label={`Ir al banner ${i + 1}`}
                 onClick={() => goTo(i)}
                 className={`w-2 h-2 rounded-full transition-all duration-300 ${
                   i === current

@@ -6,6 +6,26 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 
+const PUBLIC_LINKS = [
+  { to: '/', label: 'Inicio', icon: Home },
+  { to: '/matches', label: 'Partidos', icon: Target },
+  { to: '/ranking', label: 'Ranking', icon: Trophy },
+  { to: '/prizes', label: 'Premios', icon: Gift },
+  { to: '/info', label: 'Información', icon: Info },
+  { to: '/support', label: 'Soporte', icon: HeadphonesIcon },
+];
+
+const navVariants = {
+  hidden: { opacity: 0, height: 0 },
+  visible: { opacity: 1, height: 'auto', transition: { duration: 0.25, ease: 'easeOut' } },
+  exit: { opacity: 0, height: 0, transition: { duration: 0.2, ease: 'easeIn' } },
+};
+
+const linkVariants = {
+  hidden: { opacity: 0, x: -10 },
+  visible: (i) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05, duration: 0.2 } }),
+};
+
 export default function Navbar({ user }) {
   const [open, setOpen] = useState(false);
   const { logout } = useAuth();
@@ -13,34 +33,14 @@ export default function Navbar({ user }) {
   const location = useLocation();
   const isAdmin = user?.role === 'admin';
 
-  const publicLinks = [
-    { to: '/', label: 'Inicio', icon: Home },
-    { to: '/matches', label: 'Partidos', icon: Target },
-    { to: '/ranking', label: 'Ranking', icon: Trophy },
-    { to: '/prizes', label: 'Premios', icon: Gift },
-    { to: '/info', label: 'Información', icon: Info },
-    { to: '/support', label: 'Soporte', icon: HeadphonesIcon },
-  ];
-
   const authLinks = user ? [
     { to: '/profile', label: 'Mi Perfil', icon: User },
     ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : []),
   ] : [];
 
-  const links = [...publicLinks, ...authLinks];
+  const links = [...PUBLIC_LINKS, ...authLinks];
 
   const isActive = (path) => location.pathname === path;
-
-  const navVariants = {
-    hidden: { opacity: 0, height: 0 },
-    visible: { opacity: 1, height: 'auto', transition: { duration: 0.25, ease: 'easeOut' } },
-    exit: { opacity: 0, height: 0, transition: { duration: 0.2, ease: 'easeIn' } },
-  };
-
-  const linkVariants = {
-    hidden: { opacity: 0, x: -10 },
-    visible: (i) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05, duration: 0.2 } }),
-  };
 
   return (
     <nav className="bg-card border-b border-border sticky top-0 z-50">

@@ -172,10 +172,11 @@ export async function seedAllMatches(api) {
       if (existing && existing.length > 0) {
         const ids = existing.map(r => r.id);
         // Borrar en lotes de 100 para evitar problemas de URL length
+        const batches = [];
         for (let i = 0; i < ids.length; i += 100) {
-          const batch = ids.slice(i, i + 100);
-          await supabase.from('matches').delete().in('id', batch);
+          batches.push(ids.slice(i, i + 100));
         }
+        await Promise.all(batches.map(batch => supabase.from('matches').delete().in('id', batch)));
         console.log(`[Seed] Eliminados ${ids.length} partidos de Supabase`);
       }
     } catch (err) {

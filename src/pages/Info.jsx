@@ -83,7 +83,7 @@ export default function Info() {
   const { user } = useOutletContext();
   const isAdmin = user?.role === 'admin';
 
-  const [sections, setSections] = useState([]);
+  const [sections, setSections] = useState(() => DEFAULT_SECTIONS);
   const [settingId, setSettingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);

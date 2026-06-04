@@ -98,7 +98,9 @@ export default function AdminSupport() {
 
                 {replyingId === t.id ? (
                   <div className="space-y-2">
+                    <label htmlFor={`reply-${t.id}`} className="sr-only">Respuesta al ticket</label>
                     <textarea
+                      id={`reply-${t.id}`}
                       value={replyText}
                       onChange={e => setReplyText(e.target.value)}
                       placeholder="Escribe tu respuesta..."

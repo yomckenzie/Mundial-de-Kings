@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw, Trophy } from 'lucide-react';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale/es';
+import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 const statusMap = {
@@ -319,7 +319,7 @@ export default function Matches() {
   });
 
   const matches = React.useMemo(() =>
-    [...rawMatches].sort((a, b) => {
+    rawMatches.toSorted((a, b) => {
       if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
       return (a.match_time || '').localeCompare(b.match_time || '');
     }), [rawMatches]);

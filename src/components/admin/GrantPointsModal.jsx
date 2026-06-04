@@ -25,22 +25,22 @@ export default function GrantPointsModal({ user, open, onClose }) {
       const newBonus = (user.bonus_points || 0) + pts;
       const newTotal = (user.total_points || 0) + pts;
 
-      // Update user points
-      await api.entities.User.update(user.id, {
-        bonus_points: newBonus,
-        total_points: newTotal,
-      });
-
-      // Log the bonus
       const me = await api.auth.me();
-      await api.entities.PointsBonus.create({
-        user_email: user.email,
-        user_name: user.full_name || '',
-        points: pts,
-        reason: reason.trim(),
-        granted_by: me.email,
-        type: 'manual',
-      });
+      // Update user + log the bonus in parallel (both depend on `pts` and `me`, not on each other)
+      await Promise.all([
+        api.entities.User.update(user.id, {
+          bonus_points: newBonus,
+          total_points: newTotal,
+        }),
+        api.entities.PointsBonus.create({
+          user_email: user.email,
+          user_name: user.full_name || '',
+          points: pts,
+          reason: reason.trim(),
+          granted_by: me.email,
+          type: 'manual',
+        }),
+      ]);
 
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       queryClient.invalidateQueries({ queryKey: ['admin-bonuses'] });

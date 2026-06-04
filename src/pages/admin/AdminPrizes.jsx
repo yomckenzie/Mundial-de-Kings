@@ -141,8 +141,12 @@ export default function AdminPrizes() {
             <CardContent className="p-3 flex items-center gap-3">
               {p.image_url ? (
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Abrir imagen de ${p.name}`}
                   className="w-14 h-14 rounded overflow-hidden cursor-pointer"
                   onClick={() => window.open(p.image_url, '_blank')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(p.image_url, '_blank'); } }}
                 >
                   <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover hover:scale-110 transition-transform duration-200" />
                 </div>

@@ -124,7 +124,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
       d.users.push(userData);
       if (!d.pointsBonuses) d.pointsBonuses = [];
       d.pointsBonuses.push(welcomeBonus);
-      localStorage.setItem('chessking_db', JSON.stringify(d));
+      localStorage.setItem('chessking_db:v1', JSON.stringify(d));
 
       // Iniciar sesión automáticamente
       db.setCurrentUserEmail(form.email);

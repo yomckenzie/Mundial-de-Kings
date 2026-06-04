@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
+const ADMIN_TABLES = new Set(['matches', 'prizes'])
+const USER_GENERATED_TABLES = new Set(['users', 'predictions', 'redemptions', 'support_tickets', 'points_bonuses'])
+
 let supabaseUrl = ''
 let supabaseAnonKey = ''
 try {
@@ -232,8 +235,7 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
         if (contentChanged) {
           // Para tablas de admin (matches, prizes), la nube manda
           // Para tablas de usuario (predictions, redemptions, etc.), el local manda
-          const adminTables = ['matches', 'prizes']
-          if (adminTables.includes(tableName)) {
+          if (ADMIN_TABLES.has(tableName)) {
             // La nube es la autoridad — el admin hizo cambios allí
             result.push({ ...local, ...remote })
           } else {
@@ -274,7 +276,7 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
           } else if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)) {
             // Registro recien creado localmente — preservar
             result.push(local)
-          } else if (!userGeneratedTables.includes(tableName)) {
+          } else if (!USER_GENERATED_TABLES.has(tableName)) {
             // Tabla de admin — la nube manda
             changed = true
           } else {

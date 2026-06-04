@@ -15,10 +15,10 @@ export default function SocialFollow() {
           Recuerda seguirnos en instagram y tiktok y unirte a nuestro canal para participar
         </p>
         <div className="flex justify-center gap-8 mb-6">
-          {SOCIAL.map((s, i) => (
-            <div key={i} className="flex flex-col items-center">
-              <a href={s.url} target="_blank" rel="noopener noreferrer" className="hover:opacity-70 transition mb-2">
-                <s.icon className="w-10 h-10 text-foreground" />
+          {SOCIAL.map((s) => (
+            <div key={s.url} className="flex flex-col items-center">
+              <a href={s.url} target="_blank" rel="noopener noreferrer" aria-label={s.title} className="hover:opacity-70 transition mb-2">
+                <s.icon className="w-10 h-10 text-foreground" aria-hidden="true" />
               </a>
               <p className="text-xs text-muted-foreground">{s.title}</p>
             </div>
