@@ -1,5 +1,6 @@
 // ─── Servicio para sincronizar con API-Football (RapidAPI) ───
 import { api } from './client';
+import { evaluateMatchPredictions } from './evaluateMatchPredictions';
 
 const RAPIDAPI_HOST = 'api-football-v1.p.rapidapi.com';
 const RAPIDAPI_BASE = '/api-football';
@@ -256,6 +257,16 @@ async function _doSync() {
           if (Object.keys(updates).length > 0) {
             try {
               await api.entities.Match.update(localMatch.id, updates);
+              // Evaluar pronósticos si el partido acaba de finalizar o el resultado cambió en uno ya finalizado
+              const isNowFinished = updates.status === 'finished';
+              const resultsChanged = updates.result_team1 != null || updates.result_team2 != null;
+              if (isNowFinished || (localMatch.status === 'finished' && resultsChanged)) {
+                const r1 = updates.result_team1 ?? localMatch.result_team1;
+                const r2 = updates.result_team2 ?? localMatch.result_team2;
+                if (r1 != null && r2 != null) {
+                  await evaluateMatchPredictions(localMatch.id, r1, r2);
+                }
+              }
               return { synced: 1, updated: 1, errs: [] };
             } catch (e) {
               return { synced: 0, updated: 0, errs: [`Error actualizando match ${localMatch.fixture_id}: ${e.message}`] };

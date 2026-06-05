@@ -4,6 +4,7 @@ import { api } from '@/api/client';
 import { seedAllMatches } from '@/api/seedMatches';
 import { db } from '@/lib/db';
 import { syncWithBestSource, checkAllSources } from '@/api/dataSources';
+import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -202,15 +203,7 @@ export default function AdminMatches() {
     },
   });
 
-  const updateMatch = useMutation({
-    mutationFn: ({ id, data }) => api.entities.Match.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
-      toast.success('Partido actualizado');
-    },
-  });
-
-  const handleStatusChange = (match, newStatus) => {
+  const handleStatusChange = async (match, newStatus) => {
     const extra = newStatus === 'live' ? { elapsed: '0', live_started_at: new Date().toISOString() } : {};
     // Al cambiar a pendiente/abierto/cerrado, limpiar resultados y timer
     if ((newStatus === 'pending' || newStatus === 'open' || newStatus === 'closed') &&
@@ -220,7 +213,25 @@ export default function AdminMatches() {
       extra.elapsed = null;
       extra.live_started_at = null;
     }
-    updateMatch.mutate({ id: match.id, data: { status: newStatus, ...extra } });
+
+    try {
+      await api.entities.Match.update(match.id, { status: newStatus, ...extra });
+      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
+      toast.success('Partido actualizado');
+
+      // Al cambiar a "Finalizado" con resultado existente, evaluar pronósticos
+      if (newStatus === 'finished' && match.result_team1 != null && match.result_team2 != null) {
+        const evalResult = await evaluateMatchPredictions(match.id, match.result_team1, match.result_team2);
+        if (evalResult.correct > 0) {
+          toast.success(`✅ ${evalResult.correct} pronóstico${evalResult.correct > 1 ? 's' : ''} acertado${evalResult.correct > 1 ? 's' : ''}`);
+        } else if (evalResult.evaluated > 0) {
+          toast.info(`📊 ${evalResult.evaluated} pronóstico${evalResult.evaluated > 1 ? 's' : ''} evaluado${evalResult.evaluated > 1 ? 's' : ''} — sin aciertos`);
+        }
+        queryClient.invalidateQueries({ queryKey: ['ranking'] });
+      }
+    } catch (e) {
+      toast.error('Error al actualizar: ' + e.message);
+    }
   };
 
   const handlePublishResult = async (match) => {
@@ -237,15 +248,12 @@ export default function AdminMatches() {
     const resultTeam1 = Number(r.team1);
     const resultTeam2 = Number(r.team2);
 
-    const isLiveUpdate = match.status === 'live';
-
-    if (isLiveUpdate) {
-      // Solo actualizar marcador, sin cambiar estado ni evaluar pronósticos
+    // En vivo: solo actualizar marcador, sin evaluar pronósticos
+    if (match.status === 'live') {
       await api.entities.Match.update(match.id, {
         result_team1: resultTeam1,
         result_team2: resultTeam2,
       });
-
       setResults(prev => {
         const { [match.id]: _, ...rest } = prev.form;
         return { ...prev, form: rest };
@@ -255,68 +263,15 @@ export default function AdminMatches() {
       return;
     }
 
-    // Si ya estaba finalizado, revertir puntos de pronósticos acertados primero
-    if (match.status === 'finished') {
-      const oldPreds = await api.entities.Prediction.filter({ match_id: match.id });
-      // Revertir puntos de pronósticos acertados (lookups en paralelo)
-      const revertResults = await Promise.all(
-        oldPreds.map(async (pred) => {
-          if (!(pred.scored && (pred.points_earned || 0) > 0)) return null;
-          const users = await api.entities.User.filter({ email: pred.user_email });
-          return users[0] ? { user: users[0], pred } : null;
-        })
-      );
-      const revertUsers = [];
-      for (const r of revertResults) if (r) revertUsers.push(r);
-      await Promise.all(
-        revertUsers.map(({ user, pred }) =>
-          api.entities.User.update(user.id, {
-            total_points: Math.max(0, (user.total_points || 0) - (pred.points_earned || 0)),
-            prediction_points: Math.max(0, (user.prediction_points || 0) - (pred.points_earned || 0)),
-          })
-        )
-      );
-    }
-
+    // Finalizar: actualizar resultado + evaluar pronósticos
     await api.entities.Match.update(match.id, {
       result_team1: resultTeam1,
       result_team2: resultTeam2,
       status: 'finished',
     });
 
-    const predictions = await api.entities.Prediction.filter({ match_id: match.id });
-    // Evaluar todas las predicciones en paralelo
-    const correctEmails = [];
-    await Promise.all(
-      predictions.map(pred => {
-        const isCorrect = pred.pred_team1 === resultTeam1 && pred.pred_team2 === resultTeam2;
-        const pointsEarned = isCorrect ? 100 : 0;
-        if (isCorrect) correctEmails.push(pred.user_email);
-        return api.entities.Prediction.update(pred.id, {
-          is_correct: isCorrect,
-          points_earned: pointsEarned,
-          scored: true,
-        });
-      })
-    );
+    const evalResult = await evaluateMatchPredictions(match.id, resultTeam1, resultTeam2);
 
-    // Otorgar puntos a quienes acertaron (en paralelo, evitando duplicados por email)
-    if (correctEmails.length > 0) {
-      const uniqueEmails = [...new Set(correctEmails)];
-      const allUsers = await Promise.all(
-        uniqueEmails.map(email => api.entities.User.filter({ email }))
-      );
-      await Promise.all(
-        allUsers.flat().map(u =>
-          api.entities.User.update(u.id, {
-            total_points: (u.total_points || 0) + 100,
-            prediction_points: (u.prediction_points || 0) + 100,
-          })
-        )
-      );
-    }
-
-    // Limpiar results.form para que recargue desde los datos actualizados
     setResults(prev => {
       const { [match.id]: _, ...rest } = prev.form;
       return { ...prev, form: rest };
@@ -324,11 +279,13 @@ export default function AdminMatches() {
     queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
     queryClient.invalidateQueries({ queryKey: ['ranking'] });
     toast.success(
-      `Marcador corregido. ${predictions.length} pronósticos re-evaluados.`
+      evalResult.correct > 0
+        ? `✅ ${evalResult.correct} pronóstico${evalResult.correct > 1 ? 's' : ''} acertado${evalResult.correct > 1 ? 's' : ''} de ${evalResult.evaluated} evaluado${evalResult.evaluated > 1 ? 's' : ''}`
+        : `${evalResult.evaluated} pronóstico${evalResult.evaluated > 1 ? 's' : ''} evaluado${evalResult.evaluated > 1 ? 's' : ''} — sin aciertos`
     );
   };
 
-  // Publicar resultados en batch
+  // Publicar resultados en batch (finaliza + evalúa pronósticos)
   const handleBatchPublish = async () => {
     const matchesToPublish = Object.entries(results.bulk)
       .filter(([_, r]) => r.team1 !== '' && r.team2 !== undefined && r.team1 !== undefined);
@@ -338,9 +295,9 @@ export default function AdminMatches() {
       return;
     }
 
-    // O(1) lookup map for matches
     const matchById = new Map(matches.map(m => [m.id, m]));
     let published = 0;
+    let totalCorrect = 0;
     const publishResults = await Promise.allSettled(
       matchesToPublish.map(async ([matchId, r]) => {
         const match = matchById.get(matchId);
@@ -349,18 +306,30 @@ export default function AdminMatches() {
           console.warn(`Saltando match ${matchId}: no está en vivo ni finalizado`);
           return;
         }
+        const resultTeam1 = Number(r.team1);
+        const resultTeam2 = Number(r.team2);
+        // Actualizar resultado y finalizar el partido
         await api.entities.Match.update(matchId, {
-          result_team1: Number(r.team1),
-          result_team2: Number(r.team2),
+          result_team1: resultTeam1,
+          result_team2: resultTeam2,
+          status: 'finished',
         });
+        // Evaluar pronósticos contra el resultado
+        const evalResult = await evaluateMatchPredictions(matchId, resultTeam1, resultTeam2);
+        totalCorrect += evalResult.correct;
         return matchId;
       })
     );
     published = publishResults.filter(r => r.status === 'fulfilled' && r.value).length;
 
     queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
+    queryClient.invalidateQueries({ queryKey: ['ranking'] });
     setResults(prev => ({ ...prev, bulk: {} }));
-    toast.success(`✅ ${published} marcadores actualizados y pronósticos evaluados`);
+    if (totalCorrect > 0) {
+      toast.success(`✅ ${published} partidos finalizados — ${totalCorrect} pronóstico${totalCorrect > 1 ? 's' : ''} acertado${totalCorrect > 1 ? 's' : ''}`);
+    } else {
+      toast.success(`✅ ${published} partidos finalizados y pronósticos evaluados`);
+    }
   };
 
   // Contar partidos con pronósticos pendientes
