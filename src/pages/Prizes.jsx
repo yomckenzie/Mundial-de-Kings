@@ -431,7 +431,7 @@ export default function Prizes() {
                 </p>
                 <p className="flex items-center gap-2">
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                  Deberás proporcionar tu dirección de entrega o punto de recogida.
+                  Deberás indicarnos el punto de recogida donde retirarás tu premio.
                 </p>
                 <p className="flex items-center gap-2">
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
