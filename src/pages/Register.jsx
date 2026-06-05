@@ -38,7 +38,7 @@ export default function Register() {
     instagram_user: '',
     tiktok_user: '',
     password: '',
-    referral_code: refFromUrl,
+    referral_code: refFromUrl.trim(),
   });
 
   const handleChange = (e) => {
@@ -96,17 +96,25 @@ if (!form.email) errors.email = 'Campo obligatorio';
     try {
       // Validar código de referido si se proporcionó
       let referrerData = null;
-      if (form.referral_code) {
+      const cleanReferralCode = (form.referral_code || '').trim();
+      if (cleanReferralCode) {
         const d = db._init();
-        referrerData = d.users.find(u => u.referral_code === form.referral_code);
+        // Búsqueda local: exacta + insensible a mayúsculas
+        referrerData = d.users.find(u =>
+          u.referral_code &&
+          u.referral_code.toLowerCase() === cleanReferralCode.toLowerCase()
+        );
 
         // Fallback: si no está en local (otro dispositivo), consultar Supabase directo
         if (!referrerData && isSupabaseAvailable()) {
           const { data, error } = await supabase
             .from('users')
             .select('id, email, referral_code, full_name, instagram')
-            .eq('referral_code', form.referral_code)
+            .eq('referral_code', cleanReferralCode)
             .maybeSingle();
+          if (error) {
+            console.warn('[Register] Error consultando Supabase por código de referido:', error.message, error.code, error.details);
+          }
           if (!error && data) {
             referrerData = data;
             // Cachear localmente para próximos registros y para el ranking
@@ -115,11 +123,12 @@ if (!form.email) errors.email = 'Campo obligatorio';
         }
 
         if (!referrerData) {
+          console.warn('[Register] Código de referido no encontrado:', cleanReferralCode, 'Usuarios locales:', d.users.filter(u => u.referral_code).map(u => u.referral_code));
           setFieldErrors(prev => ({ ...prev, referral_code: 'Código de invitación inválido' }));
           setIsLoading(false);
           return;
         }
-        if (referrerData.email === form.email) {
+        if (referrerData.email && referrerData.email.toLowerCase() === form.email.toLowerCase()) {
           setFieldErrors(prev => ({ ...prev, referral_code: 'No puedes autoreferirte' }));
           setIsLoading(false);
           return;
@@ -143,7 +152,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
         tiktok: form.tiktok_user.replace('@', ''),
         password: form.password,
         referral_code: userReferralCode,
-        referred_by: form.referral_code || null,
+        referred_by: cleanReferralCode || null,
         referral_points: 0,
         total_points: 100,
         prediction_points: 0,
@@ -199,7 +208,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
 
       // Otorgar bono de referido (10 pts) al referente
       if (referrerData) {
-        await db.awardReferralBonus(form.referral_code);
+        await db.awardReferralBonus(cleanReferralCode);
       }
 
       // Iniciar sesión automáticamente
