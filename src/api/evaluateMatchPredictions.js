@@ -84,6 +84,16 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
     await Promise.all(
       uniqueEmails.map(email => db.awardReferralCommission(email, matchId))
     );
+
+    // 3c. CRÍTICO: empujar los puntos a Supabase INMEDIATAMENTE.
+    // Sin esto, los cambios quedan atrapados en el localStorage del admin
+    // y el usuario (en otro dispositivo) no ve el ranking actualizado
+    // hasta el próximo poll de 60s (y a veces nunca si el admin no navega).
+    try {
+      await db._syncAllToSupabase();
+    } catch (err) {
+      console.warn('[evaluateMatchPredictions] Error al sincronizar puntos a Supabase:', err.message);
+    }
   }
 
   return { evaluated: predictions.length, correct: correctEmails.length };

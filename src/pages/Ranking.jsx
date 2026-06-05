@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
+import { db } from '@/lib/db';
 import { useOutletContext } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Trophy, Medal, Award, ChevronLeft, ChevronRight, Download,
-  Crown, TrendingUp, Target, Zap, ArrowUp, Users
+  Crown, TrendingUp, Target, Zap, ArrowUp, Users, RefreshCw
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
 import RankingExportCard from '@/components/RankingExportCard';
 import RankingPodium from './ranking/RankingPodium';
 import MyRankCard from './ranking/MyRankCard';
@@ -76,6 +78,8 @@ export default function Ranking() {
   const [page, setPage] = useState(0);
   const [showExportTop10, setShowExportTop10] = useState(false);
   const exportTop10Ref = useRef(null);
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
 
   const { data: allUsers = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['ranking'],
@@ -84,6 +88,23 @@ export default function Ranking() {
       return res.data?.ranking || [];
     },
   });
+
+  // Forzar sync desde Supabase → actualiza prediction_points y total_points
+  // de todos los usuarios. Útil cuando el admin acaba de evaluar un
+  // partido en otro dispositivo y los puntos aún no llegaron al poll de 60s.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      db._init();
+      await db._syncAllFromSupabase();
+      queryClient.invalidateQueries({ queryKey: ['ranking'] });
+      toast.success('Ranking actualizado');
+    } catch (err) {
+      toast.error('Error al actualizar: ' + (err?.message || err));
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const totalPages = Math.ceil(allUsers.length / PAGE_SIZE);
   const pagedUsers = allUsers.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -162,9 +183,21 @@ export default function Ranking() {
           </div>
         </div>
         {isAdmin && (
-          <Button onClick={handleExportTop10} size="sm" className="gap-2 glow-sm shadow-lg shadow-foreground/10">
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Exportar Top 10</span>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleRefresh} size="sm" variant="outline" disabled={refreshing} className="gap-2">
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Actualizar</span>
+            </Button>
+            <Button onClick={handleExportTop10} size="sm" className="gap-2 glow-sm shadow-lg shadow-foreground/10">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Exportar Top 10</span>
+            </Button>
+          </div>
+        )}
+        {!isAdmin && (
+          <Button onClick={handleRefresh} size="sm" variant="outline" disabled={refreshing} className="gap-2">
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Actualizar</span>
           </Button>
         )}
       </m.div>
