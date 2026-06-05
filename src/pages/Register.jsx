@@ -80,6 +80,21 @@ if (!form.email) errors.email = 'Campo obligatorio';
       if (form.referral_code) {
         const d = db._init();
         referrerData = d.users.find(u => u.referral_code === form.referral_code);
+
+        // Fallback: si no está en local (otro dispositivo), consultar Supabase directo
+        if (!referrerData && isSupabaseAvailable()) {
+          const { data, error } = await supabase
+            .from('users')
+            .select('id, email, referral_code, full_name, instagram')
+            .eq('referral_code', form.referral_code)
+            .maybeSingle();
+          if (!error && data) {
+            referrerData = data;
+            // Cachear localmente para próximos registros y para el ranking
+            if (!d.users.some(u => u.id === data.id)) d.users.push(data);
+          }
+        }
+
         if (!referrerData) {
           setFieldErrors(prev => ({ ...prev, referral_code: 'Código de invitación inválido' }));
           setIsLoading(false);
