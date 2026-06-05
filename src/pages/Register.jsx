@@ -218,7 +218,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <m.div
-        className="w-full max-w-md"
+        className="w-full max-w-md sm:max-w-2xl"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
