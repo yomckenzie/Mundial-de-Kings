@@ -4,7 +4,7 @@ import { Clock, Trophy } from 'lucide-react';
 const FIRST_MATCH_UTC = Date.UTC(2026, 5, 11, 19, 0, 0); // 11 jun 2026 14:00 Panamá = 19:00 UTC
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-const pad = (n) => String(n).padStart(2, '0');
+
 
 function diffParts(targetMs, nowMs) {
   const diff = Math.max(0, targetMs - nowMs);
@@ -15,9 +15,20 @@ function diffParts(targetMs, nowMs) {
   return { diff, days, hours, minutes, seconds };
 }
 
+const pad = (n) => {
+  if (n == null || isNaN(n)) return '00';
+  return String(Math.floor(n)).padStart(2, '0');
+};
+
+// Panama is UTC-5 year-round (no DST)
+function getPanamaDate() {
+  const now = Date.now();
+  const panamaMs = now - 5 * 60 * 60 * 1000; // UTC → UTC-5
+  return new Date(panamaMs);
+}
+
 function getInitialTime() {
-  const now = new Date();
-  const panamaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Panama' }));
+  const panamaTime = getPanamaDate();
   return {
     time: `${pad(panamaTime.getHours())}:${pad(panamaTime.getMinutes())}:${pad(panamaTime.getSeconds())}`,
     date: `${DAY_NAMES[panamaTime.getDay()]} ${panamaTime.getDate()} ${MONTH_NAMES[panamaTime.getMonth()]} ${panamaTime.getFullYear()}`,
@@ -31,18 +42,17 @@ function getInitialCountdown() {
 export default function PanamaClockWidget() {
   const [time, setTime] = useState(() => getInitialTime().time);
   const [date, setDate] = useState(() => getInitialTime().date);
-  const [countdown, setCountdown] = useState(() => getInitialCountdown);
+  const [countdown, setCountdown] = useState(() => getInitialCountdown());
   const [started, setStarted] = useState(() => getInitialCountdown().diff === 0);
 
   useEffect(() => {
     const update = () => {
-      const now = new Date();
-      const panamaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Panama' }));
+      const panamaTime = getPanamaDate();
 
       setTime(`${pad(panamaTime.getHours())}:${pad(panamaTime.getMinutes())}:${pad(panamaTime.getSeconds())}`);
       setDate(`${DAY_NAMES[panamaTime.getDay()]} ${panamaTime.getDate()} ${MONTH_NAMES[panamaTime.getMonth()]} ${panamaTime.getFullYear()}`);
 
-      const parts = diffParts(FIRST_MATCH_UTC, now.getTime());
+      const parts = diffParts(FIRST_MATCH_UTC, Date.now());
       setCountdown(parts);
       setStarted(parts.diff === 0);
     };
