@@ -80,6 +80,7 @@ export default function Ranking() {
   const exportTop10Ref = useRef(null);
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
   const { data: allUsers = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['ranking'],
@@ -98,6 +99,7 @@ export default function Ranking() {
       db._init();
       await db._syncAllFromSupabase();
       queryClient.invalidateQueries({ queryKey: ['ranking'] });
+      setLastSyncedAt(new Date());
       toast.success('Ranking actualizado');
     } catch (err) {
       toast.error('Error al actualizar: ' + (err?.message || err));
@@ -199,6 +201,11 @@ export default function Ranking() {
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Actualizar</span>
           </Button>
+        )}
+        {lastSyncedAt && (
+          <p className="w-full text-right text-[11px] text-muted-foreground/60 -mt-1">
+            Última sincronización: {lastSyncedAt.toLocaleTimeString('es-PA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </p>
         )}
       </m.div>
 
