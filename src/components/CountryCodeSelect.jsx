@@ -23,9 +23,9 @@ export default function CountryCodeSelect({ value, onChange, id = 'phone-country
       value={value || DEFAULT_DIAL_CODE}
       onValueChange={(v) => { onChange(v); setSearch(''); }}
     >
-      <SelectTrigger id={id} className="w-[110px] sm:w-[150px] shrink-0 px-2 sm:px-3 [&>span]:line-clamp-1" aria-label="Código de país">
+      <SelectTrigger id={id} className="w-[88px] sm:w-[110px] shrink-0 px-1.5 sm:px-2 [&>span]:line-clamp-1" aria-label="Código de país">
         <SelectValue>
-          <span className="flex items-center gap-1 sm:gap-1.5">
+          <span className="flex items-center gap-1">
             <span aria-hidden="true">{current.flag}</span>
             <span className="font-mono">{current.code}</span>
           </span>
