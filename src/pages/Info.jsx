@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { api } from '@/api/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -84,17 +84,16 @@ export default function Info() {
   const isAdmin = user?.role === 'admin';
 
   const [sections, setSections] = useState(() => DEFAULT_SECTIONS);
-  const [settingId, setSettingId] = useState(null);
+  const settingIdRef = useRef(null);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState(null);
-  const [draft, setDraft] = useState({ title: '', content: '' });
+  const [editing, setEditing] = useState({ id: null, title: '', content: '' });
   const [saving, setSaving] = useState(false);
 
   const loadSections = useCallback(async () => {
     const settings = await api.entities.AppSettings.list();
     const found = settings.find(r => r.key === SETTING_KEY);
     if (found) {
-      setSettingId(found.id);
+      settingIdRef.current = found.id;
       setSections(JSON.parse(found.value));
     } else {
       setSections(DEFAULT_SECTIONS);
@@ -115,30 +114,28 @@ export default function Info() {
 
   const persist = async (newSections) => {
     const value = JSON.stringify(newSections);
-    if (settingId) {
-      await api.entities.AppSettings.update(settingId, { value });
+    if (settingIdRef.current) {
+      await api.entities.AppSettings.update(settingIdRef.current, { value });
     } else {
       const created = await api.entities.AppSettings.create({ key: SETTING_KEY, value });
-      setSettingId(created.id);
+      settingIdRef.current = created.id;
     }
   };
 
   const startEdit = (section) => {
-    setEditingId(section.id);
-    setDraft({ title: section.title, content: section.content });
+    setEditing({ id: section.id, title: section.title, content: section.content });
   };
 
   const cancelEdit = () => {
-    setEditingId(null);
-    setDraft({ title: '', content: '' });
+    setEditing({ id: null, title: '', content: '' });
   };
 
   const saveEdit = async (id) => {
     setSaving(true);
-    const updated = sections.map(s => s.id === id ? { ...s, ...draft } : s);
+    const updated = sections.map(s => s.id === id ? { ...s, title: editing.title, content: editing.content } : s);
     await persist(updated);
     setSections(updated);
-    setEditingId(null);
+    setEditing({ id: null, title: '', content: '' });
     setSaving(false);
     toast.success('Guardado correctamente');
   };
@@ -181,10 +178,10 @@ export default function Info() {
       {sections.map((section) => (
         <Card key={section.id}>
           <CardHeader className="pb-3">
-            {editingId === section.id ? (
+            {editing.id === section.id ? (
               <Input
-                value={draft.title}
-                onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
+                value={editing.title}
+                onChange={e => setEditing(d => ({ ...d, title: e.target.value }))}
                 className="text-base font-semibold"
                 placeholder="Título de la sección"
               />
@@ -214,11 +211,11 @@ export default function Info() {
             )}
           </CardHeader>
           <CardContent>
-            {editingId === section.id ? (
+            {editing.id === section.id ? (
               <div className="space-y-3">
                 <Textarea
-                  value={draft.content}
-                  onChange={e => setDraft(d => ({ ...d, content: e.target.value }))}
+                  value={editing.content}
+                  onChange={e => setEditing(d => ({ ...d, content: e.target.value }))}
                   rows={8}
                   placeholder="Escribe el contenido aquí..."
                   className="resize-none"

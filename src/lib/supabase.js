@@ -164,29 +164,33 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
     // intentar uno por uno cambiando la columna de conflicto
     if (err.code === '23505' || err.status === 409) {
       console.log(`[Supabase] Conflict en ${tableName}, intentando individual por email...`)
-      let successCount = 0
-      for (const record of cleanedRecords) {
+      const results = await Promise.all(cleanedRecords.map(async (record) => {
         try {
           const { error: indError } = await supabase
             .from(tableName)
             .upsert(record, { onConflict: 'email' })
-          if (!indError) successCount++
-        } catch {}
-      }
+          return !indError ? 1 : 0
+        } catch { return 0 }
+      }))
+      let successCount = results.reduce((sum, v) => sum + v, 0)
       if (successCount === 0 && records.length > 0) {
         try {
           const { data: existing } = await supabase
             .from(tableName)
             .select('id, email')
           const existingEmails = new Set((existing || []).map(r => r.email))
-          for (const record of cleanedRecords) {
+          const fallbackResults = await Promise.all(cleanedRecords.map(async (record) => {
             if (!existingEmails.has(record.email)) {
-              const { error: indError } = await supabase
-                .from(tableName)
-                .upsert(record, { onConflict: 'id' })
-              if (!indError) successCount++
+              try {
+                const { error: indError } = await supabase
+                  .from(tableName)
+                  .upsert(record, { onConflict: 'id' })
+                return !indError ? 1 : 0
+              } catch { return 0 }
             }
-          }
+            return 0
+          }))
+          successCount = fallbackResults.reduce((sum, v) => sum + v, 0)
         } catch {}
       }
       console.log(`[Supabase] Sincronizados ${successCount}/${cleanedRecords.length} en ${tableName}`)

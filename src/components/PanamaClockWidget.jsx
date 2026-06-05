@@ -15,13 +15,24 @@ function diffParts(targetMs, nowMs) {
   return { diff, days, hours, minutes, seconds };
 }
 
-const INITIAL_COUNTDOWN = { diff: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
+function getInitialTime() {
+  const now = new Date();
+  const panamaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Panama' }));
+  return {
+    time: `${pad(panamaTime.getHours())}:${pad(panamaTime.getMinutes())}:${pad(panamaTime.getSeconds())}`,
+    date: `${DAY_NAMES[panamaTime.getDay()]} ${panamaTime.getDate()} ${MONTH_NAMES[panamaTime.getMonth()]} ${panamaTime.getFullYear()}`,
+  };
+}
+
+function getInitialCountdown() {
+  return diffParts(FIRST_MATCH_UTC, Date.now());
+}
 
 export default function PanamaClockWidget() {
-  const [time, setTime] = useState('');
-  const [date, setDate] = useState('');
-  const [countdown, setCountdown] = useState(INITIAL_COUNTDOWN);
-  const [started, setStarted] = useState(false);
+  const [time, setTime] = useState(() => getInitialTime().time);
+  const [date, setDate] = useState(() => getInitialTime().date);
+  const [countdown, setCountdown] = useState(() => getInitialCountdown);
+  const [started, setStarted] = useState(() => getInitialCountdown().diff === 0);
 
   useEffect(() => {
     const update = () => {
@@ -35,7 +46,6 @@ export default function PanamaClockWidget() {
       setCountdown(parts);
       setStarted(parts.diff === 0);
     };
-    update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
   }, []);

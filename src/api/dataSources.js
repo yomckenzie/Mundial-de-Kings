@@ -198,35 +198,4 @@ export async function checkAllSources() {
   return results;
 }
 
-// ─── Obtener partidos en vivo (de cualquier fuente disponible) ───
-export async function getLiveMatches() {
-  try {
-    const { hasApiKey, checkConnection, fetchLiveMatches } = await import('./footballSync');
-    if (hasApiKey() && await checkConnection()) {
-      return await fetchLiveMatches();
-    }
-  } catch {}
 
-  try {
-    const fd = await import('./footballData');
-    if (fd.hasKey() && await fd.checkConnection()) {
-      return await fd.fetchLiveMatches();
-    }
-  } catch {}
-
-  return [];
-}
-
-// ─── Refrescar status (resetear caché) ───
-export function refreshStatus() {
-  _sources = null;
-  _sourceStatus = {};
-}
-
-export default {
-  getSourceStatus,
-  syncWithBestSource,
-  checkAllSources,
-  getLiveMatches,
-  refreshStatus,
-};

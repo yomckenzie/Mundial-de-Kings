@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,20 +58,20 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <motion.div
+      <m.div
         className="w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
       >
-        <motion.div
+        <m.div
           className="text-center mb-8 space-y-2"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.3 }}
         >
-          <motion.div
-            initial={{ scale: 0, opacity: 0 }}
+          <m.div
+            initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 200, delay: 0.2 }}
           >
@@ -82,15 +82,15 @@ export default function Login() {
                 className="h-16 sm:h-20 md:h-24 w-auto mx-auto mb-3 drop-shadow-lg transition-transform duration-300 hover:scale-105 cursor-pointer"
               />
             </Link>
-          </motion.div>
+          </m.div>
           <h1 className="font-display text-4xl md:text-5xl tracking-wide">
             MUNDIAL DE{' '}
             <span className="text-foreground">KINGS</span>
           </h1>
           <p className="text-muted-foreground">Inicia sesión para pronosticar y ganar</p>
-        </motion.div>
+        </m.div>
 
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.3 }}
@@ -141,7 +141,7 @@ export default function Login() {
                   </div>
                 </div>
 
-                <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
+                <m.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
                   <Button type="submit" className="w-full glow-sm" disabled={isLoading}>
                     {isLoading ? (
                       <span className="flex items-center gap-2">
@@ -150,7 +150,7 @@ export default function Login() {
                       </span>
                     ) : 'Iniciar sesión'}
                   </Button>
-                </motion.div>
+                </m.div>
 
                 <p className="text-center text-sm text-muted-foreground">
                   ¿No tienes cuenta?{' '}
@@ -171,8 +171,8 @@ export default function Login() {
               </form>
             </CardContent>
           </Card>
-        </motion.div>
-      </motion.div>
+        </m.div>
+      </m.div>
     </div>
   );
 }

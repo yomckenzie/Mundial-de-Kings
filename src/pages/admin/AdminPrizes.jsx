@@ -140,16 +140,14 @@ export default function AdminPrizes() {
           <Card key={p.id}>
             <CardContent className="p-3 flex items-center gap-3">
               {p.image_url ? (
-                <div
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   aria-label={`Abrir imagen de ${p.name}`}
-                  className="w-14 h-14 rounded overflow-hidden cursor-pointer"
+                  className="w-14 h-14 rounded overflow-hidden cursor-pointer p-0 border-0"
                   onClick={() => window.open(p.image_url, '_blank')}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(p.image_url, '_blank'); } }}
                 >
                   <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover hover:scale-110 transition-transform duration-200" />
-                </div>
+                </button>
               ) : (
                 <div className="w-14 h-14 rounded bg-muted flex items-center justify-center">
                   <Gift className="w-6 h-6 text-muted-foreground" />

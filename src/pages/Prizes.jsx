@@ -3,7 +3,7 @@ import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,11 +50,7 @@ export default function Prizes() {
 
   const userEmail = user?.email || '';
 
-  const [confirmPrize, setConfirmPrize] = useState(null);
-  const [cedulaInput, setCedulaInput] = useState('');
-  const [cedulaError, setCedulaError] = useState('');
-  const [showSuccess, setShowSuccess] = useState(null);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [modal, setModal] = useState({ confirmPrize: null, cedulaInput: '', cedulaError: '', showSuccess: null, previewImage: null });
 
   const { data: prizes = [], isLoading } = useQuery({
     queryKey: ['prizes'],
@@ -118,10 +114,7 @@ export default function Prizes() {
       queryClient.invalidateQueries({ queryKey: ['prizes'] });
       queryClient.invalidateQueries({ queryKey: ['my-redemptions'] });
       queryClient.invalidateQueries({ queryKey: ['my-bonuses'] });
-      setConfirmPrize(null);
-      setCedulaInput('');
-      setCedulaError('');
-      setShowSuccess(prize);
+      setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '', showSuccess: prize }));
     },
     onError: (err) => {
       toast.error(err.message);
@@ -129,31 +122,29 @@ export default function Prizes() {
   });
 
   const openConfirmDialog = (prize) => {
-    setCedulaInput('');
-    setCedulaError('');
-    setConfirmPrize(prize);
+    setModal(m => ({ ...m, cedulaInput: '', cedulaError: '', confirmPrize: prize }));
   };
 
   const handleConfirmRedeem = () => {
-    const cedula = cedulaInput.trim();
+    const cedula = modal.cedulaInput.trim();
     if (!cedula) {
-      setCedulaError('Debes ingresar tu cédula');
+      setModal(m => ({ ...m, cedulaError: 'Debes ingresar tu cédula' }));
       return;
     }
     if (cedula.length < 3) {
-      setCedulaError('Ingresa una cédula válida');
+      setModal(m => ({ ...m, cedulaError: 'Ingresa una cédula válida' }));
       return;
     }
     if (cedula !== user?.cedula) {
-      setCedulaError('La cédula no coincide con la registrada. Debe ser la misma que usaste al registrarte.');
+      setModal(m => ({ ...m, cedulaError: 'La cédula no coincide con la registrada. Debe ser la misma que usaste al registrarte.' }));
       return;
     }
-    redeemMutation.mutate(confirmPrize);
+    redeemMutation.mutate(modal.confirmPrize);
   };
 
   if (isLoading) {
     return (
-      <motion.div
+      <m.div
         className="space-y-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -166,7 +157,7 @@ export default function Prizes() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => <PrizeSkeleton key={i} />)}
         </div>
-      </motion.div>
+      </m.div>
     );
   }
 
@@ -175,20 +166,20 @@ export default function Prizes() {
     : 0;
 
   return (
-    <motion.div
+    <m.div
       className="space-y-6"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
       {/* Header */}
-      <motion.div className="flex items-center justify-between" variants={itemVariants}>
+      <m.div className="flex items-center justify-between" variants={itemVariants}>
         <div>
           <h1 className="font-display text-4xl tracking-wide">PREMIOS</h1>
           <p className="text-sm text-muted-foreground mt-1">Canjea tus puntos por premios increíbles</p>
         </div>
         {user && (
-          <motion.div
+          <m.div
             className="flex items-center gap-2 bg-muted/50 border border-border px-4 py-2 rounded-full text-sm font-medium"
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
@@ -199,13 +190,13 @@ export default function Prizes() {
               <span className="font-black">{availablePoints}</span> pts
             <span className="text-xs text-muted-foreground ml-1 font-normal">disp.</span>
             </span>
-          </motion.div>
+          </m.div>
         )}
-      </motion.div>
+      </m.div>
 
       {/* Points progress bar */}
       {user && pointsProgress > 0 && (
-        <motion.div variants={itemVariants}>
+        <m.div variants={itemVariants}>
           <Card className="overflow-hidden">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
@@ -216,7 +207,7 @@ export default function Prizes() {
                 <span className="text-xs font-medium">{totalPoints} pts ganados · {availablePoints} pts disp.</span>
               </div>
               <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                <motion.div
+                <m.div
                   className="h-full bg-gradient-to-r from-secondary to-amber-500 rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${pointsProgress}%` }}
@@ -228,21 +219,21 @@ export default function Prizes() {
               </p>
             </CardContent>
           </Card>
-        </motion.div>
+        </m.div>
       )}
 
       {prizes.length === 0 && (
-        <motion.div
+        <m.div
           className="text-center py-16 space-y-3"
           variants={itemVariants}
         >
           <Gift className="w-14 h-14 text-muted-foreground/20 mx-auto" />
           <p className="text-muted-foreground">No hay premios disponibles en este momento.</p>
           <p className="text-xs text-muted-foreground/60">Vuelve pronto — estamos preparando nuevos premios para ti.</p>
-        </motion.div>
+        </m.div>
       )}
 
-      <motion.div
+      <m.div
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         variants={containerVariants}
       >
@@ -251,7 +242,7 @@ export default function Prizes() {
           const soldOut = prize.units_available <= 0;
 
           return (
-            <motion.div
+            <m.div
               key={prize.id}
               custom={i}
               variants={itemVariants}
@@ -260,13 +251,11 @@ export default function Prizes() {
             >
               <Card className="overflow-hidden h-full flex flex-col">
                 {prize.image_url ? (
-                  <div
-                    role="button"
-                    tabIndex={0}
+                  <button
+                    type="button"
                     aria-label={`Ver imagen de ${prize.name}`}
-                    className="aspect-video w-full overflow-hidden cursor-pointer group relative"
-                    onClick={() => setPreviewImage(prize)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPreviewImage(prize); } }}
+                    className="aspect-video w-full overflow-hidden cursor-pointer group relative block p-0 border-0 w-full"
+                    onClick={() => setModal(m => ({ ...m, previewImage: prize }))}
                   >
                     <img src={prize.image_url} alt={prize.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -274,7 +263,7 @@ export default function Prizes() {
                         <Search className="w-[18px] h-[18px]" />
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ) : (
                   <div className="aspect-video w-full bg-muted flex items-center justify-center">
                     <Gift className="w-10 h-10 text-muted-foreground/30" />
@@ -337,13 +326,13 @@ export default function Prizes() {
                   )}
                 </CardContent>
               </Card>
-            </motion.div>
+            </m.div>
           );
         })}
-      </motion.div>
+      </m.div>
 
       {/* Confirm cedula dialog */}
-      <Dialog open={!!confirmPrize} onOpenChange={(open) => { if (!open) { setConfirmPrize(null); setCedulaInput(''); setCedulaError(''); } }}>
+      <Dialog open={!!modal.confirmPrize} onOpenChange={(open) => { if (!open) { setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '' })); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -351,11 +340,11 @@ export default function Prizes() {
               Confirmar canje
             </DialogTitle>
           </DialogHeader>
-          {confirmPrize && (
+          {modal.confirmPrize && (
             <div className="space-y-4">
               <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-1">
-                <p><span className="text-muted-foreground">Premio:</span> <strong>{confirmPrize.name}</strong></p>
-                <p><span className="text-muted-foreground">Puntos a canjear:</span> <strong>{confirmPrize.points_cost} pts</strong></p>
+                <p><span className="text-muted-foreground">Premio:</span> <strong>{modal.confirmPrize.name}</strong></p>
+                <p><span className="text-muted-foreground">Puntos a canjear:</span> <strong>{modal.confirmPrize.points_cost} pts</strong></p>
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="cedula-confirm" className="text-sm font-medium">
@@ -364,12 +353,12 @@ export default function Prizes() {
                 </label>
                 <Input
                   id="cedula-confirm"
-                  value={cedulaInput}
-                  onChange={(e) => { setCedulaInput(e.target.value); setCedulaError(''); }}
+                  value={modal.cedulaInput}
+                  onChange={(e) => { setModal(m => ({ ...m, cedulaInput: e.target.value, cedulaError: '' })); }}
                   placeholder="8-000-0000"
                   onKeyDown={(e) => e.key === 'Enter' && handleConfirmRedeem()}
                 />
-                {cedulaError && <p className="text-xs text-destructive">{cedulaError}</p>}
+                {modal.cedulaError && <p className="text-xs text-destructive">{modal.cedulaError}</p>}
               </div>
               <Button
                 className="w-full gap-2"
@@ -394,18 +383,18 @@ export default function Prizes() {
       </Dialog>
 
       {/* Image Preview Dialog */}
-      <Dialog open={!!previewImage} onOpenChange={(open) => { if (!open) setPreviewImage(null); }}>
+      <Dialog open={!!modal.previewImage} onOpenChange={(open) => { if (!open) setModal(m => ({ ...m, previewImage: null })); }}>
         <DialogContent className="max-w-2xl p-1 bg-black/95 border-0">
-          {previewImage && (
+          {modal.previewImage && (
             <div className="relative">
               <img
-                src={previewImage.image_url}
-                alt={previewImage.name}
+                src={modal.previewImage.image_url}
+                alt={modal.previewImage.name}
                 className="w-full max-h-[75vh] object-contain rounded-lg"
               />
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 rounded-b-lg">
-                <p className="text-white font-semibold text-lg">{previewImage.name}</p>
-                <p className="text-white/70 text-sm">{previewImage.points_cost} pts · {previewImage.units_available} {previewImage.units_available === 1 ? 'disponible' : 'disponibles'}</p>
+                <p className="text-white font-semibold text-lg">{modal.previewImage.name}</p>
+                <p className="text-white/70 text-sm">{modal.previewImage.points_cost} pts · {modal.previewImage.units_available} {modal.previewImage.units_available === 1 ? 'disponible' : 'disponibles'}</p>
               </div>
             </div>
           )}
@@ -413,26 +402,26 @@ export default function Prizes() {
       </Dialog>
 
       {/* Success dialog */}
-      <Dialog open={!!showSuccess} onOpenChange={(open) => { if (!open) setShowSuccess(null); }}>
+      <Dialog open={!!modal.showSuccess} onOpenChange={(open) => { if (!open) setModal(m => ({ ...m, showSuccess: null })); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="sr-only">Premio canjeado</DialogTitle>
           </DialogHeader>
-          {showSuccess && (
+          {modal.showSuccess && (
             <div className="text-center space-y-4 py-2">
-              <motion.div
-                initial={{ scale: 0 }}
+              <m.div
+                initial={{ scale: 0.95 }}
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', stiffness: 200 }}
               >
                 <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-10 h-10 text-emerald-500" />
                 </div>
-              </motion.div>
+              </m.div>
               <div>
                 <h3 className="text-xl font-bold">¡Felicidades!</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Has canjeado <strong>{showSuccess.name}</strong> exitosamente.
+                  Has canjeado <strong>{modal.showSuccess.name}</strong> exitosamente.
                 </p>
               </div>
               <div className="bg-muted/30 rounded-lg p-4 text-sm space-y-2 text-left">
@@ -449,13 +438,13 @@ export default function Prizes() {
                   La cédula registrada se usará para validar tu identidad al entregar el premio.
                 </p>
               </div>
-              <Button onClick={() => setShowSuccess(null)} className="w-full">
+              <Button onClick={() => setModal(m => ({ ...m, showSuccess: null }))} className="w-full">
                 Entendido
               </Button>
             </div>
           )}
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </m.div>
   );
 }

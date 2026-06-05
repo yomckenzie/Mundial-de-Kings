@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Trophy, Target, Gift, Award, TrendingUp, Star } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,16 +53,16 @@ export default function Home() {
   ];
 
   return (
-    <motion.div
+    <m.div
       className="space-y-8"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
       {/* Hero Section */}
-      <motion.div className="text-center pt-2 md:pt-6 space-y-6" variants={itemVariants}>
+      <m.div className="text-center pt-2 md:pt-6 space-y-6" variants={itemVariants}>
         <div className="space-y-2">
-          <motion.h1
+          <m.h1
             className="font-display text-6xl md:text-8xl tracking-wide text-foreground leading-none"
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -70,29 +70,29 @@ export default function Home() {
           >
             MUNDIAL DE{' '}
             <span className="text-foreground">KINGS</span>
-          </motion.h1>
-          <motion.p
+          </m.h1>
+          <m.p
             className="text-xs md:text-sm uppercase tracking-[0.2em] text-muted-foreground font-medium"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.4 }}
           >
             Kings World Cup 2026
-          </motion.p>
+          </m.p>
         </div>
 
         <HomeBanner />
 
         {/* Subtitle */}
-        <motion.div className="flex items-center justify-center gap-2 max-w-xl mx-auto" variants={itemVariants}>
+        <m.div className="flex items-center justify-center gap-2 max-w-xl mx-auto" variants={itemVariants}>
           <p className="text-muted-foreground text-base md:text-lg">
             Síguenos, predice resultados y gana premios
           </p>
-        </motion.div>
+        </m.div>
 
         {/* Points badge */}
         {user && (
-          <motion.div
+          <m.div
             className="inline-flex items-center gap-2.5 bg-muted/50 text-foreground px-5 py-2 rounded-full text-sm font-medium border border-border"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -100,22 +100,22 @@ export default function Home() {
           >
             <Trophy className="w-4 h-4" />
             Tus puntos: <span className="font-bold">{user?.total_points || 0}</span>
-          </motion.div>
+          </m.div>
         )}
-      </motion.div>
+      </m.div>
 
       {/* Social Follow */}
-      <motion.div variants={itemVariants}>
+      <m.div variants={itemVariants}>
         <SocialFollow />
-      </motion.div>
+      </m.div>
 
       {/* Quick Access Cards */}
-      <motion.div
+      <m.div
         className="grid grid-cols-2 md:grid-cols-4 gap-4"
         variants={containerVariants}
       >
         {cards.map((c, i) => (
-          <motion.div
+          <m.div
             key={c.to}
             custom={i}
             variants={cardVariants}
@@ -137,24 +137,24 @@ export default function Home() {
                 </CardContent>
               </Card>
             </Link>
-          </motion.div>
+          </m.div>
         ))}
-      </motion.div>
+      </m.div>
 
       {/* Welcome Card */}
-      <motion.div variants={itemVariants}>
+      <m.div variants={itemVariants}>
         <Card className="overflow-hidden gradient-border">
           <CardContent className="p-6 md:p-8 text-center relative">
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-br from-secondary/10 to-accent/10 rounded-full blur-3xl" />
             <div className="relative">
-              <motion.div
+              <m.div
                 className="w-16 h-16 rounded-2xl bg-foreground flex items-center justify-center mx-auto mb-4 shadow-lg"
-                initial={{ rotate: -10, scale: 0 }}
+                initial={{ rotate: -10, scale: 0.95 }}
                 animate={{ rotate: 0, scale: 1 }}
                 transition={{ delay: 0.6, type: 'spring', stiffness: 200 }}
               >
                 <Star className="w-8 h-8 text-background" />
-              </motion.div>
+              </m.div>
               <h2 className="font-display text-2xl md:text-3xl tracking-wide mb-3">
                 ¡Bienvenido, {user?.full_name?.split(' ')[0] || 'Invitado'}!
               </h2>
@@ -163,22 +163,22 @@ export default function Home() {
                 Si aciertas el resultado exacto, ganas <strong className="text-secondary">100 puntos</strong>.
                 Acumula puntos y canjéalos por increíbles premios.
               </p>
-              <motion.div className="mt-6" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+              <m.div className="mt-6" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                 <Link to="/matches">
                   <Button size="lg" className="gap-2 glow-sm">
                     <Target className="w-5 h-5" />
                     Ver Partidos Disponibles
                   </Button>
                 </Link>
-              </motion.div>
+              </m.div>
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+      </m.div>
 
       {/* Stats Row */}
       {user && (
-        <motion.div
+        <m.div
           className="grid grid-cols-3 gap-4"
           variants={containerVariants}
         >
@@ -187,7 +187,7 @@ export default function Home() {
             { icon: TrendingUp, label: 'Aciertos', value: correctPreds.length, color: 'text-foreground' },
             { icon: Trophy, label: 'Puntos', value: user?.total_points || 0, color: 'text-foreground' },
           ].map((s, i) => (
-            <motion.div
+            <m.div
               key={s.label}
               custom={i}
               variants={itemVariants}
@@ -199,10 +199,10 @@ export default function Home() {
                   <p className="text-xs text-muted-foreground">{s.label}</p>
                 </CardContent>
               </Card>
-            </motion.div>
+            </m.div>
           ))}
-        </motion.div>
+        </m.div>
       )}
-    </motion.div>
+    </m.div>
   );
 }

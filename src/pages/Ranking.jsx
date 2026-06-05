@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useOutletContext } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import RankingExportCard from '@/components/RankingExportCard';
+import RankingPodium from './ranking/RankingPodium';
+import MyRankCard from './ranking/MyRankCard';
 
 const PAGE_SIZE = 20;
 
@@ -26,15 +28,6 @@ const containerVariants = {
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] } }
-};
-
-const podiumVariants = {
-  hidden: { opacity: 0, scale: 0.8, y: 20 },
-  visible: (i) => ({
-    opacity: 1, scale: 1, y: 0,
-    transition: { delay: 0.15 + i * 0.15, duration: 0.45, ease: 'backOut' }
-  }),
-  hover: { y: -6, transition: { duration: 0.25 } }
 };
 
 function RankSkeleton() {
@@ -121,7 +114,7 @@ export default function Ranking() {
 
   if (loadingUsers) {
     return (
-      <motion.div
+      <m.div
         className="space-y-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -130,12 +123,12 @@ export default function Ranking() {
         <Skeleton className="h-12 w-56" />
         <Skeleton className="h-36 w-full rounded-2xl" />
         <RankSkeleton />
-      </motion.div>
+      </m.div>
     );
   }
 
   return (
-    <motion.div
+    <m.div
       className="space-y-8 relative"
       variants={containerVariants}
       initial="hidden"
@@ -148,7 +141,7 @@ export default function Ranking() {
       </div>
 
       {/* ─── Header ─── */}
-      <motion.div className="flex items-end justify-between flex-wrap gap-4" variants={itemVariants}>
+      <m.div className="flex items-end justify-between flex-wrap gap-4" variants={itemVariants}>
         <div>
           <div className="flex items-center gap-3 mb-1">
             <div className="w-1.5 h-8 bg-foreground rounded-full" />
@@ -174,121 +167,16 @@ export default function Ranking() {
             <span className="hidden sm:inline">Exportar Top 10</span>
           </Button>
         )}
-      </motion.div>
+      </m.div>
 
       {/* ─── Podium ─── */}
-      {top3.length >= 3 && (
-        <motion.div
-          className="grid grid-cols-3 gap-3 md:gap-5"
-          variants={containerVariants}
-        >
-          {[
-            { user: top3[1], pos: 2, color: 'from-foreground to-foreground', label: '2º', shadow: 'shadow-foreground/10' },
-            { user: top3[0], pos: 1, color: 'from-foreground to-foreground', label: '1º', shadow: 'shadow-foreground/20' },
-            { user: top3[2], pos: 3, color: 'from-foreground to-foreground', label: '3º', shadow: 'shadow-foreground/10' },
-          ].map((item, i) => (
-            <motion.div
-              key={item.pos}
-              custom={i}
-              variants={podiumVariants}
-              whileHover="hover"
-              className="relative"
-            >
-              {/* Glow behind 1st */}
-              {item.pos === 1 && (
-                <div className="absolute -inset-4 bg-foreground/5 rounded-full blur-3xl animate-pulse" />
-              )}
-              <Card className={`relative overflow-hidden ${item.pos === 1 ? 'ring-2 ring-foreground/20 shadow-xl shadow-foreground/10' : 'shadow-lg'} ${item.shadow}`}>
-                <div className={`h-2 bg-gradient-to-r ${item.color}`} />
-                <CardContent className={`p-4 md:p-5 text-center ${item.pos === 1 ? 'pt-5 md:pt-6' : ''}`}>
-                  {/* Rank badge */}
-                  <motion.div
-                    className={`w-10 h-10 md:w-12 md:h-12 rounded-full bg-foreground flex items-center justify-center mx-auto mb-3 shadow-lg ${item.pos === 1 ? 'scale-110' : ''}`}
-                    animate={item.pos === 1 ? {
-                      scale: [1, 1.08, 1],
-                      transition: { repeat: Infinity, duration: 2.5, ease: 'easeInOut' }
-                    } : undefined}
-                  >
-                    <Crown className="w-5 h-5 md:w-6 md:h-6 text-white drop-shadow" />
-                  </motion.div>
-
-                  {/* Username */}
-                  <p className="font-bold text-sm md:text-base truncate leading-tight">
-                    @{item.user.instagram}
-                  </p>
-                  {item.user.full_name && (
-                    <p className="text-[10px] md:text-xs text-muted-foreground truncate mt-0.5">
-                      {item.user.full_name}
-                    </p>
-                  )}
-
-                  {/* Points */}
-                  <div className="mt-3">
-                    <p className="text-2xl md:text-3xl font-black tracking-tight">
-                      {item.user.prediction_points || 0}
-                    </p>
-                    <p className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-widest font-semibold">
-                      puntos
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </motion.div>
-      )}
+      <RankingPodium top3={top3} />
 
       {/* ─── My Position Card ─── */}
-      {myRank > 0 && myUser && (
-        <motion.div variants={itemVariants}>
-          <Card className="gradient-border overflow-hidden relative group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-foreground/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700" />
-            <CardContent className="p-5 md:p-6 flex items-center justify-between relative">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-foreground flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                  <Trophy className="w-6 h-6 text-background" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                    Tu posición
-                  </p>
-                  <motion.p
-                    className="text-3xl font-black"
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: 'spring', stiffness: 350, damping: 12, delay: 0.4 }}
-                  >
-                    #{myRank}
-                    <span className="text-sm font-normal text-muted-foreground ml-2">
-                      de {allUsers.length}
-                    </span>
-                  </motion.p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Puntos</p>
-                <motion.p
-                  className="text-3xl font-black text-foreground"
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 350, damping: 12, delay: 0.5 }}
-                >
-                  {myUser.prediction_points || 0}
-                </motion.p>
-                {myRank > 1 && (
-                  <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-0.5 justify-end">
-                    <ArrowUp className="w-3 h-3" />
-                    a {getPointGap(myUser.prediction_points, allUsers[myRank - 2]?.prediction_points) ?? '-'} del {myRank - 1}º
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+      <MyRankCard myUser={myUser} myRank={myRank} allUsers={allUsers} />
 
       {/* ─── Table ─── */}
-      <motion.div variants={itemVariants}>
+      <m.div variants={itemVariants}>
         <Card className="overflow-hidden shadow-lg">
           <CardHeader className="pb-3 border-b border-border/50 bg-muted/10">
             <CardTitle className="text-lg flex items-center gap-2.5">
@@ -304,7 +192,7 @@ export default function Ranking() {
           <CardContent className="p-0">
             <AnimatePresence mode="wait">
               {pagedUsers.length === 0 ? (
-                <motion.div
+                <m.div
                   key="empty"
                   className="py-16 text-center"
                   initial={{ opacity: 0 }}
@@ -317,9 +205,9 @@ export default function Ranking() {
                   <p className="text-sm text-muted-foreground/60 mt-1">
                     ¡Sé el primero en participar!
                   </p>
-                </motion.div>
+                </m.div>
               ) : (
-                <motion.div
+                <m.div
                   key="list"
                   className="divide-y divide-border/40"
                   variants={containerVariants}
@@ -343,7 +231,7 @@ export default function Ranking() {
                     const RankIcon = badge.icon;
 
                     return (
-                      <motion.div
+                      <m.div
                         key={u.id}
                         custom={i}
                         variants={itemVariants}
@@ -422,19 +310,19 @@ export default function Ranking() {
                             )}
                           </div>
                         </div>
-                      </motion.div>
+                      </m.div>
                     );
                   })}
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
           </CardContent>
         </Card>
-      </motion.div>
+      </m.div>
 
       {/* ─── Pagination ─── */}
       {totalPages > 1 && (
-        <motion.div
+        <m.div
           className="flex items-center justify-center gap-3"
           variants={itemVariants}
         >
@@ -487,10 +375,10 @@ export default function Ranking() {
             <span className="hidden sm:inline">Siguiente</span>
             <ChevronRight className="w-4 h-4" />
           </Button>
-        </motion.div>
+        </m.div>
       )}
 
       {exportCards}
-    </motion.div>
+    </m.div>
   );
 }

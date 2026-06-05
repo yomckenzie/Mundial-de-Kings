@@ -1,32 +1,41 @@
-import React, { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { db } from '@/lib/db';
 
 const AuthContext = createContext();
 
+const initialState = () => ({
+  user: db.getCurrentUser(),
+  isAuthenticated: !!db.getCurrentUser(),
+  isLoadingAuth: true,
+  authError: null,
+  authChecked: false,
+});
+
+function authReducer(state, action) {
+  switch (action.type) {
+    case 'INIT_DONE':
+      return { ...state, isLoadingAuth: false, authChecked: true };
+    case 'LOGOUT':
+      return { ...state, user: null, isAuthenticated: false };
+    case 'SET_USER':
+      return { ...state, user: action.user, isAuthenticated: !!action.user };
+    case 'SET_ERROR':
+      return { ...state, authError: action.error };
+    default:
+      return state;
+  }
+}
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => db.getCurrentUser());
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !!db.getCurrentUser());
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [authError, setAuthError] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authState, dispatch] = useReducer(authReducer, null, initialState);
 
   useEffect(() => {
-    const stored = db.getCurrentUser();
-    if (stored && !user) {
-      setUser(stored);
-      setIsAuthenticated(true);
-    } else if (!stored) {
-      setIsAuthenticated(false);
-    }
-    setIsLoadingAuth(false);
-    setAuthChecked(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    dispatch({ type: 'INIT_DONE' });
   }, []);
 
   const logout = useCallback((shouldRedirect = true) => {
     db.setCurrentUserEmail(null);
-    setUser(null);
-    setIsAuthenticated(false);
+    dispatch({ type: 'LOGOUT' });
     localStorage.removeItem('chessking_token');
     if (shouldRedirect) {
       window.location.href = '/';
@@ -39,10 +48,11 @@ export const AuthProvider = ({ children }) => {
 
   const refreshUser = useCallback(() => {
     const current = db.getCurrentUser();
-    setUser(current);
-    setIsAuthenticated(!!current);
+    dispatch({ type: 'SET_USER', user: current });
     return current;
   }, []);
+
+  const { user, isAuthenticated, isLoadingAuth, authError, authChecked } = authState;
 
   const value = useMemo(() => ({
     user,

@@ -191,5 +191,3 @@ export async function seedAllMatches(api) {
   const created = await api.entities.Match.bulkCreate(SEED_MATCHES);
   return created;
 }
-
-export default SEED_MATCHES;

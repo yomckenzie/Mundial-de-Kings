@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { seedAllMatches } from '@/api/seedMatches';
 import { db } from '@/lib/db';
-import { syncWithBestSource, checkAllSources, refreshStatus } from '@/api/dataSources';
+import { syncWithBestSource, checkAllSources } from '@/api/dataSources';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,17 +15,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { toast } from 'sonner';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 
 const LOCK_HOURS = 24;
 
 /** Retorna true si el partido está bloqueado (24h+ después de su fecha/hora) */
-function isMatchLocked(match) {
+function isMatchLocked(match, nowMs = Date.now()) {
   if (!match.match_date) return false;
   const matchDate = new Date(`${match.match_date}T${match.match_time || '23:59'}:00`);
   if (isNaN(matchDate.getTime())) return false;
-  const now = new Date();
-  const hoursSince = (now - matchDate) / (1000 * 60 * 60);
+  const hoursSince = (nowMs - matchDate.getTime()) / (1000 * 60 * 60);
   return hoursSince >= LOCK_HOURS;
 }  /** Retorna true si se puede actualizar marcador (solo en vivo o finalizado) */
 function canPublishResult(match) {
@@ -34,18 +33,49 @@ function canPublishResult(match) {
 
 const INITIAL = { team1: '', team2: '', match_date: '', match_time: '', group_stage: '', status: 'open' };
 
+// Referencia estable para parsear fechas (evita new Date() en render)
+const PARSE_REF = new Date(0);
+
+function isFutureDate(dateStr, timeStr) {
+  const ms = new Date(`${dateStr}T${timeStr || '23:59'}:00`).getTime();
+  return !isNaN(ms) && ms >= Date.now();
+}
+
+const STATUS_COLORS = {
+  pending: 'bg-muted text-muted-foreground',
+  open: 'bg-accent text-accent-foreground',
+  live: 'bg-red-600 text-white',
+  closed: 'bg-secondary text-secondary-foreground',
+  finished: 'bg-muted text-muted-foreground',
+};
+
+const STATUS_LABELS = {
+  pending: 'Pendiente',
+  open: 'Abierto',
+  live: 'En Vivo',
+  closed: 'Cerrado',
+  finished: 'Finalizado',
+};
+
+const SOURCE_ICONS = {
+  'api-football': <Zap className="w-4 h-4" />,
+  'football-data': <Globe className="w-4 h-4" />,
+  'manual': <UserCheck className="w-4 h-4" />,
+};
+
+const SOURCE_COLORS = {
+  configured_online: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
+  configured_offline: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800',
+  not_configured: 'bg-muted text-muted-foreground border-border',
+};
+
 export default function AdminMatches() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(INITIAL);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [resultForm, setResultForm] = useState({});
-  const [syncing, setSyncing] = useState(false);
-  const [sources, setSources] = useState([]);
-  const [sourcesLoading, setSourcesLoading] = useState(true);
-  const [showSources, setShowSources] = useState(true);
-  const [bulkResults, setBulkResults] = useState({});
-  const [deduping, setDeduping] = useState(false);
-  const [liveNow, setLiveNow] = useState(Date.now());
+  const [dialog, setDialog] = useState({ form: INITIAL, open: false });
+  const [results, setResults] = useState({ form: {}, bulk: {} });
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+  const [sourceState, setSourceState] = useState({ syncing: false, sources: [], show: true, deduping: false });
+  const sourcesLoading = sourceState.sources.length === 0;
 
   // Timer en tiempo real para calcular elapsed desde live_started_at
   useEffect(() => {
@@ -53,12 +83,14 @@ export default function AdminMatches() {
     return () => clearInterval(interval);
   }, []);
 
-  const getElapsed = (match) => {
+  const getElapsed = useCallback((match) => {
     if (match.status === 'live' && match.live_started_at) {
-      return Math.floor((liveNow - new Date(match.live_started_at).getTime()) / 60000);
+      const startedAt = new Date(match.live_started_at).getTime();
+      if (isNaN(startedAt)) return match.elapsed;
+      return Math.floor((liveNow - startedAt) / 60000);
     }
     return match.elapsed;
-  };
+  }, [liveNow]);
 
   // ── Datos de partidos (deben declararse ANTES del useEffect que los usa) ──
   const { data: rawMatches = [], isLoading } = useQuery({
@@ -72,11 +104,11 @@ export default function AdminMatches() {
       return (a.match_time || '').localeCompare(b.match_time || '');
     }), [rawMatches]);
 
-  // Pre-fill resultForm con resultados existentes para poder editarlos
+  // Pre-fill results.form con resultados existentes para poder editarlos
   useEffect(() => {
-    setResultForm(prev => {
+    setResults(prev => {
       let changed = false;
-      const next = { ...prev };
+      const next = { ...prev.form };
       matches.forEach(m => {
         const hasT1 = m.result_team1 !== undefined && m.result_team1 !== null;
         const hasT2 = m.result_team2 !== undefined && m.result_team2 !== null;
@@ -88,28 +120,28 @@ export default function AdminMatches() {
           changed = true;
         }
       });
-      return changed ? next : prev;
+      return changed ? { ...prev, form: next } : prev;
     });
   }, [matches]);
 
   // Cargar fuentes al montar
   useEffect(() => {
-    loadSources();
+    checkAllSources().then(sources => {
+      setSourceState(prev => ({ ...prev, sources }));
+    });
   }, []);
 
-  const loadSources = async () => {
-    setSourcesLoading(true);
-    const results = await checkAllSources();
-    setSources(results);
-    setSourcesLoading(false);
+  const refreshSources = async () => {
+    setSourceState(prev => ({ ...prev, sources: [] }));
+    const sources = await checkAllSources();
+    setSourceState(prev => ({ ...prev, sources }));
   };
 
   const handleSyncNow = async () => {
-    setSyncing(true);
+    setSourceState(prev => ({ ...prev, syncing: true }));
     try {
       const result = await syncWithBestSource();
-      refreshStatus();
-      await loadSources();
+      await refreshSources();
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
 
       if (result.source === 'manual' && (!result.errors || result.errors.length === 0)) {
@@ -126,17 +158,17 @@ export default function AdminMatches() {
     } catch (e) {
       toast.error('Error de sincronización: ' + e.message);
     } finally {
-      setSyncing(false);
+      setSourceState(prev => ({ ...prev, syncing: false }));
     }
   };
 
-  const lockedMatches = useMemo(() => matches.filter(isMatchLocked), [matches]);
+  const lockedMatches = useMemo(() => matches.filter(m => isMatchLocked(m, liveNow)), [matches, liveNow]);
   const hasLockedMatches = lockedMatches.length > 0;
 
   const resetAllMatches = useMutation({
     mutationFn: () => api.entities.Match.resetAll(),
     onSuccess: () => {
-      setResultForm({});
+      setResults(prev => ({ ...prev, form: {} }));
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       queryClient.invalidateQueries({ queryKey: ['ranking'] });
       toast.success('✅ Todos los partidos reiniciados a Pendiente');
@@ -165,8 +197,7 @@ export default function AdminMatches() {
     mutationFn: (data) => api.entities.Match.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
-      setForm(INITIAL);
-      setDialogOpen(false);
+      setDialog({ form: INITIAL, open: false });
       toast.success('Partido creado');
     },
   });
@@ -197,7 +228,7 @@ export default function AdminMatches() {
       toast.error('El partido debe estar EN VIVO o FINALIZADO para actualizar el marcador.');
       return;
     }
-    const r = resultForm[match.id];
+    const r = results.form[match.id];
     if (r?.team1 === undefined || r?.team2 === undefined || r.team1 === '' || r.team2 === '') {
       toast.error('Ingresa el resultado de ambos equipos');
       return;
@@ -215,9 +246,9 @@ export default function AdminMatches() {
         result_team2: resultTeam2,
       });
 
-      setResultForm(prev => {
-        const { [match.id]: _, ...rest } = prev;
-        return rest;
+      setResults(prev => {
+        const { [match.id]: _, ...rest } = prev.form;
+        return { ...prev, form: rest };
       });
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       toast.success('Marcador actualizado (en vivo).');
@@ -227,23 +258,23 @@ export default function AdminMatches() {
     // Si ya estaba finalizado, revertir puntos de pronósticos acertados primero
     if (match.status === 'finished') {
       const oldPreds = await api.entities.Prediction.filter({ match_id: match.id });
-      const usersToRevert = await Promise.all(
-        oldPreds
-          .filter(p => p.scored && (p.points_earned || 0) > 0)
-          .map(async (pred) => {
-            const users = await api.entities.User.filter({ email: pred.user_email });
-            return users[0] ? { user: users[0], pred } : null;
-          })
+      // Revertir puntos de pronósticos acertados (lookups en paralelo)
+      const revertResults = await Promise.all(
+        oldPreds.map(async (pred) => {
+          if (!(pred.scored && (pred.points_earned || 0) > 0)) return null;
+          const users = await api.entities.User.filter({ email: pred.user_email });
+          return users[0] ? { user: users[0], pred } : null;
+        })
       );
+      const revertUsers = [];
+      for (const r of revertResults) if (r) revertUsers.push(r);
       await Promise.all(
-        usersToRevert
-          .filter(Boolean)
-          .map(({ user, pred }) =>
-            api.entities.User.update(user.id, {
-              total_points: Math.max(0, (user.total_points || 0) - (pred.points_earned || 0)),
-              prediction_points: Math.max(0, (user.prediction_points || 0) - (pred.points_earned || 0)),
-            })
-          )
+        revertUsers.map(({ user, pred }) =>
+          api.entities.User.update(user.id, {
+            total_points: Math.max(0, (user.total_points || 0) - (pred.points_earned || 0)),
+            prediction_points: Math.max(0, (user.prediction_points || 0) - (pred.points_earned || 0)),
+          })
+        )
       );
     }
 
@@ -254,35 +285,41 @@ export default function AdminMatches() {
     });
 
     const predictions = await api.entities.Prediction.filter({ match_id: match.id });
-    for (const pred of predictions) {
-      // Re-evaluar todas las predicciones (incluso las ya scoradas)
-      // porque esto es una corrección de un partido finalizado
+    // Evaluar todas las predicciones en paralelo
+    const correctEmails = [];
+    await Promise.all(
+      predictions.map(pred => {
+        const isCorrect = pred.pred_team1 === resultTeam1 && pred.pred_team2 === resultTeam2;
+        const pointsEarned = isCorrect ? 100 : 0;
+        if (isCorrect) correctEmails.push(pred.user_email);
+        return api.entities.Prediction.update(pred.id, {
+          is_correct: isCorrect,
+          points_earned: pointsEarned,
+          scored: true,
+        });
+      })
+    );
 
-      const isCorrect = pred.pred_team1 === resultTeam1 && pred.pred_team2 === resultTeam2;
-      const pointsEarned = isCorrect ? 100 : 0;
-
-      await api.entities.Prediction.update(pred.id, {
-        is_correct: isCorrect,
-        points_earned: pointsEarned,
-        scored: true,
-      });
-
-      if (isCorrect) {
-        const users = await api.entities.User.filter({ email: pred.user_email });
-        if (users.length > 0) {
-          const u = users[0];
-          await api.entities.User.update(u.id, {
+    // Otorgar puntos a quienes acertaron (en paralelo, evitando duplicados por email)
+    if (correctEmails.length > 0) {
+      const uniqueEmails = [...new Set(correctEmails)];
+      const allUsers = await Promise.all(
+        uniqueEmails.map(email => api.entities.User.filter({ email }))
+      );
+      await Promise.all(
+        allUsers.flat().map(u =>
+          api.entities.User.update(u.id, {
             total_points: (u.total_points || 0) + 100,
             prediction_points: (u.prediction_points || 0) + 100,
-          });
-        }
-      }
+          })
+        )
+      );
     }
 
-    // Limpiar resultForm para que recargue desde los datos actualizados
-    setResultForm(prev => {
-      const { [match.id]: _, ...rest } = prev;
-      return rest;
+    // Limpiar results.form para que recargue desde los datos actualizados
+    setResults(prev => {
+      const { [match.id]: _, ...rest } = prev.form;
+      return { ...prev, form: rest };
     });
     queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
     queryClient.invalidateQueries({ queryKey: ['ranking'] });
@@ -293,7 +330,7 @@ export default function AdminMatches() {
 
   // Publicar resultados en batch
   const handleBatchPublish = async () => {
-    const matchesToPublish = Object.entries(bulkResults)
+    const matchesToPublish = Object.entries(results.bulk)
       .filter(([_, r]) => r.team1 !== '' && r.team2 !== undefined && r.team1 !== undefined);
 
     if (matchesToPublish.length === 0) {
@@ -322,12 +359,12 @@ export default function AdminMatches() {
     published = publishResults.filter(r => r.status === 'fulfilled' && r.value).length;
 
     queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
-    setBulkResults({});
+    setResults(prev => ({ ...prev, bulk: {} }));
     toast.success(`✅ ${published} marcadores actualizados y pronósticos evaluados`);
   };
 
   // Contar partidos con pronósticos pendientes
-  const pendingPublishCount = Object.entries(bulkResults)
+  const pendingPublishCount = Object.entries(results.bulk)
     .filter(([_, r]) => r.team1 !== '' && r.team1 !== undefined && r.team2 !== '' && r.team2 !== undefined)
     .length;
 
@@ -341,34 +378,6 @@ export default function AdminMatches() {
 
   const sortedDates = React.useMemo(() => Object.keys(groupedMatches).toSorted(), [groupedMatches]);
 
-  const statusColors = {
-    pending: 'bg-muted text-muted-foreground',
-    open: 'bg-accent text-accent-foreground',
-    live: 'bg-red-600 text-white',
-    closed: 'bg-secondary text-secondary-foreground',
-    finished: 'bg-muted text-muted-foreground',
-  };
-
-  const statusLabels = {
-    pending: 'Pendiente',
-    open: 'Abierto',
-    live: 'En Vivo',
-    closed: 'Cerrado',
-    finished: 'Finalizado',
-  };
-
-  const sourceIcons = {
-    'api-football': <Zap className="w-4 h-4" />,
-    'football-data': <Globe className="w-4 h-4" />,
-    'manual': <UserCheck className="w-4 h-4" />,
-  };
-
-  const sourceColors = {
-    configured_online: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
-    configured_offline: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800',
-    not_configured: 'bg-muted text-muted-foreground border-border',
-  };
-
   if (isLoading) return <p className="text-muted-foreground">Cargando panel de administración de partidos...</p>;
 
   return (
@@ -377,7 +386,7 @@ export default function AdminMatches() {
          PANEL DE FUENTES DE DATOS
          ═══════════════════════════════════════ */}
       <Card className="border shadow-sm">
-        <CardHeader className="pb-3 cursor-pointer" onClick={() => setShowSources(!showSources)}>
+        <CardHeader className="pb-3 cursor-pointer" onClick={() => setSourceState(prev => ({ ...prev, show: !prev.show }))}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
               <Database className="w-5 h-5" />
@@ -385,15 +394,15 @@ export default function AdminMatches() {
             </CardTitle>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">
-                {sources.find(s => s.online && s.type !== 'siempre') ? 'Automático activo' : 'Solo manual'}
+                {sourceState.sources.find(s => s.online && s.type !== 'siempre') ? 'Automático activo' : 'Solo manual'}
               </span>
-              {showSources ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {sourceState.show ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </div>
           </div>
         </CardHeader>
         <AnimatePresence>
-          {showSources && (
-            <motion.div
+          {sourceState.show && (
+            <m.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
@@ -405,17 +414,17 @@ export default function AdminMatches() {
                 ) : (
                   <>
                     <div className="grid gap-2">
-                      {sources.map((source) => {
-                        let stateClass = sourceColors.not_configured;
+                      {sourceState.sources.map((source) => {
+                        let stateClass = SOURCE_COLORS.not_configured;
                         let stateText = 'No configurado';
                         if (source.type === 'siempre') {
                           stateClass = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800';
                           stateText = 'Disponible';
                         } else if (source.configured && source.online) {
-                          stateClass = sourceColors.configured_online;
+                          stateClass = SOURCE_COLORS.configured_online;
                           stateText = 'Conectado';
                         } else if (source.configured && !source.online) {
-                          stateClass = sourceColors.configured_offline;
+                          stateClass = SOURCE_COLORS.configured_offline;
                           stateText = 'Sin conexión';
                         }
 
@@ -423,7 +432,7 @@ export default function AdminMatches() {
                           <div key={source.id} className="flex items-center justify-between p-2.5 rounded-lg border bg-card">
                             <div className="flex items-center gap-3">
                               <div className={`p-1.5 rounded-full ${stateClass}`}>
-                                {sourceIcons[source.id] || <Globe className="w-4 h-4" />}
+                                {SOURCE_ICONS[source.id] || <Globe className="w-4 h-4" />}
                               </div>
                               <div>
                                 <div className="flex items-center gap-2">
@@ -455,16 +464,16 @@ export default function AdminMatches() {
                         size="sm"
                         variant="default"
                         onClick={handleSyncNow}
-                        disabled={syncing}
+                        disabled={sourceState.syncing}
                         className="gap-2"
                       >
-                        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                        {syncing ? 'Sincronizando...' : 'Sincronizar resultados'}
+                        <RefreshCw className={`w-4 h-4 ${sourceState.syncing ? 'animate-spin' : ''}`} />
+                        {sourceState.syncing ? 'Sincronizando...' : 'Sincronizar resultados'}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={loadSources}
+                        onClick={refreshSources}
                         disabled={sourcesLoading}
                         className="gap-2"
                       >
@@ -475,7 +484,7 @@ export default function AdminMatches() {
                   </>
                 )}
               </CardContent>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </Card>
@@ -498,7 +507,7 @@ export default function AdminMatches() {
           variant="secondary"
           size="sm"
           onClick={async () => {
-            setDeduping(true);
+            setSourceState(prev => ({ ...prev, deduping: true }));
             try {
               const result = await db.matches.deduplicate();
               if (result.deleted === 0) {
@@ -510,14 +519,14 @@ export default function AdminMatches() {
             } catch (e) {
               toast.error('Error al deduplicar: ' + e.message);
             } finally {
-              setDeduping(false);
+              setSourceState(prev => ({ ...prev, deduping: false }));
             }
           }}
-          disabled={deduping || matches.length === 0}
+          disabled={sourceState.deduping || matches.length === 0}
           className="gap-2"
         >
           <Layers className="w-4 h-4" />
-          {deduping ? 'Deduplicando...' : 'Deduplicar partidos'}
+          {sourceState.deduping ? 'Deduplicando...' : 'Deduplicar partidos'}
         </Button>
         <Button
           variant="destructive"
@@ -529,7 +538,7 @@ export default function AdminMatches() {
           <RefreshCw className={`w-4 h-4 ${resetAllMatches.isPending ? 'animate-spin' : ''}`} />
           {resetAllMatches.isPending ? 'Reiniciando...' : 'Limpiar todos'}
         </Button>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialog.open} onOpenChange={o => setDialog(prev => ({ ...prev, open: o }))}>
           <DialogTrigger asChild>
             <Button className="gap-2"><Plus className="w-4 h-4" /> Crear Partido Manual</Button>
           </DialogTrigger>
@@ -539,23 +548,20 @@ export default function AdminMatches() {
             </DialogHeader>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>Equipo 1</Label><Input value={form.team1} onChange={e => setForm({...form, team1: e.target.value})} /></div>
-                <div><Label>Equipo 2</Label><Input value={form.team2} onChange={e => setForm({...form, team2: e.target.value})} /></div>
+                <div><Label>Equipo 1</Label><Input value={dialog.form.team1} onChange={e => setDialog(prev => ({...prev, form: {...prev.form, team1: e.target.value}}))} /></div>
+                <div><Label>Equipo 2</Label><Input value={dialog.form.team2} onChange={e => setDialog(prev => ({...prev, form: {...prev.form, team2: e.target.value}}))} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>Fecha</Label><Input type="date" value={form.match_date} max="2030-12-31" onChange={e => setForm({...form, match_date: e.target.value})} /></div>
-                <div><Label>Hora</Label><Input type="time" value={form.match_time} onChange={e => setForm({...form, match_time: e.target.value})} /></div>
+                <div><Label>Fecha</Label><Input type="date" value={dialog.form.match_date} max="2030-12-31" onChange={e => setDialog(prev => ({...prev, form: {...prev.form, match_date: e.target.value}}))} /></div>
+                <div><Label>Hora</Label><Input type="time" value={dialog.form.match_time} onChange={e => setDialog(prev => ({...prev, form: {...prev.form, match_time: e.target.value}}))} /></div>
               </div>
-              <div><Label>Fase / Grupo</Label><Input placeholder="Ej: Grupo A, Octavos" value={form.group_stage} onChange={e => setForm({...form, group_stage: e.target.value})} /></div>
+              <div><Label>Fase / Grupo</Label><Input placeholder="Ej: Grupo A, Octavos" value={dialog.form.group_stage} onChange={e => setDialog(prev => ({...prev, form: {...prev.form, group_stage: e.target.value}}))} /></div>
               <Button className="w-full" onClick={() => {
-                if (form.match_date) {
-                  const matchDate = new Date(`${form.match_date}T${form.match_time || '23:59'}:00`);
-                  if (!isNaN(matchDate.getTime()) && matchDate < new Date()) {
-                    toast.error('No puedes crear partidos en el pasado. La fecha/hora debe ser futura.');
-                    return;
-                  }
+                if (dialog.form.match_date && !isFutureDate(dialog.form.match_date, dialog.form.match_time)) {
+                  toast.error('No puedes crear partidos en el pasado. La fecha/hora debe ser futura.');
+                  return;
                 }
-                createMatch.mutate(form);
+                createMatch.mutate(dialog.form);
               }} disabled={createMatch.isPending}>
                 Crear Partido
               </Button>
@@ -586,10 +592,17 @@ export default function AdminMatches() {
               Ingresa los marcadores de los partidos en vivo para actualizarlos
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-              {matches
-                .filter(m => canPublishResult(m) && m.status !== 'finished')
-                .slice(0, 30)
-                .map(match => (
+              {(() => {
+                // Combinar filter+slice+map en un solo pasada
+                const result = [];
+                let count = 0;
+                for (const match of matches) {
+                  if (!canPublishResult(match) || match.status === 'finished') continue;
+                  if (count >= 30) break;
+                  result.push(match);
+                  count++;
+                }
+                return result.map(match => (
                 <div key={match.id} className="flex items-center gap-1.5 text-xs bg-background rounded-md p-1.5 border">
                   <span className="truncate flex-1 text-right font-medium">{match.team1}</span>
                   <Input
@@ -597,10 +610,10 @@ export default function AdminMatches() {
                     min="0"
                     className="w-10 h-7 text-center text-xs px-1"
                     placeholder="0"
-                    value={bulkResults[match.id]?.team1 ?? ''}
-                    onChange={(e) => setBulkResults(prev => ({
+                    value={results.bulk[match.id]?.team1 ?? ''}
+                    onChange={(e) => setResults(prev => ({
                       ...prev,
-                      [match.id]: { ...prev[match.id], team1: e.target.value }
+                      bulk: { ...prev.bulk, [match.id]: { ...prev.bulk[match.id], team1: e.target.value } }
                     }))}
                   />
                   <span className="text-muted-foreground">-</span>
@@ -609,15 +622,15 @@ export default function AdminMatches() {
                     min="0"
                     className="w-10 h-7 text-center text-xs px-1"
                     placeholder="0"
-                    value={bulkResults[match.id]?.team2 ?? ''}
-                    onChange={(e) => setBulkResults(prev => ({
+                    value={results.bulk[match.id]?.team2 ?? ''}
+                    onChange={(e) => setResults(prev => ({
                       ...prev,
-                      [match.id]: { ...prev[match.id], team2: e.target.value }
+                      bulk: { ...prev.bulk, [match.id]: { ...prev.bulk[match.id], team2: e.target.value } }
                     }))}
                   />
                   <span className="truncate flex-1 font-medium">{match.team2}</span>
                 </div>
-              ))}
+              ))})()}
             </div>
           </CardContent>
         </Card>
@@ -667,9 +680,8 @@ export default function AdminMatches() {
       {sortedDates.map(dateStr => (
         <div key={dateStr}>
           <h3 className="font-display text-lg mb-2 mt-6 first:mt-0">
-            {(() => {
-              try {
-                const d = parse(dateStr, 'yyyy-MM-dd', new Date());
+            {(() => {                    try {
+                const d = parse(dateStr, 'yyyy-MM-dd', PARSE_REF);
                 if (isNaN(d.getTime())) return dateStr;
                 return format(d, "d 'de' MMMM yyyy", { locale: es });
               } catch {
@@ -688,8 +700,8 @@ export default function AdminMatches() {
                     <Clock className="w-4 h-4" />{match.match_time}
                     {match.group_stage && <Badge variant="outline" className="text-[10px] ml-1">{match.group_stage}</Badge>}
                   </div>
-                  <Badge className={statusColors[match.status] || 'bg-muted'}>
-                    {statusLabels[match.status] || match.status}
+                  <Badge className={STATUS_COLORS[match.status] || 'bg-muted'}>
+                    {STATUS_LABELS[match.status] || match.status}
                     {match.status === 'live' && getElapsed(match) != null && ` ${getElapsed(match)}'`}
                   </Badge>
                 </div>
@@ -734,10 +746,10 @@ export default function AdminMatches() {
                           min="0"
                           className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           placeholder="0"
-                          value={resultForm[match.id]?.team1 ?? (match.result_team1 ?? '')}
-                          onChange={(e) => setResultForm(prev => ({
+                          value={results.form[match.id]?.team1 ?? (match.result_team1 ?? '')}
+                          onChange={(e) => setResults(prev => ({
                             ...prev,
-                            [match.id]: { ...prev[match.id], team1: e.target.value }
+                            form: { ...prev.form, [match.id]: { ...prev.form[match.id], team1: e.target.value } }
                           }))}
                         />
                         <span className="text-muted-foreground text-sm">-</span>
@@ -746,10 +758,10 @@ export default function AdminMatches() {
                           min="0"
                           className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           placeholder="0"
-                          value={resultForm[match.id]?.team2 ?? (match.result_team2 ?? '')}
-                          onChange={(e) => setResultForm(prev => ({
+                          value={results.form[match.id]?.team2 ?? (match.result_team2 ?? '')}
+                          onChange={(e) => setResults(prev => ({
                             ...prev,
-                            [match.id]: { ...prev[match.id], team2: e.target.value }
+                            form: { ...prev.form, [match.id]: { ...prev.form[match.id], team2: e.target.value } }
                           }))}
                         />
                         <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">

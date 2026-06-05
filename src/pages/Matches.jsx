@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { api } from '@/api/client';
 import { getSourceStatus, syncWithBestSource } from '@/api/dataSources';
 
@@ -47,6 +47,16 @@ const getTimeUntilOpen = (match_date, match_time) => {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 };
 
+const isWithinVisibilityWindow = (match) => {
+  // Si el admin lo abrió manualmente, se muestra siempre
+  if (match.status === 'open') return true;
+  const matchDateTime = getMatchDate(match.match_date, match.match_time);
+  if (!matchDateTime) return false;
+  const visibleFrom = new Date(matchDateTime.getTime() - VISIBILITY_WINDOW_HOURS * 60 * 60 * 1000);
+  const now = new Date();
+  return now >= visibleFrom && now < matchDateTime;
+};
+
 const isMatchOpenForPredictions = (match) => {
   if (match.status !== 'pending' && match.status !== 'open') return false;
   // Si el admin lo puso como 'open', se habilita manualmente sin importar la ventana de 24h
@@ -58,26 +68,17 @@ const isMatchOpenForPredictions = (match) => {
   return now >= openFrom && now < matchDateTime;
 };
 
-function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit }) {
+function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveNow }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   const isLive = match.status === 'live';
 
-  // ─── Timer en tiempo real desde live_started_at ───
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    if (!isLive) return;
-    const interval = setInterval(() => setNow(Date.now()), 10000);
-    return () => clearInterval(interval);
-  }, [isLive]);
-
   const displayElapsed = isLive && match.live_started_at
-    ? String(Math.floor((now - new Date(match.live_started_at).getTime()) / 60000))
+    ? String(Math.floor((liveNow - new Date(match.live_started_at).getTime()) / 60000))
     : match.elapsed;
 
   return (
-    <motion.div
+    <m.div
       layout
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
@@ -116,7 +117,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               )}
 
               {match.status === 'finished' || isLive ? (
-                <motion.div
+                <m.div
                   className={`font-bold px-5 py-2.5 rounded-xl text-lg min-w-[90px] text-center ${
                     isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
                   }`}
@@ -127,7 +128,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                   {match.result_team1 != null ? match.result_team1 : '-'}
                   {' - '}
                   {match.result_team2 != null ? match.result_team2 : '-'}
-                </motion.div>
+                </m.div>
               ) : (
                 <div className="px-5 py-2.5 rounded-xl bg-muted/50">
                   <span className="text-muted-foreground font-bold text-lg">VS</span>
@@ -146,7 +147,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                 Partido en curso — pronósticos cerrados
               </div>
               {existing && (
-                <motion.div
+                <m.div
                   className="p-3 rounded-xl bg-muted/50 text-center text-sm"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -156,7 +157,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                     {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
                   </p>
                   {existing.scored ? (
-                    <motion.div
+                    <m.div
                       className={`mt-2 flex items-center justify-center gap-1.5 ${existing.is_correct ? 'text-foreground' : 'text-destructive'}`}
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -166,21 +167,21 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       ) : (
                         <><X className="w-4 h-4" /> No acertaste</>
                       )}
-                    </motion.div>
+                    </m.div>
                   ) : (
-                    <motion.p
+                    <m.p
                       className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                     >
                       ⏳ Pendiente del resultado final — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
-                    </motion.p>
+                    </m.p>
                   )}
-                </motion.div>
+                </m.div>
               )}
             </div>
           ) : existing ? (
-            <motion.div
+            <m.div
               className="mt-3 p-3 rounded-xl bg-muted/50 text-center text-sm"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -190,7 +191,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                 {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
               </p>
               {existing.scored ? (
-                <motion.div
+                <m.div
                   className={`mt-2 flex items-center justify-center gap-1.5 ${existing.is_correct ? 'text-foreground' : 'text-destructive'}`}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -200,17 +201,17 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                   ) : (
                     <><X className="w-4 h-4" /> No acertaste</>
                   )}
-                </motion.div>
+                </m.div>
               ) : (
-                <motion.p
+                <m.p
                   className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                 >
                   ⏳ Pendiente del resultado final — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
-                </motion.p>
+                </m.p>
               )}
-            </motion.div>
+            </m.div>
           ) : match.status === 'finished' ? (
             <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
               <Lock className="w-4 h-4" />
@@ -234,7 +235,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               </Link>
             </div>
           ) : isOpen ? (
-            <motion.div
+            <m.div
               className="mt-3 flex flex-col items-center gap-3"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -276,7 +277,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                 <Trophy className="w-3.5 h-3.5" />
                 Ganas <strong>100 pts</strong> si aciertas el marcador exacto
               </span>
-            </motion.div>
+            </m.div>
           ) : (
             <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
               <Lock className="w-4 h-4" />
@@ -285,7 +286,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
           )}
         </CardContent>
       </Card>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -312,6 +313,13 @@ export default function Matches() {
   const { user } = useOutletContext();
   const queryClient = useQueryClient();
   const [predictionsState, setPredictionsState] = useState({});
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+
+  // Timer global para calcular elapsed en todos los MatchCards
+  useEffect(() => {
+    const interval = setInterval(() => setLiveNow(Date.now()), 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const { data: rawMatches = [], isLoading } = useQuery({
     queryKey: ['matches'],
@@ -331,41 +339,38 @@ export default function Matches() {
   });
 
   // ─── Estado de fuentes de datos ───
-  const [sourceStatus, setSourceStatus] = useState(null);
-  const [sourcesChecked, setSourcesChecked] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [sourceInfo, setSourceInfo] = useState({ status: null, checked: false, syncing: false });
 
   // Verificar fuentes al montar
   useEffect(() => {
     getSourceStatus().then(status => {
-      setSourceStatus(status);
-      setSourcesChecked(true);
+      setSourceInfo({ status, checked: true, syncing: false });
     });
   }, []);
 
   // Auto-sync cada 20 minutos
   const doSync = useCallback(async () => {
-    setSyncing(true);
+    setSourceInfo(prev => ({ ...prev, syncing: true }));
     try {
       const result = await syncWithBestSource();
       // Actualizar status de fuentes
       const status = await getSourceStatus();
-      setSourceStatus(status);
+      setSourceInfo(prev => ({ ...prev, status, syncing: false }));
       if (result.synced > 0 || result.updated > 0) {
         queryClient.invalidateQueries({ queryKey: ['matches'] });
       }
     } finally {
-      setSyncing(false);
+      setSourceInfo(prev => ({ ...prev, syncing: false }));
     }
   }, [queryClient]);
 
   // Auto-sync cada 20 minutos (solo si hay fuente automática)
   useEffect(() => {
-    if (!sourceStatus?.hasAutoSync) return;
+    if (!sourceInfo.status?.hasAutoSync) return;
     doSync();
     const interval = setInterval(doSync, 20 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [sourceStatus?.hasAutoSync, doSync]);
+  }, [sourceInfo.status?.hasAutoSync, doSync]);
 
   // Refresh local cada 30s para ver cambios en DB
   useEffect(() => {
@@ -409,16 +414,6 @@ export default function Matches() {
     submitPrediction.mutate(data);
   };
 
-  const isWithinVisibilityWindow = (match) => {
-    // Si el admin lo abrió manualmente, se muestra siempre
-    if (match.status === 'open') return true;
-    const matchDateTime = getMatchDate(match.match_date, match.match_time);
-    if (!matchDateTime) return false;
-    const visibleFrom = new Date(matchDateTime.getTime() - VISIBILITY_WINDOW_HOURS * 60 * 60 * 1000);
-    const now = new Date();
-    return now >= visibleFrom && now < matchDateTime;
-  };
-
   const liveMatches = matches.filter(m => m.status === 'live');
   const upcomingMatches = matches
     .filter(m => (m.status === 'pending' || m.status === 'open') && isWithinVisibilityWindow(m))
@@ -442,7 +437,7 @@ export default function Matches() {
   }
 
   return (
-    <motion.div
+    <m.div
       className="space-y-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -450,24 +445,24 @@ export default function Matches() {
     >
       <div className="flex items-center justify-between">
         <h1 className="font-display text-4xl tracking-wide">PARTIDOS</h1>
-        {sourcesChecked && (
+        {sourceInfo.checked && (
           <div className="flex items-center gap-3">
-            {syncing && (
+            {sourceInfo.syncing && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <RefreshCw className="w-3 h-3 animate-spin" />
                 Sincronizando...
               </span>
             )}
             <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full ${
-              sourceStatus?.hasAutoSync && sourceStatus?.connected
+              sourceInfo.status?.hasAutoSync && sourceInfo.status?.connected
                 ? 'bg-muted text-foreground'
-                : sourceStatus?.hasAutoSync
+                : sourceInfo.status?.hasAutoSync
                   ? 'bg-muted text-muted-foreground'
                   : 'bg-muted text-muted-foreground'
             }`}>
-              {sourceStatus?.hasAutoSync && sourceStatus?.connected ? (
-                <><Wifi className="w-3 h-3" /> {sourceStatus.bestSourceName}</>
-              ) : sourceStatus?.hasAutoSync ? (
+              {sourceInfo.status?.hasAutoSync && sourceInfo.status?.connected ? (
+                <><Wifi className="w-3 h-3" /> {sourceInfo.status.bestSourceName}</>
+              ) : sourceInfo.status?.hasAutoSync ? (
                 <><WifiOff className="w-3 h-3" /> Sin conexión</>
               ) : null}
             </div>
@@ -475,15 +470,15 @@ export default function Matches() {
         )}
       </div>
 
-      {sourceStatus?.lastSync && sourceStatus?.connected && (
+      {sourceInfo.status?.lastSync && sourceInfo.status?.connected && (
         <p className="text-xs text-muted-foreground/60 text-right -mt-4">
-          Última sincronización: {(() => { if (!sourceStatus?.lastSync?.time) return '—'; const d = new Date(sourceStatus.lastSync.time); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}
-          {sourceStatus.lastSync.updated > 0 && ` · ${sourceStatus.lastSync.updated} actualizados`}
+          Última sincronización: {(() => { if (!sourceInfo.status?.lastSync?.time) return '—'; const d = new Date(sourceInfo.status.lastSync.time); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}
+          {sourceInfo.status.lastSync.updated > 0 && ` · ${sourceInfo.status.lastSync.updated} actualizados`}
         </p>
       )}
 
       {matches.length === 0 && (
-        <motion.div
+        <m.div
           className="text-center py-16 space-y-3"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -499,13 +494,13 @@ export default function Matches() {
               {' '}para crear partidos manualmente.
             </p>
           )}
-        </motion.div>
+        </m.div>
       )}
 
       {/* Live Matches */}
       <AnimatePresence mode="popLayout">
         {liveMatches.length > 0 && (
-          <motion.div
+          <m.div
             key="live"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -525,15 +520,16 @@ export default function Matches() {
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
                   handleSubmit={handleSubmit}
+                  liveNow={liveNow}
                 />
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* Upcoming Matches */}
         {upcomingMatches.length > 0 && (
-          <motion.div
+          <m.div
             key="upcoming"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -550,10 +546,11 @@ export default function Matches() {
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
                   handleSubmit={handleSubmit}
+                  liveNow={liveNow}
                 />
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -577,6 +574,7 @@ export default function Matches() {
                     submitPrediction={submitPrediction}
                     handlePredict={handlePredict}
                     handleSubmit={handleSubmit}
+                    liveNow={liveNow}
                   />
                 ))}
               </AnimatePresence>
@@ -584,6 +582,6 @@ export default function Matches() {
           </details>
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 }

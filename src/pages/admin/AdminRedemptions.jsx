@@ -9,6 +9,18 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 
+const statusLabels = {
+  pending: 'Pendiente',
+  approved: 'Aprobado',
+  delivered: 'Entregado',
+};
+
+const statusColors = {
+  pending: 'bg-secondary text-secondary-foreground',
+  approved: 'bg-primary text-primary-foreground',
+  delivered: 'bg-accent text-accent-foreground',
+};
+
 export default function AdminRedemptions() {
   const queryClient = useQueryClient();
 
@@ -24,18 +36,6 @@ export default function AdminRedemptions() {
       toast.success('Estado actualizado');
     },
   });
-
-  const statusLabels = {
-    pending: 'Pendiente',
-    approved: 'Aprobado',
-    delivered: 'Entregado',
-  };
-
-  const statusColors = {
-    pending: 'bg-secondary text-secondary-foreground',
-    approved: 'bg-primary text-primary-foreground',
-    delivered: 'bg-accent text-accent-foreground',
-  };
 
   if (isLoading) return <p className="text-muted-foreground">Cargando...</p>;
 

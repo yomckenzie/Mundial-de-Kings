@@ -217,18 +217,25 @@ async function _doSync() {
         let synced = 0;
         let updated = 0;
         const errs = [];
-        for (const localMatch of matches) {
-          // O(n) fixture lookup per local match — acceptable since fixtures per day is small (~10)
-          const fixture = fixtures.find(f => {
-            const home = f.teams?.home?.name || '';
-            const away = f.teams?.away?.name || '';
-            return (
-              (matchTeam(home, localMatch.team1) && matchTeam(away, localMatch.team2)) ||
-              (matchTeam(home, localMatch.team2) && matchTeam(away, localMatch.team1))
-            );
-          });
-          if (!fixture) continue;
-          synced++;
+        // Build fixture lookup map for O(1) access (evita fixtures.find() dentro del loop)
+        const fixtureMap = new Map();
+        for (const f of fixtures) {
+          const home = f.teams?.home?.name || '';
+          const away = f.teams?.away?.name || '';
+          fixtureMap.set(home + '|' + away, f);
+          fixtureMap.set(away + '|' + home, f);
+        }
+        const updResults = await Promise.all(matches.map(async (localMatch) => {
+          const key1 = (localMatch.team1 || '') + '|' + (localMatch.team2 || '');
+          const key2 = (localMatch.team2 || '') + '|' + (localMatch.team1 || '');
+          const fixture = fixtureMap.get(key1) || fixtureMap.get(key2) ||
+            fixtures.find(f => {
+              const home = f.teams?.home?.name || '';
+              const away = f.teams?.away?.name || '';
+              return (matchTeam(home, localMatch.team1) && matchTeam(away, localMatch.team2)) ||
+                     (matchTeam(home, localMatch.team2) && matchTeam(away, localMatch.team1));
+            });
+          if (!fixture) return { synced: 0, updated: 0, errs: [] };
           const updates = {};
           const goals = fixture.goals || {};
           const apiStatus = fixture.fixture?.status || {};
@@ -249,11 +256,17 @@ async function _doSync() {
           if (Object.keys(updates).length > 0) {
             try {
               await api.entities.Match.update(localMatch.id, updates);
-              updated++;
+              return { synced: 1, updated: 1, errs: [] };
             } catch (e) {
-              errs.push(`Error actualizando match ${localMatch.fixture_id}: ${e.message}`);
+              return { synced: 0, updated: 0, errs: [`Error actualizando match ${localMatch.fixture_id}: ${e.message}`] };
             }
           }
+          return { synced: 1, updated: 0, errs: [] };
+        }));
+        for (const r of updResults) {
+          synced += r.synced;
+          updated += r.updated;
+          if (r.errs.length) errs.push(...r.errs);
         }
         return { synced, updated, errs };
       } catch (e) {

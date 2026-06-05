@@ -191,14 +191,13 @@ export async function syncResults() {
         let synced = 0;
         let updated = 0;
         const errs = [];
-        for (const fdMatch of matches) {
+        const updResults = await Promise.all(matches.map(async (fdMatch) => {
           const homeTeam = fdMatch.homeTeam?.name || '';
           const awayTeam = fdMatch.awayTeam?.name || '';
-          if (!homeTeam || !awayTeam) continue;
+          if (!homeTeam || !awayTeam) return { synced: 0, updated: 0, errs: [] };
 
           const localMatch = findLocalMatch(fdMatch.id, homeTeam, awayTeam);
-          if (!localMatch) continue;
-          synced++;
+          if (!localMatch) return { synced: 1, updated: 0, errs: [] };
 
           const scoreHome = fdMatch.score?.fullTime?.home;
           const scoreAway = fdMatch.score?.fullTime?.away;
@@ -229,11 +228,17 @@ export async function syncResults() {
           if (Object.keys(updates).length > 0) {
             try {
               await api.entities.Match.update(localMatch.id, updates);
-              updated++;
+              return { synced: 1, updated: 1, errs: [] };
             } catch (e) {
-              errs.push(`Error actualizando match ${localMatch.fixture_id || localMatch.id}: ${e.message}`);
+              return { synced: 0, updated: 0, errs: [`Error actualizando match ${localMatch.fixture_id || localMatch.id}: ${e.message}`] };
             }
           }
+          return { synced: 1, updated: 0, errs: [] };
+        }));
+        for (const r of updResults) {
+          synced += r.synced;
+          updated += r.updated;
+          if (r.errs.length) errs.push(...r.errs);
         }
         return { totalSynced: synced, totalUpdated: updated, errors: errs };
       } catch (e) {

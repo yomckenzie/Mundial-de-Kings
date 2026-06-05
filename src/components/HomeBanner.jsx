@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 
 const BANNERS = [
   'https://khrxddafhzvfdyivysay.supabase.co/storage/v1/object/public/banners/Banner1.webp',
@@ -35,7 +35,7 @@ export default function HomeBanner() {
   };
 
   return (
-    <motion.div
+    <m.div
       className="w-full"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -43,7 +43,7 @@ export default function HomeBanner() {
     >
       <div className="relative w-full rounded-xl overflow-hidden group" style={{ aspectRatio: '16/5' }}>
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={current}
             className="absolute inset-0"
             initial={{ opacity: 0, scale: 1.05 }}
@@ -57,10 +57,9 @@ export default function HomeBanner() {
               className="w-full h-full object-cover"
               // Primer banner: alta prioridad (es la imagen LCP). Resto: lazy.
               loading={current === 0 ? 'eager' : 'lazy'}
-              fetchPriority={current === 0 ? 'high' : 'auto'}
               decoding="async"
             />
-          </motion.div>
+          </m.div>
         </AnimatePresence>
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
@@ -112,6 +111,6 @@ export default function HomeBanner() {
           </div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

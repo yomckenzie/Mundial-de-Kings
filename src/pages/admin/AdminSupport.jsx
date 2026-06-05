@@ -101,6 +101,7 @@ export default function AdminSupport() {
                     <label htmlFor={`reply-${t.id}`} className="sr-only">Respuesta al ticket</label>
                     <textarea
                       id={`reply-${t.id}`}
+                      aria-label="Respuesta al ticket"
                       value={replyText}
                       onChange={e => setReplyText(e.target.value)}
                       placeholder="Escribe tu respuesta..."

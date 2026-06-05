@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Trophy, Menu, X, Home, Target, Gift, User, Shield, UserPlus, LogIn, Info, HeadphonesIcon, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/AuthContext';
@@ -59,7 +59,7 @@ export default function Navbar({ user }) {
           <div className="hidden md:flex items-center gap-1">
             {links.map(l => (
               <Link key={l.to} to={l.to}>
-                <motion.div
+                <m.div
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -71,19 +71,19 @@ export default function Navbar({ user }) {
                     <l.icon className="w-4 h-4" />
                     {l.label}
                     {isActive(l.to) && (
-                      <motion.span
+                      <m.span
                         layoutId="nav-active"
                         className="absolute inset-0 rounded-md bg-primary/10 -z-10"
                         transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                       />
                     )}
                   </Button>
-                </motion.div>
+                </m.div>
               </Link>
             ))}
 
             {/* Theme toggle */}
-            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+            <m.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
               <Button
                 variant="ghost"
                 size="icon"
@@ -95,10 +95,10 @@ export default function Navbar({ user }) {
               >
                 {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>
-            </motion.div>
+            </m.div>
 
             {user ? (
-              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+              <m.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -107,7 +107,7 @@ export default function Navbar({ user }) {
                 >
                   Salir
                 </Button>
-              </motion.div>
+              </m.div>
             ) : (
               <div className="flex items-center gap-1 ml-2">
                 <Link to="/login">
@@ -117,12 +117,12 @@ export default function Navbar({ user }) {
                   </Button>
                 </Link>
                 <Link to="/register">
-                  <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+                  <m.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
                     <Button size="sm" className="gap-1.5 glow-sm">
                       <UserPlus className="w-4 h-4" />
                       Crear cuenta
                     </Button>
-                  </motion.div>
+                  </m.div>
                 </Link>
               </div>
             )}
@@ -130,11 +130,11 @@ export default function Navbar({ user }) {
 
           {/* Mobile controls */}
           <div className="flex items-center gap-1 md:hidden">
-            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+            <m.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
               <Button variant="ghost" size="icon" onClick={toggleTheme} role="switch" aria-checked={theme === 'dark'} aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}>
                 {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>
-            </motion.div>
+            </m.div>
             <Button variant="ghost" size="icon" onClick={() => setOpen(!open)}>
               {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
@@ -144,7 +144,7 @@ export default function Navbar({ user }) {
         {/* Mobile menu */}
         <AnimatePresence>
           {open && (
-            <motion.div
+            <m.div
               variants={navVariants}
               initial="hidden"
               animate="visible"
@@ -153,7 +153,7 @@ export default function Navbar({ user }) {
             >
               <div className="pb-4 space-y-1">
                 {links.map((l, i) => (
-                  <motion.div
+                  <m.div
                     key={l.to}
                     custom={i}
                     variants={linkVariants}
@@ -170,10 +170,10 @@ export default function Navbar({ user }) {
                         {l.label}
                       </Button>
                     </Link>
-                  </motion.div>
+                  </m.div>
                 ))}
                 {user ? (
-                  <motion.div
+                  <m.div
                     custom={links.length}
                     variants={linkVariants}
                     initial="hidden"
@@ -187,10 +187,10 @@ export default function Navbar({ user }) {
                     >
                       Salir
                     </Button>
-                  </motion.div>
+                  </m.div>
                 ) : (
                   <>
-                    <motion.div
+                    <m.div
                       custom={links.length}
                       variants={linkVariants}
                       initial="hidden"
@@ -202,8 +202,8 @@ export default function Navbar({ user }) {
                           Ingresar
                         </Button>
                       </Link>
-                    </motion.div>
-                    <motion.div
+                    </m.div>
+                    <m.div
                       custom={links.length + 1}
                       variants={linkVariants}
                       initial="hidden"
@@ -215,11 +215,11 @@ export default function Navbar({ user }) {
                           Crear cuenta
                         </Button>
                       </Link>
-                    </motion.div>
+                    </m.div>
                   </>
                 )}
               </div>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </div>

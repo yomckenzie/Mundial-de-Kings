@@ -3,12 +3,13 @@ import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, Sparkles, LogIn } from 'lucide-react';
+import ProfileStats from './profile/ProfileStats';
 
 const tabs = [
   { id: 'overview', label: 'Resumen', icon: User },
@@ -38,28 +39,6 @@ function InfoRow({ label, value, children }) {
   );
 }
 
-function StatCard({ icon: Icon, value, label, color, delay = 0 }) {
-  const gradientMap = { blue: 'from-foreground to-foreground', emerald: 'from-foreground to-foreground', amber: 'from-foreground to-foreground' };
-  const textMap = { blue: 'text-foreground', emerald: 'text-foreground', amber: 'text-foreground' };
-  const gradient = gradientMap[color] || 'from-foreground to-foreground';
-  const textColor = textMap[color] || 'text-foreground';
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ delay, duration: 0.35, ease: 'easeOut' }}
-    >
-      <Card className="card-hover overflow-hidden">
-        <div className={`h-1 bg-gradient-to-r ${gradient}`} />
-        <CardContent className="p-4 text-center">
-          <Icon className={`w-6 h-6 mx-auto mb-1.5 ${textColor}`} />
-          <p className="text-2xl font-black">{value}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
 
 export default function Profile() {
   const { user, setUser } = useOutletContext();
@@ -114,7 +93,8 @@ export default function Profile() {
       window.removeEventListener('db-synced', refreshUser);
       window.removeEventListener('focus', refreshUser);
     };
-  }, []);
+  }, [setUser]);
+
 
   const { data: predictions = [], isLoading: loadingPreds } = useQuery({
     queryKey: ['my-predictions-profile', userEmail],
@@ -147,7 +127,7 @@ export default function Profile() {
 
   if (!user) {
     return (
-      <motion.div
+      <m.div
         className="text-center py-16 space-y-4"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -161,7 +141,7 @@ export default function Profile() {
             Iniciar sesión
           </Button>
         </Link>
-      </motion.div>
+      </m.div>
     );
   }
 
@@ -177,14 +157,14 @@ export default function Profile() {
   const isLoading = loadingPreds || loadingRedeems;
 
   return (
-    <motion.div
+    <m.div
       className="space-y-6"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
       {/* Header */}
-      <motion.div variants={itemVariants}>
+      <m.div variants={itemVariants}>
         <div className="flex items-center gap-3 mb-1">
           <div className="w-12 h-12 rounded-2xl bg-foreground flex items-center justify-center shadow-lg">
             <User className="w-6 h-6 text-background" />
@@ -194,17 +174,15 @@ export default function Profile() {
             <p className="text-sm text-muted-foreground">@{user?.instagram || user?.email}</p>
           </div>
         </div>
-      </motion.div>
+      </m.div>
 
       {/* Stats row */}
-      <motion.div className="grid grid-cols-3 gap-3" variants={itemVariants}>
-        <StatCard icon={Target} value={predictions.length} label="Pronósticos" color="blue" delay={0.1} />
-        <StatCard icon={CheckCircle2} value={correctPreds.length} label="Aciertos" color="emerald" delay={0.15} />
-        <StatCard icon={Trophy} value={totalPoints} label="Puntos ganados" color="amber" delay={0.2} />
-      </motion.div>
+      <m.div variants={itemVariants}>
+        <ProfileStats predictionsCount={predictions.length} correctCount={correctPreds.length} totalPoints={totalPoints} />
+      </m.div>
 
       {/* Points breakdown */}
-      <motion.div variants={itemVariants}>
+      <m.div variants={itemVariants}>
         <Card className="overflow-hidden gradient-border">
           <CardContent className="p-4 md:p-5 space-y-3">
             <div className="flex items-center gap-2 mb-1">
@@ -281,10 +259,10 @@ export default function Profile() {
             )}
           </CardContent>
         </Card>
-      </motion.div>
+      </m.div>
 
       {/* Personal Data */}
-      <motion.div variants={itemVariants}>
+      <m.div variants={itemVariants}>
         <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-3">
           <User className="w-4 h-4" />
           Datos personales
@@ -301,10 +279,10 @@ export default function Profile() {
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+      </m.div>
 
       {/* Tabs */}
-      <motion.div variants={itemVariants}>
+      <m.div variants={itemVariants}>
         <div className="flex items-center gap-1 border-b border-border mb-4">
           {tabs.map(tab => (
             <button
@@ -325,7 +303,7 @@ export default function Profile() {
 
         <AnimatePresence mode="wait">
           {activeTab === 'overview' && (
-            <motion.div
+            <m.div
               key="overview"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -369,11 +347,11 @@ export default function Profile() {
                   </CardContent>
                 </Card>
               )}
-            </motion.div>
+            </m.div>
           )}
 
           {activeTab === 'predictions' && (
-            <motion.div
+            <m.div
               key="predictions"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -398,7 +376,7 @@ export default function Profile() {
                     const match = matchMap[pred.match_id];
                     if (!match) return null;
                     return (
-                      <motion.div
+                      <m.div
                         key={pred.id}
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -435,16 +413,16 @@ export default function Profile() {
                             </div>
                           </CardContent>
                         </Card>
-                      </motion.div>
+                      </m.div>
                     );
                   })}
                 </div>
               )}
-            </motion.div>
+            </m.div>
           )}
 
           {activeTab === 'redemptions' && (
-            <motion.div
+            <m.div
               key="redemptions"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -465,7 +443,7 @@ export default function Profile() {
               ) : (
                 <div className="space-y-2">
                   {redemptions.map((r, i) => (
-                    <motion.div
+                    <m.div
                       key={r.id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -489,14 +467,14 @@ export default function Profile() {
                           </Badge>
                         </CardContent>
                       </Card>
-                    </motion.div>
+                    </m.div>
                   ))}
                 </div>
               )}
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   );
 }

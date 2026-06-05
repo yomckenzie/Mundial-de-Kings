@@ -196,9 +196,15 @@ export const db = {
       const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
       let changed = false;
 
-      for (const jsKey of tablesToSync) {
-        const localRecords = this._data[jsKey] || [];
-        const remoteRecords = await syncTableFromSupabaseFn(jsKey, localRecords);
+      const syncResults = await Promise.all(
+        tablesToSync.map(async (jsKey) => {
+          const localRecords = this._data[jsKey] || [];
+          const remoteRecords = await syncTableFromSupabaseFn(jsKey, localRecords);
+          return { jsKey, localRecords, remoteRecords };
+        })
+      );
+
+      for (const { jsKey, localRecords, remoteRecords } of syncResults) {
         if (remoteRecords && remoteRecords !== localRecords) {
           // Si se agregaron registros localmente mientras se sincronizaba (ej: una predicción),
           // mezclarlos para no perderlos
@@ -248,9 +254,11 @@ export const db = {
         );
       }
       const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
-      const tablesWithData = tablesToSync
-        .map(jsKey => ({ jsKey, records: this._data[jsKey] || [] }))
-        .filter(({ records }) => records.length > 0);
+      const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
+        const records = this._data[jsKey] || [];
+        if (records.length > 0) acc.push({ jsKey, records });
+        return acc;
+      }, []);
       await Promise.all(
         tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
       );
@@ -285,21 +293,19 @@ export const db = {
     }
     this._init();
     const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
-    const results = [];
-    for (const jsKey of tablesToSync) {
-      const records = this._data[jsKey] || [];
-      const tableName = tableNameToSupabase(jsKey);
-      if (records.length > 0) {
-        try {
+    const syncResults = await Promise.allSettled(
+      tablesToSync.map(async (jsKey) => {
+        const records = this._data[jsKey] || [];
+        const tableName = tableNameToSupabase(jsKey);
+        if (records.length > 0) {
           await syncTableToSupabase(tableName, records);
-          results.push({ table: tableName, count: records.length, status: 'ok' });
-        } catch (err) {
-          results.push({ table: tableName, count: records.length, status: 'error', error: err.message });
         }
-      } else {
-        results.push({ table: tableName, count: 0, status: 'empty' });
-      }
-    }
+        return { table: tableName, count: records.length, status: records.length > 0 ? 'ok' : 'empty' };
+      })
+    );
+    const results = syncResults.map(r =>
+      r.status === 'fulfilled' ? r.value : { table: 'unknown', count: 0, status: 'error', error: r.reason?.message }
+    );
     return { success: true, results };
   },
 
@@ -383,19 +389,20 @@ export const db = {
     if (isSupabaseAvailable() && supabase) {
       const BATCH = 100;
 
-      // Helper: fetch all IDs then batch-delete
+      // Helper: fetch all IDs then batch-delete (all batches in parallel)
       const deleteAllFromTable = async (table) => {
         try {
           const { data: rows, error: fetchErr } = await supabase
             .from(table).select('id').limit(5000);
           if (fetchErr || !rows || rows.length === 0) return;
+          const idBatches = [];
           for (let i = 0; i < rows.length; i += BATCH) {
-            const ids = rows.slice(i, i + BATCH).map(r => r.id);
-            const { error } = await supabase.from(table).delete().in('id', ids);
-            if (error) {
-              console.warn(`[cleanUserData] Error deleting ${table} batch:`, error.message);
-            }
+            idBatches.push(rows.slice(i, i + BATCH).map(r => r.id));
           }
+          await Promise.all(idBatches.map(async (ids) => {
+            const { error } = await supabase.from(table).delete().in('id', ids);
+            if (error) console.warn(`[cleanUserData] Error deleting ${table} batch:`, error.message);
+          }));
         } catch {}
       };
 
@@ -608,12 +615,12 @@ export const db = {
         const BATCH = 50;
 
         // ── Matches: UPDATE solo status, resultados y elapsed ──
-        const matchIds_batches = [];
         const allMatchIds = d.matches.map(m => m.id);
+        const matchBatches = [];
         for (let i = 0; i < allMatchIds.length; i += BATCH) {
-          matchIds_batches.push(allMatchIds.slice(i, i + BATCH));
+          matchBatches.push(allMatchIds.slice(i, i + BATCH));
         }
-        for (const idBatch of matchIds_batches) {
+        await Promise.all(matchBatches.map(async (idBatch) => {
           try {
             const { error } = await supabase
               .from('matches')
@@ -623,16 +630,16 @@ export const db = {
           } catch (err) {
             console.warn('[resetAll] Error matches update:', err.message);
           }
-        }
+        }));
 
         // ── Predictions: DELETE todas las predicciones de partidos afectados ──
         if (predsToDelete.length > 0) {
-          const predIdBatches = [];
           const predIds = predsToDelete.map(p => p.id);
+          const predBatches = [];
           for (let i = 0; i < predIds.length; i += BATCH) {
-            predIdBatches.push(predIds.slice(i, i + BATCH));
+            predBatches.push(predIds.slice(i, i + BATCH));
           }
-          for (const idBatch of predIdBatches) {
+          await Promise.all(predBatches.map(async (idBatch) => {
             try {
               const { error } = await supabase
                 .from('predictions')
@@ -642,19 +649,22 @@ export const db = {
             } catch (err) {
               console.warn('[resetAll] Error predictions delete:', err.message);
             }
-          }
+          }));
         }
 
         // ── Users: UPDATE prediction_points, total_points ──
         const usersToSync = d.users.filter(u => u.role !== 'admin');
         if (usersToSync.length > 0) {
           // Usar upserts pequeños con solo id + puntos (campos que existen en Supabase)
+          const userBatches = [];
           for (let i = 0; i < usersToSync.length; i += BATCH) {
-            const batch = usersToSync.slice(i, i + BATCH).map(u => ({
+            userBatches.push(usersToSync.slice(i, i + BATCH).map(u => ({
               id: u.id,
               prediction_points: 0,
               total_points: u.bonus_points || 0,
-            }));
+            })));
+          }
+          await Promise.all(userBatches.map(async (batch) => {
             try {
               const { error } = await supabase
                 .from('users')
@@ -663,7 +673,7 @@ export const db = {
             } catch (err) {
               console.warn('[resetAll] Error users upsert:', err.message);
             }
-          }
+          }));
         }
       }
 
