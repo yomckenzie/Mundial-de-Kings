@@ -54,7 +54,7 @@ export default function RegisterForm({ form, fieldErrors, isLoading, handleChang
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="phone">Teléfono *</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 sm:gap-2">
                   <CountryCodeSelect
                     id="phone-country"
                     value={form.phone_country}
