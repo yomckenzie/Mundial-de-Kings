@@ -109,6 +109,22 @@ export default function RegisterForm({ form, fieldErrors, isLoading, handleChang
             </div>
 
             <div className="space-y-1.5">
+              <Label htmlFor="referral_code">Código de invitación <span className="text-muted-foreground">(opcional)</span></Label>
+              <Input
+                id="referral_code"
+                name="referral_code"
+                placeholder="Ej: CHESS-A1B2"
+                value={form.referral_code}
+                onChange={handleChange}
+                className={`transition-all duration-200 focus:ring-2 focus:ring-secondary/30 ${fieldErrors.referral_code ? 'border-destructive' : ''}`}
+              />
+              {fieldErrors.referral_code && <p className="text-[11px] text-destructive">{fieldErrors.referral_code}</p>}
+              <p className="text-[10px] text-muted-foreground/60 leading-tight">
+                Si te invitaron, ingresa el código aquí para que quien te refirió gane puntos.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
               <Label htmlFor="password">Contraseña *</Label>
               <Input
                 id="password"

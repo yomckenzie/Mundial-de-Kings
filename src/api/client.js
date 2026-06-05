@@ -29,6 +29,7 @@ const client = {
       filter: P((fields, order) => db.users.filter(fields, order)),
       create: P((data) => db.users.create(data)),
       update: P((id, data) => db.users.update(id, data)),
+      delete: P((id) => db.users.remove(id)),
     },
     Match: {
       list: P((order) => db.matches.list(order)),
@@ -73,6 +74,20 @@ const client = {
       list: P(() => db.appSettings.list()),
       create: P((data) => db.appSettings.create(data)),
       update: P((id, data) => db.appSettings.update(id, data)),
+    },
+    AuditLog: {
+      list: P((order) => db.auditLogs.list(order)),
+      create: P((data) => db.auditLogs.create(data)),
+    },
+    Referral: {
+      list: P((order) => db.referrals.list(order)),
+      findByReferrer: P((email) => db.referrals.findByReferrer(email)),
+      countByReferrer: P((email) => db.referrals.countByReferrer(email)),
+      create: P((data) => db.referrals.create(data)),
+    },
+    ReferralCommission: {
+      list: P((order) => db.referralCommissions.list(order)),
+      sumByReferrer: P((email) => db.referralCommissions.sumByReferrer(email)),
     },
   },
 

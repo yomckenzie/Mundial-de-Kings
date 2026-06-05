@@ -17,6 +17,9 @@ ALTER TABLE public.redemptions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.support_tickets DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.points_bonuses DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.referrals DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.referral_commissions DISABLE ROW LEVEL SECURITY;
 
 -- ─── ELIMINAR POLÍTICAS EXISTENTES ───
 -- Políticas de users
@@ -37,6 +40,11 @@ DROP POLICY IF EXISTS allow_all ON public.app_settings;
 DROP POLICY IF EXISTS "anon_all_predictions" ON public.predictions;
 DROP POLICY IF EXISTS "anon_all_redemptions" ON public.redemptions;
 DROP POLICY IF EXISTS "anon_all_support_tickets" ON public.support_tickets;
+
+-- Políticas de tablas nuevas
+DROP POLICY IF EXISTS allow_all ON public.audit_logs;
+DROP POLICY IF EXISTS allow_all ON public.referrals;
+DROP POLICY IF EXISTS allow_all ON public.referral_commissions;
 
 -- ─── VERIFICAR RESULTADO ───
 SELECT 

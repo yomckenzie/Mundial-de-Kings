@@ -24,6 +24,7 @@ import AdminPredictions from './pages/admin/AdminPredictions';
 import AdminPrizes from './pages/admin/AdminPrizes';
 import AdminRedemptions from './pages/admin/AdminRedemptions';
 import AdminSupport from './pages/admin/AdminSupport';
+import AdminAuditLog from './pages/admin/AdminAuditLog';
 import Info from './pages/Info';
 import Support from './pages/Support';
 
@@ -69,6 +70,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/prizes" element={<AdminPrizes />} />
           <Route path="/admin/redemptions" element={<AdminRedemptions />} />
           <Route path="/admin/support" element={<AdminSupport />} />
+          <Route path="/admin/audit-log" element={<AdminAuditLog />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

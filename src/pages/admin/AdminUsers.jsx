@@ -1,11 +1,13 @@
-import React, { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Search, ChevronLeft, ChevronRight, Download, Filter, X, Gift } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Download, Filter, X, Gift, Trash2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import GrantPointsModal from '@/components/admin/GrantPointsModal';
 
 const PAGE_SIZE = 20;
@@ -16,6 +18,8 @@ export default function AdminUsers() {
     page: 0,
     showFilters: false,
     grantUser: null,
+    deleteUser: null,
+    deletingUser: false,
     filters: {
       dateFrom: '',
       dateTo: '',
@@ -27,6 +31,8 @@ export default function AdminUsers() {
       maxCanjes: '',
     },
   });
+
+  const queryClient = useQueryClient();
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['admin-users'],
@@ -42,6 +48,18 @@ export default function AdminUsers() {
     queryKey: ['admin-redemptions-all'],
     queryFn: () => api.entities.Redemption.list(),
   });
+
+  const { data: referrals = [] } = useQuery({
+    queryKey: ['admin-referrals-list'],
+    queryFn: () => api.entities.Referral.list(),
+  });
+
+  // Conteo de referidos por email
+  const referredCountMap = useMemo(() => {
+    const map = {};
+    referrals.forEach(r => { map[r.referrer_email] = (map[r.referrer_email] || 0) + 1; });
+    return map;
+  }, [referrals]);
 
   // Mapas de aciertos y canjes por email
   const aciertosMap = useMemo(() => {
@@ -76,6 +94,30 @@ export default function AdminUsers() {
       },
     }));
   };
+
+  const handleDeleteUser = useCallback(async () => {
+    const user = ui.deleteUser;
+    if (!user) return;
+    if (user.role === 'admin') {
+      toast.error('No puedes eliminar un administrador');
+      setUi(prev => ({ ...prev, deleteUser: null }));
+      return;
+    }
+    setUi(prev => ({ ...prev, deletingUser: true }));
+    try {
+      const result = await api.entities.User.delete(user.id);
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-predictions-all'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-redemptions-all'] });
+      toast.success(`🗑️ Usuario ${user.full_name || user.email} eliminado`, {
+        description: `Se eliminaron ${result.deletedPredictions} pronósticos, ${result.deletedRedemptions} canjes, ${result.deletedBonuses} bonos y ${result.deletedTickets} tickets.`,
+      });
+      setUi(prev => ({ ...prev, deleteUser: null, deletingUser: false }));
+    } catch (err) {
+      toast.error('Error al eliminar usuario: ' + err.message);
+      setUi(prev => ({ ...prev, deleteUser: null, deletingUser: false }));
+    }
+  }, [ui.deleteUser, queryClient]);
 
   const hasActiveFilters = Object.values(ui.filters).some(v => v !== '');
 
@@ -260,11 +302,36 @@ export default function AdminUsers() {
                   <p className="font-medium">{canjesMap[u.email] || 0}</p>
                 </div>
               </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+                <div>
+                  <p className="text-muted-foreground text-xs">Código referido</p>
+                  <p className="font-mono text-xs">{u.referral_code || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Referidos</p>
+                  <p className="font-medium">{referredCountMap[u.email] || 0}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Puntos por referidos</p>
+                  <p className="font-medium">{u.referral_points || 0}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Referido por</p>
+                  <p className="font-mono text-xs truncate" title={u.referred_by || ''}>{u.referred_by || '—'}</p>
+                </div>
+              </div>
               <div className="mt-1 flex items-center justify-between">
                 <p className="text-muted-foreground text-xs">Registro: {u.created_date ? new Date(u.created_date).toLocaleDateString('es-PA') : '-'}</p>
-                <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => setUi(prev => ({ ...prev, grantUser: u }))}>
-                  <Gift className="w-3 h-3" /> Otorgar puntos
-                </Button>
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => setUi(prev => ({ ...prev, grantUser: u }))}>
+                    <Gift className="w-3 h-3" /> Otorgar puntos
+                  </Button>
+                  {u.role !== 'admin' && (
+                    <Button size="sm" variant="destructive" className="gap-1.5 h-7 text-xs" onClick={() => setUi(prev => ({ ...prev, deleteUser: u }))}>
+                      <Trash2 className="w-3 h-3" /> Eliminar
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -274,6 +341,45 @@ export default function AdminUsers() {
       {ui.grantUser && (
         <GrantPointsModal user={ui.grantUser} open={!!ui.grantUser} onClose={() => setUi(prev => ({ ...prev, grantUser: null }))} />
       )}
+
+      {/* Confirmación de eliminación */}
+      <Dialog open={!!ui.deleteUser} onOpenChange={(open) => { if (!open) setUi(prev => ({ ...prev, deleteUser: null })); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Eliminar usuario
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              ¿Estás seguro de eliminar a <strong>{ui.deleteUser?.full_name || ui.deleteUser?.email}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm space-y-1">
+              <p className="font-medium text-destructive">Esta acción no se puede deshacer.</p>
+              <p className="text-muted-foreground text-xs">
+                Se eliminarán permanentemente:
+              </p>
+              <ul className="text-xs text-muted-foreground list-disc list-inside space-y-0.5">
+                <li>El usuario y su perfil completo</li>
+                <li>Todos sus pronósticos ({aciertosMap[ui.deleteUser?.email] || 0} aciertos)</li>
+                <li>Todos sus canjes ({canjesMap[ui.deleteUser?.email] || 0} canjes)</li>
+                <li>Puntos extra otorgados</li>
+                <li>Tickets de soporte</li>
+              </ul>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setUi(prev => ({ ...prev, deleteUser: null }))}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDeleteUser} disabled={ui.deletingUser} className="gap-1.5">
+                <Trash2 className="w-4 h-4" />
+                {ui.deletingUser ? 'Eliminando...' : 'Eliminar usuario'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4">

@@ -65,13 +65,24 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
     const allUsers = await Promise.all(
       uniqueEmails.map(email => api.entities.User.filter({ email }))
     );
+
+    // Ejecutar en paralelo: actualizar puntos de usuarios + importar db para comisiones
+    const [{ db }] = await Promise.all([
+      import('@/lib/db'),
+      Promise.all(
+        allUsers.flat().map(u =>
+          api.entities.User.update(u.id, {
+            total_points: (u.total_points || 0) + 100,
+            prediction_points: (u.prediction_points || 0) + 100,
+          })
+        )
+      ),
+    ]);
+
+    // 3b. Otorgar comisión de referido (5 pts) al referente de cada usuario que acertó
+    // db.awardReferralCommission() ya crea el registro en referralCommissions internamente
     await Promise.all(
-      allUsers.flat().map(u =>
-        api.entities.User.update(u.id, {
-          total_points: (u.total_points || 0) + 100,
-          prediction_points: (u.prediction_points || 0) + 100,
-        })
-      )
+      uniqueEmails.map(email => db.awardReferralCommission(email, matchId))
     );
   }
 

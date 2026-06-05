@@ -52,6 +52,9 @@ const TABLE_MAP = {
   supportTickets: TABLES.support_tickets,
   pointsBonuses: TABLES.points_bonuses,
   appSettings: TABLES.app_settings,
+  auditLogs: TABLES.audit_logs,
+  referrals: TABLES.referrals,
+  referralCommissions: TABLES.referral_commissions,
 };
 
 // --- Sincronización con Supabase ---
@@ -107,6 +110,9 @@ const getDefaults = () => ({
   supportTickets: [],
   pointsBonuses: [],
   appSettings: [],
+  auditLogs: [],
+  referrals: [],
+  referralCommissions: [],
   currentUserEmail: null,
 });
 
@@ -193,7 +199,7 @@ export const db = {
         } catch {}
       }
 
-      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
       let changed = false;
 
       const syncResults = await Promise.all(
@@ -253,7 +259,7 @@ export const db = {
           )
         );
       }
-      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
       const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
         const records = this._data[jsKey] || [];
         if (records.length > 0) acc.push({ jsKey, records });
@@ -292,7 +298,7 @@ export const db = {
       return { success: false, error: 'Supabase no está configurado. Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en .env' };
     }
     this._init();
-    const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings'];
+    const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
     const syncResults = await Promise.allSettled(
       tablesToSync.map(async (jsKey) => {
         const records = this._data[jsKey] || [];
@@ -510,6 +516,73 @@ export const db = {
     },
     findByEmail(email) {
       return db._init().users.find(u => u.email === email);
+    },
+    async remove(id) {
+      const d = db._init();
+      const idx = d.users.findIndex(u => u.id === id);
+      if (idx === -1) throw new Error('User not found');
+      const user = d.users[idx];
+      const email = user.email;
+
+      // 1. Eliminar predicciones del usuario
+      const predsToDelete = (d.predictions || []).filter(p => p.user_email === email);
+      const predIds = new Set(predsToDelete.map(p => p.id));
+      d.predictions = (d.predictions || []).filter(p => !predIds.has(p.id));
+
+      // 2. Eliminar canjes del usuario
+      const redemptionsToDelete = (d.redemptions || []).filter(r => r.user_email === email);
+      const redIds = new Set(redemptionsToDelete.map(r => r.id));
+      d.redemptions = (d.redemptions || []).filter(r => !redIds.has(r.id));
+
+      // 3. Eliminar puntos extra del usuario
+      const bonusesToDelete = (d.pointsBonuses || []).filter(b => b.user_email === email);
+      const bonusIds = new Set(bonusesToDelete.map(b => b.id));
+      d.pointsBonuses = (d.pointsBonuses || []).filter(b => !bonusIds.has(b.id));
+
+      // 4. Eliminar tickets de soporte del usuario
+      const ticketsToDelete = (d.supportTickets || []).filter(t => t.user_email === email);
+      const ticketIds = new Set(ticketsToDelete.map(t => t.id));
+      d.supportTickets = (d.supportTickets || []).filter(t => !ticketIds.has(t.id));
+
+      // 5. Eliminar el usuario del array
+      d.users.splice(idx, 1);
+
+      // 6. Registrar en el log de auditoría
+      const me = db.getCurrentUser();
+      db.auditLogs.create({
+        action: 'user_deleted',
+        admin_email: me?.email || 'desconocido',
+        admin_name: me?.full_name || 'Desconocido',
+        deleted_user_email: email,
+        deleted_user_name: user.full_name || '',
+        deleted_user_instagram: user.instagram || '',
+        details: JSON.stringify({
+          deletedPredictions: predsToDelete.length,
+          deletedRedemptions: redemptionsToDelete.length,
+          deletedBonuses: bonusesToDelete.length,
+          deletedTickets: ticketsToDelete.length,
+        }),
+      });
+
+      // 7. Marcar todas las eliminaciones pendientes para Supabase
+      _pendingDeletes.push({ tableName: 'users', id });
+      for (const p of predsToDelete) _pendingDeletes.push({ tableName: 'predictions', id: p.id });
+      for (const r of redemptionsToDelete) _pendingDeletes.push({ tableName: 'redemptions', id: r.id });
+      for (const b of bonusesToDelete) _pendingDeletes.push({ tableName: 'points_bonuses', id: b.id });
+      for (const t of ticketsToDelete) _pendingDeletes.push({ tableName: 'support_tickets', id: t.id });
+
+      // 8. Persistir y sincronizar
+      save(d);
+      await db._syncAllToSupabase();
+      notifyReactComponents();
+
+      return {
+        user,
+        deletedPredictions: predsToDelete.length,
+        deletedRedemptions: redemptionsToDelete.length,
+        deletedBonuses: bonusesToDelete.length,
+        deletedTickets: ticketsToDelete.length,
+      };
     },
   },
 
@@ -991,6 +1064,117 @@ export const db = {
     },
   },
 
+  // --- Referral helpers ---
+
+  /**
+   * Genera un código de referido único basado en el nombre/email del usuario.
+   */
+  generateReferralCode(name, email) {
+    const prefix = (name || email || 'user').replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase();
+    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `${prefix}-${suffix}`;
+  },
+
+  /**
+   * Acredita el bono de referido (10 pts) a quien refirió a un nuevo usuario.
+   * Retorna el usuario actualizado o null si no hay referente.
+   */
+  async awardReferralBonus(referralCode) {
+    if (!referralCode) return null;
+    const d = db._init();
+    const referrer = d.users.find(u => u.referral_code === referralCode);
+    if (!referrer) return null;
+    const newRefPoints = (referrer.referral_points || 0) + 10;
+    const newTotal = (referrer.total_points || 0) + 10;
+    referrer.referral_points = newRefPoints;
+    referrer.total_points = newTotal;
+    referrer.updated_at = getNow();
+    save(d);
+    _syncInProgress = {};
+    await db._syncAllToSupabase();
+    notifyReactComponents();
+    return referrer;
+  },
+
+  /**
+   * Acredita la comisión por acierto de referido (5 pts) al referente.
+   * Retorna el usuario actualizado o null si no hay referente.
+   */
+  async awardReferralCommission(referredEmail, matchId) {
+    if (!referredEmail) return null;
+    const d = db._init();
+    const referred = d.users.find(u => u.email === referredEmail);
+    if (!referred || !referred.referred_by) return null;
+    const referrer = d.users.find(u => u.referral_code === referred.referred_by);
+    if (!referrer) return null;
+    const newRefPoints = (referrer.referral_points || 0) + 5;
+    const newPredPoints = (referrer.prediction_points || 0) + 5;
+    const newTotal = (referrer.total_points || 0) + 5;
+    referrer.referral_points = newRefPoints;
+    referrer.prediction_points = newPredPoints;
+    referrer.total_points = newTotal;
+    referrer.updated_at = getNow();
+    // Registrar la comisión
+    d.referralCommissions.push({
+      id: makeId(),
+      from_email: referredEmail,
+      to_email: referrer.email,
+      match_id: matchId,
+      level: 1,
+      points_earned: 5,
+      created_date: getNow(),
+    });
+    save(d);
+    _syncInProgress = {};
+    await db._syncAllToSupabase();
+    notifyReactComponents();
+    return referrer;
+  },
+
+  // --- Referrals ---
+  referrals: {
+    list(order) {
+      const d = db._init().referrals;
+      return sortBy(d, order || '-created_date');
+    },
+    findByEmail(email) {
+      return db._init().referrals.find(r => r.referred_email === email);
+    },
+    findByReferrer(email) {
+      return db._init().referrals.filter(r => r.referrer_email === email);
+    },
+    countByReferrer(email) {
+      return db._init().referrals.filter(r => r.referrer_email === email).length;
+    },
+    create(data) {
+      const d = db._init();
+      const record = { id: makeId(), created_date: getNow(), ...data };
+      d.referrals.push(record);
+      db._persist();
+      return record;
+    },
+  },
+
+  // --- Referral Commissions ---
+  referralCommissions: {
+    list(order) {
+      const d = db._init().referralCommissions;
+      return sortBy(d, order || '-created_date');
+    },
+    sumByReferrer(email) {
+      return db._init().referralCommissions
+        .filter(c => c.to_email === email)
+        .reduce((sum, c) => sum + (c.points_earned || 0), 0);
+    },
+    create(data) {
+      const d = db._init();
+      const record = { id: makeId(), created_date: getNow(), ...data };
+      d.referralCommissions.push(record);
+      db._persist();
+      return record;
+    },
+  },
+
   // --- Auth ---
   getCurrentUserEmail() {
     return db._init().currentUserEmail;
@@ -1060,6 +1244,20 @@ export const db = {
         { id: makeId(), key: 'info_sections', value: infoSections, created_date: getNow() },
       );
       this._persist();
+    }
+
+    // Migración: asignar referral_code a usuarios existentes que no tengan
+    let migrated = false;
+    for (const u of d.users) {
+      if (!u.referral_code) {
+        u.referral_code = db.generateReferralCode(u.full_name, u.email);
+        u.referred_by = u.referred_by || null;
+        u.referral_points = u.referral_points || 0;
+        migrated = true;
+      }
+    }
+    if (migrated) {
+      save(d);
     }
 
     // NO seedear premios por defecto — el admin los crea desde el panel

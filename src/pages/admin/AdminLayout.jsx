@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Users, Target, Trophy, Gift, ShoppingCart, LayoutDashboard, HeadphonesIcon } from 'lucide-react';
+import { Users, Target, Trophy, Gift, ShoppingCart, LayoutDashboard, HeadphonesIcon, ShieldAlert } from 'lucide-react';
 
 const tabs = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -11,6 +11,7 @@ const tabs = [
   { to: '/admin/prizes', label: 'Premios', icon: Gift },
   { to: '/admin/redemptions', label: 'Canjes', icon: ShoppingCart },
   { to: '/admin/support', label: 'Soporte', icon: HeadphonesIcon },
+  { to: '/admin/audit-log', label: 'Auditoría', icon: ShieldAlert },
 ];
 
 export default function AdminLayout() {

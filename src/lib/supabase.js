@@ -40,6 +40,9 @@ export const TABLES = {
   support_tickets: 'support_tickets',
   points_bonuses: 'points_bonuses',
   app_settings: 'app_settings',
+  audit_logs: 'audit_logs',
+  referrals: 'referrals',
+  referral_commissions: 'referral_commissions',
 }
 
 /**

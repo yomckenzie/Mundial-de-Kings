@@ -15,6 +15,8 @@ export default function Register() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const refFromUrl = searchParams.get('ref') || '';
+
   const [form, setForm] = useState({
     full_name: '',
     email: '',
@@ -23,6 +25,7 @@ export default function Register() {
     instagram_user: '',
     tiktok_user: '',
     password: '',
+    referral_code: refFromUrl,
   });
 
   const handleChange = (e) => {
@@ -72,7 +75,26 @@ if (!form.email) errors.email = 'Campo obligatorio';
 
     setIsLoading(true);
     try {
-      // Generar ID primero para que coincida en Supabase y local
+      // Validar código de referido si se proporcionó
+      let referrerData = null;
+      if (form.referral_code) {
+        const d = db._init();
+        referrerData = d.users.find(u => u.referral_code === form.referral_code);
+        if (!referrerData) {
+          setFieldErrors(prev => ({ ...prev, referral_code: 'Código de invitación inválido' }));
+          setIsLoading(false);
+          return;
+        }
+        if (referrerData.email === form.email) {
+          setFieldErrors(prev => ({ ...prev, referral_code: 'No puedes autoreferirte' }));
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Generar código de referido para el nuevo usuario
+      const userReferralCode = db.generateReferralCode(form.full_name, form.email);
+
       const recordId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const userData = {
         id: recordId,
@@ -85,6 +107,9 @@ if (!form.email) errors.email = 'Campo obligatorio';
         instagram: form.instagram_user.replace('@', ''),
         tiktok: form.tiktok_user.replace('@', ''),
         password: form.password,
+        referral_code: userReferralCode,
+        referred_by: form.referral_code || null,
+        referral_points: 0,
         total_points: 100,
         prediction_points: 0,
         bonus_points: 100,
@@ -121,7 +146,26 @@ if (!form.email) errors.email = 'Campo obligatorio';
       d.users.push(userData);
       if (!d.pointsBonuses) d.pointsBonuses = [];
       d.pointsBonuses.push(welcomeBonus);
+
+      // Registrar el referido si corresponde
+      if (referrerData) {
+        d.referrals.push({
+          id: `ref_${recordId}`,
+          referrer_code: referrerData.referral_code,
+          referrer_email: referrerData.email,
+          referred_email: form.email,
+          level: 1,
+          status: 'active',
+          created_date: new Date().toISOString(),
+        });
+      }
+
       localStorage.setItem('chessking_db:v1', JSON.stringify(d));
+
+      // Otorgar bono de referido (10 pts) al referente
+      if (referrerData) {
+        await db.awardReferralBonus(form.referral_code);
+      }
 
       // Iniciar sesión automáticamente
       db.setCurrentUserEmail(form.email);
