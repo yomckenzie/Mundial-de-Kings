@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
-const ADMIN_TABLES = new Set(['matches', 'prizes'])
-const USER_GENERATED_TABLES = new Set(['users', 'predictions', 'redemptions', 'support_tickets', 'points_bonuses'])
+// Tablas donde la NUBE es la fuente de verdad (admin-controlled).
+// Incluye 'users' porque el admin es quien actualiza prediction_points,
+// total_points, bonus_points, referral_points, role, profile_complete
+// (vía evaluateMatchPredictions, GrantPointsModal, sistema de referidos).
+// Sin esto, el sync de "Local gana" descartaba los puntos actualizados
+// y el ranking del usuario nunca se actualizaba desde otro dispositivo.
+const ADMIN_TABLES = new Set(['matches', 'prizes', 'users'])
+const USER_GENERATED_TABLES = new Set(['predictions', 'redemptions', 'support_tickets', 'points_bonuses'])
 
 let supabaseUrl = ''
 let supabaseAnonKey = ''
@@ -268,13 +274,15 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       }
     } else {
       const remoteIds = new Set(remoteData.map(r => r.id))
-      const userGeneratedTables = ['predictions', 'support_tickets', 'redemptions', 'users']
-      
-      // Si hay lastCleanAt activo y es una tabla userGenerated,
+      // Tablas donde la nube manda incluso para limpieza de registros huérfanos.
+      // (Consistente con ADMIN_TABLES arriba.)
+      const cloudAuthoritativeTables = ['predictions', 'support_tickets', 'redemptions', 'users']
+
+      // Si hay lastCleanAt activo y es una tabla cloudAuthoritative,
       // la nube es la autoridad: NO preservar registros locales ausentes.
       // Esto garantiza que las limpiezas se propaguen entre dispositivos.
-      const isCleanActive = options.lastCleanAt && userGeneratedTables.includes(tableName)
-      
+      const isCleanActive = options.lastCleanAt && cloudAuthoritativeTables.includes(tableName)
+
       for (const local of localRecords) {
         if (!remoteIds.has(local.id)) {
           if (isCleanActive) {
