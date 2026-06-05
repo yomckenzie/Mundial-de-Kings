@@ -126,7 +126,11 @@ export const db = {
 
   _init(opts) {
     if (!this._data) {
-      this._data = load();
+      const loaded = load();
+      // Migración: garantizar que todas las keys nuevas existan (ej. referrals,
+      // referralCommissions se agregaron después — usuarios con localStorage viejo
+      // no las tienen, y d.referrals.push() tira TypeError).
+      this._data = { ...getDefaults(), ...loaded };
       // Limpiar live_started_at para partidos que NO están en vivo (evita timers stale)
       this._cleanStaleLiveTimers();
       this.seedIfEmpty();

@@ -193,6 +193,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
 
       // Registrar el referido si corresponde
       if (referrerData) {
+        if (!d.referrals) d.referrals = [];
         d.referrals.push({
           id: `ref_${recordId}`,
           referrer_code: referrerData.referral_code,
