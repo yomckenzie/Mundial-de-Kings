@@ -6,8 +6,20 @@ import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 import { toast } from 'sonner';
 import RegisterHeader from './register/RegisterHeader';
 import RegisterForm from './register/RegisterForm';
+import { DEFAULT_DIAL_CODE } from '@/lib/countryCodes';
 
 const normalizeCedula = (v) => (v || '').replace(/[\s-]/g, '').trim().toLowerCase();
+
+// Quita prefijos duplicados (e.g. si el usuario tipea "+5076000-0000"
+// con el code "+507" ya seleccionado, no queremos "+507+5076000-0000")
+const stripDialCode = (raw, dialCode) => {
+  const cleaned = (raw || '').replace(/[\s\-().]/g, '');
+  if (dialCode && cleaned.startsWith(dialCode.replace(/[^\d+]/g, ''))) {
+    return cleaned.slice(dialCode.replace(/[^\d+]/g, '').length);
+  }
+  if (cleaned.startsWith('+')) return '';
+  return cleaned;
+};
 
 export default function Register() {
   const [searchParams] = useSearchParams();
@@ -21,6 +33,7 @@ export default function Register() {
     full_name: '',
     email: '',
     phone: '',
+    phone_country: DEFAULT_DIAL_CODE,
     cedula: '',
     instagram_user: '',
     tiktok_user: '',
@@ -31,6 +44,11 @@ export default function Register() {
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
     setFieldErrors(prev => ({ ...prev, [e.target.name]: '' }));
+  };
+
+  const handleChangeField = (name, value) => {
+    setForm(prev => ({ ...prev, [name]: value }));
+    setFieldErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleSubmit = async (e) => {
@@ -52,6 +70,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
       }
     }
     if (!form.phone) errors.phone = 'Campo obligatorio';
+    else if (form.phone.replace(/\D/g, '').length < 6) errors.phone = 'Número demasiado corto';
     if (!form.cedula) errors.cedula = 'Campo obligatorio';
     if (!form.instagram_user) errors.instagram_user = 'Campo obligatorio';
     if (!form.tiktok_user) errors.tiktok_user = 'Campo obligatorio';
@@ -109,6 +128,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
 
       // Generar código de referido para el nuevo usuario
       const userReferralCode = db.generateReferralCode(form.full_name, form.email);
+      const fullPhone = `${form.phone_country} ${stripDialCode(form.phone, form.phone_country)}`.trim();
 
       const recordId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const userData = {
@@ -116,8 +136,8 @@ if (!form.email) errors.email = 'Campo obligatorio';
         email: form.email,
         role: 'user',
         full_name: form.full_name,
-        phone: form.phone,
-        whatsapp: form.phone,
+        phone: fullPhone,
+        whatsapp: fullPhone,
         cedula: form.cedula,
         instagram: form.instagram_user.replace('@', ''),
         tiktok: form.tiktok_user.replace('@', ''),
@@ -209,6 +229,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
           fieldErrors={fieldErrors}
           isLoading={isLoading}
           handleChange={handleChange}
+          handleChangeField={handleChangeField}
           handleSubmit={handleSubmit}
           redirect={redirect}
         />

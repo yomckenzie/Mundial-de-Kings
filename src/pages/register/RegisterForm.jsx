@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import CountryCodeSelect from '@/components/CountryCodeSelect';
 import { UserPlus, ArrowLeft, Shield } from 'lucide-react';
 
-export default function RegisterForm({ form, fieldErrors, isLoading, handleChange, handleSubmit, redirect }) {
+export default function RegisterForm({ form, fieldErrors, isLoading, handleChange, handleChangeField, handleSubmit, redirect }) {
   return (
     <m.div
       initial={{ opacity: 0, y: 20 }}
@@ -53,15 +54,24 @@ export default function RegisterForm({ form, fieldErrors, isLoading, handleChang
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="phone">Teléfono *</Label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  placeholder="+507 6000-0000"
-                  value={form.phone}
-                  onChange={handleChange}
-                  className={fieldErrors.phone ? 'border-destructive' : ''}
-                />
+                <div className="flex gap-2">
+                  <CountryCodeSelect
+                    id="phone-country"
+                    value={form.phone_country}
+                    onChange={(v) => handleChangeField('phone_country', v)}
+                  />
+                  <Input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="6000-0000"
+                    value={form.phone}
+                    onChange={handleChange}
+                    className={`flex-1 min-w-0 ${fieldErrors.phone ? 'border-destructive' : ''}`}
+                    aria-label="Número de teléfono"
+                  />
+                </div>
                 {fieldErrors.phone && <p className="text-[11px] text-destructive">{fieldErrors.phone}</p>}
               </div>
               <div className="space-y-1.5">
