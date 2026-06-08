@@ -13,6 +13,7 @@ import useMatchHandlers from './useMatchHandlers';
 
 
 export default function AdminMatches() {
+  const queryClient = useQueryClient();
   const [results, setResults] = useState({ form: {}, bulk: {} });
   const [liveNow, setLiveNow] = useState(() => Date.now());
   const [sourceState, setSourceState] = useState({ syncing: false, sources: [], show: true, deduping: false });
@@ -55,8 +56,6 @@ export default function AdminMatches() {
       return changed ? { ...prev, form: next } : prev;
     });
   }, [matches]);
-
-  const queryClient = useQueryClient();
 
   const {
     handleSyncNow, refreshSources, hasLockedMatches,

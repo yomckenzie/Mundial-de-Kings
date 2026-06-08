@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
@@ -23,11 +24,11 @@ function canPublishResult(match) {
 export default function useMatchHandlers(matches, results, setResults, sourceState, setSourceState, liveNow) {
   const queryClient = useQueryClient();
 
-  const refreshSources = async () => {
+  const refreshSources = React.useCallback(async () => {
     setSourceState(prev => ({ ...prev, sources: [] }));
     const sources = await checkAllSources();
     setSourceState(prev => ({ ...prev, sources }));
-  };
+  }, [setSourceState]);
 
   const handleSyncNow = async () => {
     setSourceState(prev => ({ ...prev, syncing: true }));
@@ -174,7 +175,7 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       matchesToPublish.map(async ([matchId, r]) => {
         const match = matchById.get(matchId);
         if (!match) return;
-        if (!canPublishResult(match)) { console.warn(`Saltando match ${matchId}: no está en vivo ni finalizado`); return; }
+        if (!canPublishResult(match)) { return; }
         const resultTeam1 = Number(r.team1);
         const resultTeam2 = Number(r.team2);
         await api.entities.Match.update(matchId, { result_team1: resultTeam1, result_team2: resultTeam2, status: 'finished' });

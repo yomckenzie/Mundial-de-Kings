@@ -41,14 +41,14 @@ export default function QuickActions({ onSeed, seeding, hasLocked, onDedupe, ded
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Equipo 1</Label><Input value={form.team1} onChange={e => setForm({...form, team1: e.target.value})} /></div>
-              <div><Label>Equipo 2</Label><Input value={form.team2} onChange={e => setForm({...form, team2: e.target.value})} /></div>
+              <div><Label htmlFor="new-team1">Equipo 1</Label><Input id="new-team1" value={form.team1} onChange={e => setForm({...form, team1: e.target.value})} /></div>
+              <div><Label htmlFor="new-team2">Equipo 2</Label><Input id="new-team2" value={form.team2} onChange={e => setForm({...form, team2: e.target.value})} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Fecha</Label><Input type="date" value={form.match_date} onChange={e => setForm({...form, match_date: e.target.value})} /></div>
-              <div><Label>Hora</Label><Input type="time" value={form.match_time} onChange={e => setForm({...form, match_time: e.target.value})} /></div>
+              <div><Label htmlFor="new-date">Fecha</Label><Input id="new-date" type="date" value={form.match_date} onChange={e => setForm({...form, match_date: e.target.value})} /></div>
+              <div><Label htmlFor="new-time">Hora</Label><Input id="new-time" type="time" value={form.match_time} onChange={e => setForm({...form, match_time: e.target.value})} /></div>
             </div>
-            <div><Label>Fase / Grupo</Label><Input placeholder="Ej: Grupo A, Octavos" value={form.group_stage} onChange={e => setForm({...form, group_stage: e.target.value})} /></div>
+            <div><Label htmlFor="new-group">Fase / Grupo</Label><Input id="new-group" placeholder="Ej: Grupo A, Octavos" value={form.group_stage} onChange={e => setForm({...form, group_stage: e.target.value})} /></div>
             <Button className="w-full" onClick={handleCreate} disabled={creating}>Crear Partido</Button>
           </div>
         </DialogContent>

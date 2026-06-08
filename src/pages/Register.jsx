@@ -150,7 +150,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
             .eq('referral_code', cleanReferralCode)
             .maybeSingle();
           if (error) {
-            console.warn('[Register] Error consultando Supabase por código de referido:', error.message, error.code, error.details);
+            // Error silencioso consultando Supabase
           }
           if (!error && data) {
             referrerData = data;
@@ -160,7 +160,6 @@ if (!form.email) errors.email = 'Campo obligatorio';
         }
 
         if (!referrerData) {
-          console.warn('[Register] Código de referido no encontrado:', cleanReferralCode, 'Usuarios locales:', d.users.reduce((acc, u) => { if (u.referral_code) acc.push(u.referral_code); return acc; }, []));
           setFieldErrors(prev => ({ ...prev, referral_code: 'Código de invitación inválido' }));
           setIsLoading(false);
           return;
@@ -219,7 +218,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
       // Guardar bono en Supabase
       if (isSupabaseAvailable()) {
         const { error: bonusError } = await supabase.from('pointsBonuses').upsert(welcomeBonus, { onConflict: 'id' });
-        if (bonusError) console.warn('[Register] Error al guardar bono en Supabase:', bonusError.message);
+        if (bonusError) {/* Error silencioso guardando bono */}
       }
 
       // Escribir a localStorage directamente (evitar locks del motor de sync)

@@ -22,11 +22,7 @@ try {
 }
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    '[Supabase] Variables de entorno no configuradas. ' +
-    'Crea un archivo .env con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY. ' +
-    'La app funcionará en modo local (solo localStorage).'
-  )
+  // variables de entorno no configuradas, modo local (solo localStorage)
 }
 
 export const supabase = supabaseUrl && supabaseAnonKey
@@ -66,8 +62,7 @@ export async function fetchAll(tableName, options = {}) {
     const { data, error } = await query
     if (error) throw error
     return data
-  } catch (err) {
-    console.warn(`[Supabase] Error fetching ${tableName}:`, err.message)
+  } catch {
     return null
   }
 }
@@ -85,8 +80,7 @@ export async function insertRecord(tableName, record) {
       .single()
     if (error) throw error
     return data
-  } catch (err) {
-    console.warn(`[Supabase] Error inserting into ${tableName}:`, err.message)
+  } catch {
     return null
   }
 }
@@ -105,8 +99,7 @@ export async function updateRecord(tableName, id, updates) {
       .single()
     if (error) throw error
     return data
-  } catch (err) {
-    console.warn(`[Supabase] Error updating ${tableName}:`, err.message)
+  } catch {
     return null
   }
 }
@@ -123,8 +116,7 @@ export async function deleteRecords(tableName, field, value) {
       .eq(field, value)
     if (error) throw error
     return true
-  } catch (err) {
-    console.warn(`[Supabase] Error deleting from ${tableName}:`, err.message)
+  } catch {
     return null
   }
 }
@@ -170,13 +162,12 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
   } catch (err) {
     // Si falla por violación de foreign key (prize_id no existe), omite el batch
     if (err.code === '23503') {
-      console.log(`[Supabase] FK violation en ${tableName}, omitiendo sync temporalmente`)
+      // FK violation, omitiendo sync temporalmente
       return false
     }
     // Si falla por unique constraint (ej: email duplicado en users),
     // intentar uno por uno cambiando la columna de conflicto
     if (err.code === '23505' || err.status === 409) {
-      console.log(`[Supabase] Conflict en ${tableName}, intentando individual por email...`)
       const results = await Promise.all(cleanedRecords.map(async (record) => {
         try {
           const { error: indError } = await supabase
@@ -206,16 +197,13 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
           successCount = fallbackResults.reduce((sum, v) => sum + v, 0)
         } catch {}
       }
-      console.log(`[Supabase] Sincronizados ${successCount}/${cleanedRecords.length} en ${tableName}`)
       return successCount > 0
     }
     // Fallback: si no existe la constraint UNIQUE para la columna de conflicto (ej: key)
     // reintentar con 'id' como columna de conflicto
     if (conflictColumn !== 'id' && (err.code === '42P10' || err.message?.includes('ON CONFLICT'))) {
-      console.log(`[Supabase] No hay UNIQUE en ${conflictColumn} para ${tableName}, reintentando con id...`)
       return await syncTableToSupabase(tableName, records, 'id')
     }
-    console.warn(`[Supabase] Error syncing ${tableName}:`, err.message)
     return false
   }
 }
@@ -350,8 +338,7 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
 
     if (changed) return result
     return localRecords
-  } catch (err) {
-    console.warn(`[Supabase] Error syncing ${tableName} from server:`, err.message)
+  } catch {
     return localRecords
   }
 }
@@ -384,8 +371,7 @@ export async function uploadImage(blob, originalFileName = 'image.jpg', bucket =
       .getPublicUrl(filePath)
 
     return publicUrl
-  } catch (err) {
-    console.warn(`[Supabase] Error uploading image:`, err.message)
+  } catch {
     return null
   }
 }

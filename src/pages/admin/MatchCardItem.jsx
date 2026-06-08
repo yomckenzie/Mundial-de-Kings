@@ -70,6 +70,7 @@ export default function MatchCardItem({ match, hasLockedMatches, liveNow, result
 
         <div className="flex flex-wrap items-center gap-2">
           <select
+            name={`status_${match.id}`}
             className="text-xs border rounded-md px-2 py-1 bg-background"
             value={match.status}
             onChange={(e) => handleStatusChange(match, e.target.value)}
@@ -91,6 +92,7 @@ export default function MatchCardItem({ match, hasLockedMatches, liveNow, result
             {canPublishResult(match) ? (
               <>
                 <Input
+                  name={`result_${match.id}_t1`}
                   type="number"
                   min="0"
                   className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -103,6 +105,7 @@ export default function MatchCardItem({ match, hasLockedMatches, liveNow, result
                 />
                 <span className="text-muted-foreground text-sm">-</span>
                 <Input
+                  name={`result_${match.id}_t2`}
                   type="number"
                   min="0"
                   className="w-12 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"

@@ -237,8 +237,8 @@ export const db = {
 
         this._notifyReactComponents();
       }
-    } catch (err) {
-      console.warn('[DB] Error al sincronizar desde Supabase:', err);
+    } catch {
+      // Error silencioso al sincronizar desde Supabase
     } finally {
       _syncFromSupabaseInProgress = false;
     }
@@ -425,7 +425,7 @@ export const db = {
           }
           await Promise.all(idBatches.map(async (ids) => {
             const { error } = await supabase.from(table).delete().in('id', ids);
-            if (error) console.warn(`[cleanUserData] Error deleting ${table} batch:`, error.message);
+            if (error) {/* Error silencioso eliminando batch */}
           }));
         } catch {}
       };
@@ -484,7 +484,7 @@ export const db = {
         save(d);
 
       } catch (err) {
-        console.warn('[cleanUserData] Error guardando last_clean:', err.message);
+        /* Error silencioso guardando last_clean */
       }
 
       // Subir admin user + tablas que NO se limpiaron (matches, prizes, appSettings)
@@ -717,9 +717,9 @@ export const db = {
               .from('matches')
               .update({ status: 'pending', result_team1: null, result_team2: null, elapsed: null })
               .in('id', idBatch);
-            if (error) console.warn('[resetAll] Error matches update:', error.message);
-          } catch (err) {
-            console.warn('[resetAll] Error matches update:', err.message);
+            if (error) {/* Error silencioso matches update */}
+          } catch {
+            /* Error silencioso matches update */
           }
         }));
 
@@ -736,9 +736,9 @@ export const db = {
                 .from('predictions')
                 .delete()
                 .in('id', idBatch);
-              if (error) console.warn('[resetAll] Error predictions delete:', error.message);
-            } catch (err) {
-              console.warn('[resetAll] Error predictions delete:', err.message);
+              if (error) {/* Error silencioso predictions delete */}
+            } catch {
+              /* Error silencioso predictions delete */
             }
           }));
         }
@@ -760,9 +760,9 @@ export const db = {
               const { error } = await supabase
                 .from('users')
                 .upsert(batch, { onConflict: 'id' });
-              if (error) console.warn('[resetAll] Error users upsert:', error.message);
-            } catch (err) {
-              console.warn('[resetAll] Error users upsert:', err.message);
+              if (error) {/* Error silencioso users upsert */}
+            } catch {
+              /* Error silencioso users upsert */
             }
           }));
         }

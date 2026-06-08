@@ -46,6 +46,7 @@ export default function BatchPublishCard({ matches, results, setResults, onPubli
             <div key={match.id} className="flex items-center gap-1.5 text-xs bg-background rounded-md p-1.5 border">
               <span className="truncate flex-1 text-right font-medium">{match.team1}</span>
               <Input
+                name={`bulk_${match.id}_t1`}
                 type="number"
                 min="0"
                 className="w-10 h-7 text-center text-xs px-1"
@@ -58,6 +59,7 @@ export default function BatchPublishCard({ matches, results, setResults, onPubli
               />
               <span className="text-muted-foreground">-</span>
               <Input
+                name={`bulk_${match.id}_t2`}
                 type="number"
                 min="0"
                 className="w-10 h-7 text-center text-xs px-1"

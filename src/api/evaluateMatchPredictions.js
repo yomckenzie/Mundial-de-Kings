@@ -91,8 +91,8 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
     // hasta el próximo poll de 60s (y a veces nunca si el admin no navega).
     try {
       await db._syncAllToSupabase();
-    } catch (err) {
-      console.warn('[evaluateMatchPredictions] Error al sincronizar puntos a Supabase:', err.message);
+    } catch {
+      // Error silencioso de sincronización
     }
   }
 

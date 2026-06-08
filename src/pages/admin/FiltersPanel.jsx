@@ -14,36 +14,36 @@ export default function FiltersPanel({ filters, onFilterChange, onReset, hasActi
       <CardContent className="p-4 space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
-            <Label className="text-xs">Registro desde</Label>
-            <Input type="date" value={filters.dateFrom} onChange={e => setFilter('dateFrom', e.target.value)} />
+            <Label htmlFor="filter-date-from" className="text-xs">Registro desde</Label>
+            <Input id="filter-date-from" type="date" value={filters.dateFrom} onChange={e => setFilter('dateFrom', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Registro hasta</Label>
-            <Input type="date" value={filters.dateTo} onChange={e => setFilter('dateTo', e.target.value)} />
+            <Label htmlFor="filter-date-to" className="text-xs">Registro hasta</Label>
+            <Input id="filter-date-to" type="date" value={filters.dateTo} onChange={e => setFilter('dateTo', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Puntos mín.</Label>
-            <Input type="number" min="0" placeholder="0" value={filters.minPoints} onChange={e => setFilter('minPoints', e.target.value)} />
+            <Label htmlFor="filter-min-points" className="text-xs">Puntos mín.</Label>
+            <Input id="filter-min-points" type="number" min="0" placeholder="0" value={filters.minPoints} onChange={e => setFilter('minPoints', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Puntos máx.</Label>
-            <Input type="number" min="0" placeholder="∞" value={filters.maxPoints} onChange={e => setFilter('maxPoints', e.target.value)} />
+            <Label htmlFor="filter-max-points" className="text-xs">Puntos máx.</Label>
+            <Input id="filter-max-points" type="number" min="0" placeholder="∞" value={filters.maxPoints} onChange={e => setFilter('maxPoints', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Aciertos mín.</Label>
-            <Input type="number" min="0" placeholder="0" value={filters.minAciertos} onChange={e => setFilter('minAciertos', e.target.value)} />
+            <Label htmlFor="filter-min-aciertos" className="text-xs">Aciertos mín.</Label>
+            <Input id="filter-min-aciertos" type="number" min="0" placeholder="0" value={filters.minAciertos} onChange={e => setFilter('minAciertos', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Aciertos máx.</Label>
-            <Input type="number" min="0" placeholder="∞" value={filters.maxAciertos} onChange={e => setFilter('maxAciertos', e.target.value)} />
+            <Label htmlFor="filter-max-aciertos" className="text-xs">Aciertos máx.</Label>
+            <Input id="filter-max-aciertos" type="number" min="0" placeholder="∞" value={filters.maxAciertos} onChange={e => setFilter('maxAciertos', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Canjes mín.</Label>
-            <Input type="number" min="0" placeholder="0" value={filters.minCanjes} onChange={e => setFilter('minCanjes', e.target.value)} />
+            <Label htmlFor="filter-min-canjes" className="text-xs">Canjes mín.</Label>
+            <Input id="filter-min-canjes" type="number" min="0" placeholder="0" value={filters.minCanjes} onChange={e => setFilter('minCanjes', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Canjes máx.</Label>
-            <Input type="number" min="0" placeholder="∞" value={filters.maxCanjes} onChange={e => setFilter('maxCanjes', e.target.value)} />
+            <Label htmlFor="filter-max-canjes" className="text-xs">Canjes máx.</Label>
+            <Input id="filter-max-canjes" type="number" min="0" placeholder="∞" value={filters.maxCanjes} onChange={e => setFilter('maxCanjes', e.target.value)} />
           </div>
         </div>
         {hasActiveFilters && (

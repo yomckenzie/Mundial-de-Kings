@@ -24,9 +24,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api-football/, ''),
         configure: (proxy) => {
-          proxy.on('error', (err) => {
-            console.error('[Proxy error]', err.message);
-          });
+          proxy.on('error', () => {});
         },
       },
       // football-data.org (GRATIS - resultados post-partido)
@@ -34,9 +32,7 @@ export default defineConfig({
         target: 'https://api.football-data.org',
         changeOrigin: true,
         configure: (proxy) => {
-          proxy.on('error', (err) => {
-            console.error('[Football-Data Proxy error]', err.message);
-          });
+          proxy.on('error', () => {});
         },
       },
     },

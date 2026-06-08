@@ -177,10 +177,10 @@ export async function seedAllMatches(api) {
           batches.push(ids.slice(i, i + 100));
         }
         await Promise.all(batches.map(batch => supabase.from('matches').delete().in('id', batch)));
-        console.log(`[Seed] Eliminados ${ids.length} partidos de Supabase`);
+        // partidos eliminados de Supabase
       }
-    } catch (err) {
-      console.warn('[Seed] Error al limpiar Supabase:', err);
+    } catch {
+      // Error silencioso al limpiar Supabase
     }
   }
 
