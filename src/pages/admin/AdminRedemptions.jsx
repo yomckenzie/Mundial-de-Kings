@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CheckCircle2, Package, Instagram, Music2, User, Phone, Fingerprint, Copy, ExternalLink, CalendarDays } from 'lucide-react';
+import { CheckCircle2, Package, Instagram, Music2, User, Phone, Fingerprint, Copy, ExternalLink, CalendarDays, Target, Sparkles, Gift, TrendingUp, Clock, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
@@ -23,7 +23,54 @@ const statusColors = {
 };
 
 function UserProfileCard({ user, open, onClose }) {
+  const [expandedSection, setExpandedSection] = useState(null);
   if (!user) return null;
+
+  const userEmail = user.email;
+
+  const { data: predictions = [] } = useQuery({
+    queryKey: ['user-predictions', userEmail],
+    queryFn: () => api.entities.Prediction.filter({ user_email: userEmail }, '-created_date'),
+    enabled: !!userEmail && open,
+  });
+
+  const { data: matches = [] } = useQuery({
+    queryKey: ['matches-all'],
+    queryFn: () => api.entities.Match.list(),
+  });
+
+  const { data: bonuses = [] } = useQuery({
+    queryKey: ['user-bonuses', userEmail],
+    queryFn: () => api.entities.PointsBonus.filter({ user_email: userEmail }, '-created_date'),
+    enabled: !!userEmail && open,
+  });
+
+  const { data: redemptions = [] } = useQuery({
+    queryKey: ['user-redeems', userEmail],
+    queryFn: () => api.entities.Redemption.filter({ user_email: userEmail }, '-created_date'),
+    enabled: !!userEmail && open,
+  });
+
+  const { data: allCommissions = [] } = useQuery({
+    queryKey: ['commissions-all'],
+    queryFn: () => api.entities.ReferralCommission.list(),
+  });
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users-for-commissions'],
+    queryFn: () => api.entities.User.list(),
+  });
+
+  const matchMap = {};
+  matches.forEach(m => { matchMap[m.id] = m; });
+
+  const userCommissions = allCommissions.filter(c => c.to_email === userEmail);
+  const totalCommissions = userCommissions.reduce((sum, c) => sum + (c.points_earned || 0), 0);
+
+  const correctPreds = predictions.filter(p => p.is_correct);
+  const scoredPreds = predictions.filter(p => p.scored);
+  const accuracy = scoredPreds.length > 0 ? Math.round((correctPreds.length / scoredPreds.length) * 100) : 0;
+  const totalSpent = redemptions.reduce((sum, r) => sum + (r.points_spent || 0), 0);
 
   const initials = (user.full_name || user.email || '?')
     .split(' ')
@@ -36,9 +83,32 @@ function UserProfileCard({ user, open, onClose }) {
     ? format(new Date(user.created_date), "d MMM yyyy", { locale: es })
     : '—';
 
+  const toggleSection = (id) => {
+    setExpandedSection(prev => prev === id ? null : id);
+  };
+
+  const SectionToggle = ({ id, icon: Icon, label, count, color }) => (
+    <button
+      type="button"
+      onClick={() => toggleSection(id)}
+      className="w-full flex items-center justify-between p-3 rounded-xl border bg-card hover:bg-accent/50 transition"
+    >
+      <div className="flex items-center gap-2.5">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${color}`}>
+          <Icon className="w-4 h-4 text-white" />
+        </div>
+        <div className="text-left">
+          <p className="text-sm font-semibold">{label}</p>
+          <p className="text-xs text-muted-foreground">{count} registros</p>
+        </div>
+      </div>
+      {expandedSection === id ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+    </button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-sm sm:max-w-md">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="sr-only">Perfil del usuario</DialogTitle>
         </DialogHeader>
@@ -126,7 +196,7 @@ function UserProfileCard({ user, open, onClose }) {
             </div>
           </div>
 
-          {/* Puntos */}
+          {/* Resumen de puntos */}
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-gradient-to-b from-yellow-500/10 to-yellow-500/5 rounded-xl p-3 text-center border border-yellow-500/20">
               <p className="text-xl font-black">{user.prediction_points || 0}</p>
@@ -162,6 +232,155 @@ function UserProfileCard({ user, open, onClose }) {
                 {user.referral_code}
               </Button>
             )}
+          </div>
+
+          {/* Precisión */}
+          {accuracy > 0 && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded-xl p-3">
+              <TrendingUp className="w-4 h-4 text-foreground" />
+              Precisión: <span className="font-bold text-foreground">{accuracy}%</span>
+              ({correctPreds.length} aciertos de {scoredPreds.length} evaluados)
+            </div>
+          )}
+
+          {/* Separador historial */}
+          <div className="border-t border-border pt-1">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Historial detallado</p>
+          </div>
+
+          {/* Pronósticos */}
+          <SectionToggle id="predictions" icon={Target} label="Pronósticos" count={predictions.length} color="bg-gradient-to-br from-blue-500 to-blue-600" />
+          {expandedSection === 'predictions' && (
+            <div className="space-y-1.5 pl-2">
+              {predictions.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2 text-center">Sin pronósticos</p>
+              ) : (
+                predictions.map(pred => {
+                  const match = matchMap[pred.match_id];
+                  return (
+                    <div key={pred.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Pronóstico: <strong>{pred.pred_team1} - {pred.pred_team2}</strong>
+                          {match?.status === 'finished' && <> · Real: {match.result_team1} - {match.result_team2}</>}
+                        </p>
+                      </div>
+                      <div className="shrink-0 ml-2">
+                        {pred.scored ? (
+                          pred.is_correct ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-0 text-xs">+100</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">0</Badge>
+                          )
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-muted-foreground/40" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* Bonos */}
+          <SectionToggle id="bonuses" icon={Sparkles} label="Bonos recibidos" count={bonuses.length} color="bg-gradient-to-br from-emerald-500 to-emerald-600" />
+          {expandedSection === 'bonuses' && (
+            <div className="space-y-1.5 pl-2">
+              {bonuses.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2 text-center">Sin bonos</p>
+              ) : (
+                bonuses.map(b => (
+                  <div key={b.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
+                    <div>
+                      <p className="text-xs font-medium">{b.reason || 'Bono'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {b.type === 'welcome' ? 'Bienvenida' : 'Otorgado por admin'}
+                        {b.created_date && ` · ${format(new Date(b.created_date), 'd MMM yyyy', { locale: es })}`}
+                      </p>
+                    </div>
+                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-0 text-xs font-bold">+{b.points}</Badge>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Canjes */}
+          <SectionToggle id="redemptions" icon={Gift} label="Canjes realizados" count={redemptions.length} color="bg-gradient-to-br from-rose-500 to-rose-600" />
+          {expandedSection === 'redemptions' && (
+            <div className="space-y-1.5 pl-2">
+              {redemptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2 text-center">Sin canjes</p>
+              ) : (
+                redemptions.map(r => (
+                  <div key={r.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
+                    <div>
+                      <p className="text-xs font-medium">{r.prize_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.created_date && format(new Date(r.created_date), 'd MMM yyyy', { locale: es })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-muted-foreground">-{r.points_spent} pts</span>
+                      <Badge className={`${statusColors[r.status]} border-0 text-[10px]`}>{statusLabels[r.status]}</Badge>
+                    </div>
+                  </div>
+                ))
+              )}
+              {totalSpent > 0 && (
+                <p className="text-xs text-muted-foreground text-right pt-1">Total gastado: <strong className="text-foreground">{totalSpent} pts</strong></p>
+              )}
+            </div>
+          )}
+
+          {/* Comisiones por referidos */}
+          <SectionToggle id="commissions" icon={Users} label="Comisiones por referidos" count={userCommissions.length} color="bg-gradient-to-br from-purple-500 to-purple-600" />
+          {expandedSection === 'commissions' && (
+            <div className="space-y-1.5 pl-2">
+              {userCommissions.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2 text-center">Sin comisiones</p>
+              ) : (
+                userCommissions.map(c => {
+                  const fromUser = allUsers.find(u => u.email === c.from_email);
+                  return (
+                    <div key={c.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
+                      <div>
+                        <p className="text-xs font-medium">{fromUser?.full_name || c.from_email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {c.match_id && matchMap[c.match_id]
+                            ? `Acierto: ${matchMap[c.match_id].team1} vs ${matchMap[c.match_id].team2}`
+                            : 'Registro de referido'}
+                          {c.created_date && ` · ${format(new Date(c.created_date), 'd MMM yyyy', { locale: es })}`}
+                        </p>
+                      </div>
+                      <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border-0 text-xs font-bold">+{c.points_earned}</Badge>
+                    </div>
+                  );
+                })
+              )}
+              {totalCommissions > 0 && (
+                <p className="text-xs text-muted-foreground text-right pt-1">Total comisiones: <strong className="text-foreground">{totalCommissions} pts</strong></p>
+              )}
+            </div>
+          )}
+
+          {/* Resumen total */}
+          <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-xl p-4 border border-primary/20">
+            <p className="text-xs text-muted-foreground mb-1">Resumen de puntos</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <span className="text-muted-foreground">Pronósticos acertados</span>
+              <span className="text-right font-medium">{correctPreds.length} · {user.prediction_points || 0} pts</span>
+              <span className="text-muted-foreground">Bonos recibidos</span>
+              <span className="text-right font-medium">{bonuses.length} · {user.bonus_points || 0} pts</span>
+              <span className="text-muted-foreground">Comisiones por referidos</span>
+              <span className="text-right font-medium">{userCommissions.length} · {totalCommissions} pts</span>
+              <span className="text-muted-foreground">Canjes realizados</span>
+              <span className="text-right font-medium">{redemptions.length} · -{totalSpent} pts</span>
+              <span className="text-muted-foreground font-semibold border-t border-border/50 pt-1 mt-1">Total</span>
+              <span className="text-right font-bold border-t border-border/50 pt-1 mt-1">{user.total_points || 0} pts</span>
+            </div>
           </div>
         </div>
       </DialogContent>
