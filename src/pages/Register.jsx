@@ -34,6 +34,7 @@ export default function Register() {
     email: '',
     phone: '',
     phone_country: DEFAULT_DIAL_CODE,
+    doc_type: 'cedula',
     cedula: '',
     instagram_user: '',
     tiktok_user: '',
@@ -43,8 +44,11 @@ export default function Register() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Filtrar solo dígitos para el teléfono
-    const newValue = name === 'phone' ? value.replace(/\D/g, '') : value;
+    let newValue = value;
+    // Filtrar solo dígitos para teléfono
+    if (name === 'phone') newValue = value.replace(/\D/g, '');
+    // Filtrar solo dígitos para cédula (pasaporte permite letras)
+    if (name === 'cedula' && form.doc_type === 'cedula') newValue = value.replace(/\D/g, '');
     setForm(prev => ({ ...prev, [name]: newValue }));
     setFieldErrors(prev => ({ ...prev, [name]: '' }));
   };
@@ -91,7 +95,8 @@ if (!form.email) errors.email = 'Campo obligatorio';
       }
     }
     if (!form.cedula) errors.cedula = 'Campo obligatorio';
-    else if (!/^[a-zA-Z0-9-]+$/.test(form.cedula)) errors.cedula = 'Solo letras, números y guiones';
+    else if (form.doc_type === 'cedula' && !/^\d+$/.test(form.cedula)) errors.cedula = 'La cédula solo debe contener números';
+    else if (form.doc_type === 'pasaporte' && !/^[a-zA-Z0-9]+$/.test(form.cedula)) errors.cedula = 'El pasaporte solo debe contener letras y números';
     if (!form.instagram_user) errors.instagram_user = 'Campo obligatorio';
     else {
       const cleanIg = form.instagram_user.replace('@', '').trim().toLowerCase();

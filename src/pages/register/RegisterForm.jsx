@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import CountryCodeSelect from '@/components/CountryCodeSelect';
-import { UserPlus, ArrowLeft, Shield } from 'lucide-react';
+import { UserPlus, ArrowLeft, Shield, IdCard, Globe } from 'lucide-react';
 
 export default function RegisterForm({ form, fieldErrors, isLoading, handleChange, handleChangeField, handleSubmit, redirect }) {
   return (
@@ -75,18 +75,47 @@ export default function RegisterForm({ form, fieldErrors, isLoading, handleChang
                 {fieldErrors.phone && <p className="text-[11px] text-destructive">{fieldErrors.phone}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cedula">Cédula o Pasaporte *</Label>
+                <Label>Documento de identidad *</Label>
+                <div className="flex gap-1.5 bg-muted/50 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => handleChangeField('doc_type', 'cedula')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                      form.doc_type === 'cedula'
+                        ? 'bg-background shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <IdCard className="w-4 h-4" />
+                    Cédula
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChangeField('doc_type', 'pasaporte')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                      form.doc_type === 'pasaporte'
+                        ? 'bg-background shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Globe className="w-4 h-4" />
+                    Pasaporte
+                  </button>
+                </div>
                 <Input
                   id="cedula"
                   name="cedula"
-                  placeholder="8-000-0000"
+                  placeholder={form.doc_type === 'cedula' ? '80000000' : 'AA0000000'}
                   value={form.cedula}
                   onChange={handleChange}
+                  inputMode={form.doc_type === 'cedula' ? 'numeric' : 'text'}
                   className={fieldErrors.cedula ? 'border-destructive' : ''}
                 />
                 {fieldErrors.cedula && <p className="text-[11px] text-destructive">{fieldErrors.cedula}</p>}
                 <p className="text-[10px] text-muted-foreground/60 leading-tight">
-                  Escríbela exactamente como aparece en tu documento. Se usará para validar tu identidad al reclamar premios.
+                  {form.doc_type === 'cedula'
+                    ? 'Escríbela sin guiones. Se usará para validar tu identidad al reclamar premios.'
+                    : 'Ingresa el número de tu pasaporte exactamente como aparece en el documento.'}
                 </p>
               </div>
             </div>
