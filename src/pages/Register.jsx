@@ -93,7 +93,19 @@ if (!form.email) errors.email = 'Campo obligatorio';
     if (!form.cedula) errors.cedula = 'Campo obligatorio';
     else if (!/^[a-zA-Z0-9-]+$/.test(form.cedula)) errors.cedula = 'Solo letras, números y guiones';
     if (!form.instagram_user) errors.instagram_user = 'Campo obligatorio';
+    else {
+      const cleanIg = form.instagram_user.replace('@', '').trim().toLowerCase();
+      if (db._init().users.some(u => u.instagram && u.instagram.toLowerCase() === cleanIg)) {
+        errors.instagram_user = 'Este usuario de Instagram ya está registrado';
+      }
+    }
     if (!form.tiktok_user) errors.tiktok_user = 'Campo obligatorio';
+    else {
+      const cleanTt = form.tiktok_user.replace('@', '').trim().toLowerCase();
+      if (db._init().users.some(u => u.tiktok && u.tiktok.toLowerCase() === cleanTt)) {
+        errors.tiktok_user = 'Este usuario de TikTok ya está registrado';
+      }
+    }
     if (!form.password) errors.password = 'Campo obligatorio';
     else if (form.password.length < 6) errors.password = 'Mínimo 6 caracteres';
 
