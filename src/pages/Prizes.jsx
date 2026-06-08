@@ -11,6 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight, Search } from 'lucide-react';
+import PrizeCard from './prizes/PrizeCard';
+import ConfirmRedeemDialog from './prizes/ConfirmRedeemDialog';
+import PreviewImageDialog from './prizes/PreviewImageDialog';
+import SuccessDialog from './prizes/SuccessDialog';
 import { toast } from 'sonner';
 
 const containerVariants = {
@@ -237,210 +241,48 @@ export default function Prizes() {
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         variants={containerVariants}
       >
-        {prizes.map((prize, i) => {
-          const canRedeem = user && availablePoints >= prize.points_cost;
-          const soldOut = prize.units_available <= 0;
-
-          return (
-            <m.div
-              key={prize.id}
-              custom={i}
-              variants={itemVariants}
-              whileHover="hover"
-              whileTap={{ scale: 0.98 }}
-            >
-              <Card className="overflow-hidden h-full flex flex-col">
-                {prize.image_url ? (
-                  <button
-                    type="button"
-                    aria-label={`Ver imagen de ${prize.name}`}
-                    className="aspect-video w-full overflow-hidden cursor-pointer group relative block p-0 border-0 w-full"
-                    onClick={() => setModal(m => ({ ...m, previewImage: prize }))}
-                  >
-                    <img src={prize.image_url} alt={prize.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                      <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 group-hover:scale-100 duration-200">
-                        <Search className="w-[18px] h-[18px]" />
-                      </div>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="aspect-video w-full bg-muted flex items-center justify-center">
-                    <Gift className="w-10 h-10 text-muted-foreground/30" />
-                  </div>
-                )}
-                <CardContent className="p-4 flex flex-col flex-1">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h3 className="font-semibold">{prize.name}</h3>
-                    </div>
-                    <Badge variant="outline" className="text-xs shrink-0 ml-2">
-                      {prize.points_cost} pts
-                    </Badge>
-                  </div>
-                  {prize.description && (
-                    <p className="text-sm text-muted-foreground mb-3 flex-1">{prize.description}</p>
-                  )}
-                  <div className="flex items-center gap-2 mb-3">
-                    <Package className="w-3.5 h-3.5 text-muted-foreground" />
-                    <div className="text-xs text-muted-foreground">
-                      {prize.units_available} {prize.units_available === 1 ? 'disponible' : 'disponibles'}
-                    </div>
-                  </div>
-
-                  {!user ? (
-                    <Link to="/register" className="block">
-                      <Button variant="outline" className="w-full gap-2">
-                        <UserPlus className="w-4 h-4" />
-                        Regístrate para canjear
-                      </Button>
-                    </Link>
-                  ) : soldOut ? (
-                    <Button className="w-full" disabled>
-                      <Package className="w-4 h-4 mr-1.5" />
-                      Agotado
-                    </Button>
-                  ) : (
-                    <Button
-                      className={`w-full gap-1.5 ${!canRedeem ? 'opacity-70' : 'glow-sm'}`}
-                      disabled={!canRedeem || redeemMutation.isPending}
-                      onClick={() => openConfirmDialog(prize)}
-                    >
-                      {redeemMutation.isPending ? (
-                        <>
-                          <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          Canjeando...
-                        </>
-                      ) : canRedeem ? (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          Canjear premio
-                        </>
-                      ) : (
-                        <>
-                          <Trophy className="w-4 h-4" />
-                          Faltan {prize.points_cost - availablePoints} pts
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            </m.div>
-          );
-        })}
+        {prizes.map((prize, i) => (
+          <m.div
+            key={prize.id}
+            custom={i}
+            variants={itemVariants}
+            whileHover="hover"
+            whileTap={{ scale: 0.98 }}
+          >
+            <PrizeCard
+              prize={prize}
+              user={user}
+              availablePoints={availablePoints}
+              onRedeem={openConfirmDialog}
+              onPreview={(p) => setModal(m => ({ ...m, previewImage: p }))}
+              redeemPending={redeemMutation.isPending}
+            />
+          </m.div>
+        ))}
       </m.div>
 
-      {/* Confirm cedula dialog */}
-      <Dialog open={!!modal.confirmPrize} onOpenChange={(open) => { if (!open) { setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '' })); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Gift className="w-5 h-5" />
-              Confirmar canje
-            </DialogTitle>
-          </DialogHeader>
-          {modal.confirmPrize && (
-            <div className="space-y-4">
-              <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-1">
-                <p><span className="text-muted-foreground">Premio:</span> <strong>{modal.confirmPrize.name}</strong></p>
-                <p><span className="text-muted-foreground">Puntos a canjear:</span> <strong>{modal.confirmPrize.points_cost} pts</strong></p>
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="cedula-confirm" className="text-sm font-medium">
-                  Confirma tu número de cédula
-                  <span className="ml-1 text-xs text-muted-foreground font-normal">(debe coincidir con la que registraste)</span>
-                </label>
-                <Input
-                  id="cedula-confirm"
-                  value={modal.cedulaInput}
-                  onChange={(e) => { setModal(m => ({ ...m, cedulaInput: e.target.value, cedulaError: '' })); }}
-                  placeholder="8-000-0000"
-                  onKeyDown={(e) => e.key === 'Enter' && handleConfirmRedeem()}
-                />
-                {modal.cedulaError && <p className="text-xs text-destructive">{modal.cedulaError}</p>}
-              </div>
-              <Button
-                className="w-full gap-2"
-                onClick={handleConfirmRedeem}
-                disabled={redeemMutation.isPending}
-              >
-                {redeemMutation.isPending ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Canjeando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    Confirmar y canjear
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ConfirmRedeemDialog
+        prize={modal.confirmPrize}
+        open={!!modal.confirmPrize}
+        cedulaInput={modal.cedulaInput}
+        cedulaError={modal.cedulaError}
+        pending={redeemMutation.isPending}
+        onCedulaChange={(v) => setModal(m => ({ ...m, cedulaInput: v, cedulaError: '' }))}
+        onConfirm={handleConfirmRedeem}
+        onClose={() => setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '' }))}
+      />
 
-      {/* Image Preview Dialog */}
-      <Dialog open={!!modal.previewImage} onOpenChange={(open) => { if (!open) setModal(m => ({ ...m, previewImage: null })); }}>
-        <DialogContent className="max-w-2xl p-1 bg-black/95 border-0">
-          {modal.previewImage && (
-            <div className="relative">
-              <img
-                src={modal.previewImage.image_url}
-                alt={modal.previewImage.name}
-                className="w-full max-h-[75vh] object-contain rounded-lg"
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 rounded-b-lg">
-                <p className="text-white font-semibold text-lg">{modal.previewImage.name}</p>
-                <p className="text-white/70 text-sm">{modal.previewImage.points_cost} pts · {modal.previewImage.units_available} {modal.previewImage.units_available === 1 ? 'disponible' : 'disponibles'}</p>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <PreviewImageDialog
+        prize={modal.previewImage}
+        open={!!modal.previewImage}
+        onClose={() => setModal(m => ({ ...m, previewImage: null }))}
+      />
 
-      {/* Success dialog */}
-      <Dialog open={!!modal.showSuccess} onOpenChange={(open) => { if (!open) setModal(m => ({ ...m, showSuccess: null })); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="sr-only">Premio canjeado</DialogTitle>
-          </DialogHeader>
-          {modal.showSuccess && (
-            <div className="text-center space-y-4 py-2">
-              <m.div
-                initial={{ scale: 0.95 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200 }}
-              >
-                <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-                </div>
-              </m.div>
-              <div>
-                <h3 className="text-xl font-bold">¡Felicidades!</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Has canjeado <strong>{modal.showSuccess.name}</strong> exitosamente.
-                </p>
-              </div>
-              <div className="bg-muted/30 rounded-lg p-4 text-sm space-y-2 text-left">
-                <p className="flex items-center gap-2">
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                  Te indicaremos el punto de recogida por <strong className="whitespace-nowrap">WhatsApp</strong>.
-                </p>
-                <p className="flex items-center gap-2">
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                  Debes presentar tu cédula para retirar el premio.
-                </p>
-              </div>
-              <Button onClick={() => setModal(m => ({ ...m, showSuccess: null }))} className="w-full">
-                Entendido
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <SuccessDialog
+        prize={modal.showSuccess}
+        open={!!modal.showSuccess}
+        onClose={() => setModal(m => ({ ...m, showSuccess: null }))}
+      />
     </m.div>
   );
 }

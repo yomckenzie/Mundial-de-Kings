@@ -1,0 +1,50 @@
+import { Calendar } from 'lucide-react';
+import { format, parse } from 'date-fns';
+import { es } from 'date-fns/locale/es';
+import MatchCardItem from './MatchCardItem';
+
+const PARSE_REF = new Date(0);
+
+function formatDate(dateStr) {
+  try {
+    const d = parse(dateStr, 'yyyy-MM-dd', PARSE_REF);
+    if (isNaN(d.getTime())) return dateStr;
+    return format(d, "d 'de' MMMM yyyy", { locale: es });
+  } catch {
+    return dateStr;
+  }
+}
+
+export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedMatches, liveNow, results, setResults, handleStatusChange, handlePublishResult }) {
+  if (sortedDates.length === 0) {
+    return (
+      <div className="text-center py-12 space-y-3">
+        <Calendar className="w-12 h-12 text-muted-foreground/30 mx-auto" />
+        <p className="text-muted-foreground">No hay partidos. Crea uno o usa "Seedear 104 partidos".</p>
+      </div>
+    );
+  }
+
+  return sortedDates.map(dateStr => (
+    <div key={dateStr}>
+      <h3 className="font-display text-lg mb-2 mt-6 first:mt-0">
+        {formatDate(dateStr)}
+        <span className="text-sm font-sans font-normal text-muted-foreground ml-2">
+          ({groupedMatches[dateStr].length} partidos)
+        </span>
+      </h3>
+      {groupedMatches[dateStr].map(match => (
+        <MatchCardItem
+          key={match.id}
+          match={match}
+          hasLockedMatches={hasLockedMatches}
+          liveNow={liveNow}
+          results={results}
+          setResults={setResults}
+          handleStatusChange={handleStatusChange}
+          handlePublishResult={handlePublishResult}
+        />
+      ))}
+    </div>
+  ));
+}

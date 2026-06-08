@@ -9,8 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, Sparkles, LogIn, UserPlus, Users, Copy, Share2, Pencil, Check, XCircle } from 'lucide-react';
+import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, Sparkles, LogIn, UserPlus, Users, Copy, Share2 } from 'lucide-react';
 import ProfileStats from './profile/ProfileStats';
+import PointsBreakdown from './profile/PointsBreakdown';
+import PredictionsTab from './profile/PredictionsTab';
+import RedemptionsTab from './profile/RedemptionsTab';
+import OverviewTab from './profile/OverviewTab';
+import ReferralsTab from './profile/ReferralsTab';
+import PersonalData from './profile/PersonalData';
+import ProfileHeader from './profile/ProfileHeader';
 
 const tabs = [
   { id: 'overview', label: 'Resumen', icon: User },
@@ -31,56 +38,6 @@ const itemVariants = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } }
 };
-
-function InfoRow({ label, value, children }) {
-  return (
-    <div className="flex items-center justify-between py-1.5">
-      <span className="text-sm text-muted-foreground">{label}{children}</span>
-      <span className="text-sm font-medium text-right">{value || '—'}</span>
-    </div>
-  );
-}
-
-function EditableSocialRow({ label, value, editingField, field, editValue, onStartEdit, onChange, onSave, onCancel }) {
-  const isEditing = editingField === field;
-  return (
-    <div className="flex items-center justify-between py-1.5 gap-2">
-      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
-      {isEditing ? (
-        <div className="flex items-center gap-1 flex-1 justify-end">
-          <div className="relative flex-1 max-w-[180px]">
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span>
-            <input
-              type="text"
-              value={editValue}
-              onChange={(e) => onChange(e.target.value.replace('@', ''))}
-              onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
-              className="w-full pl-6 pr-2 py-1 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="usuario"
-              aria-label={label}
-            />
-          </div>
-          <button type="button" onClick={onSave} className="p-1 rounded hover:bg-muted transition" title="Guardar" aria-label="Guardar">
-            <Check className="w-4 h-4 text-emerald-500" />
-          </button>
-          <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-muted transition" title="Cancelar" aria-label="Cancelar">
-            <XCircle className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={onStartEdit}
-          className="flex items-center gap-1.5 text-sm font-medium text-right hover:text-foreground/80 transition group"
-          aria-label={`Editar ${label}`}
-        >
-          <span>{value || '—'}</span>
-          <Pencil className="w-3 h-3 text-muted-foreground/40 group-hover:text-muted-foreground transition" />
-        </button>
-      )}
-    </div>
-  );
-}
 
 
 export default function Profile() {
@@ -220,6 +177,12 @@ export default function Profile() {
     return map;
   }, [matches]);
 
+  const myCommissions = useMemo(() => {
+    return [...allCommissions]
+      .filter(c => c.to_email === userEmail)
+      .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0));
+  }, [allCommissions, userEmail]);
+
   if (!user) {
     return (
       <m.div
@@ -258,18 +221,7 @@ export default function Profile() {
       initial="hidden"
       animate="visible"
     >
-      {/* Header */}
-      <m.div variants={itemVariants}>
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-12 h-12 rounded-2xl bg-foreground flex items-center justify-center shadow-lg">
-            <User className="w-6 h-6 text-background" />
-          </div>
-          <div>
-            <h1 className="font-display text-4xl tracking-wide">{user?.full_name?.split(' ')[0] || 'Perfil'}</h1>
-            <p className="text-sm text-muted-foreground">@{user?.instagram || user?.email}</p>
-          </div>
-        </div>
-      </m.div>
+      <ProfileHeader user={user} />
 
       {/* Stats row */}
       <m.div variants={itemVariants}>
@@ -278,135 +230,30 @@ export default function Profile() {
 
       {/* Points breakdown */}
       <m.div variants={itemVariants}>
-        <Card className="overflow-hidden gradient-border">
-          <CardContent className="p-4 md:p-5 space-y-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Award className="w-5 h-5 text-foreground" />
-              <h2 className="font-semibold">Desglose de Puntos</h2>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Target className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Por pronósticos</p>
-                  <p className="text-xs text-muted-foreground">Usado en el Ranking</p>
-                </div>
-              </div>
-              <span className="font-bold text-lg">{predictionPoints} pts</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center">
-                  <Star className="w-4 h-4 text-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Puntos extra</p>
-                  <p className="text-xs text-muted-foreground">Bienvenida + bonos</p>
-                </div>
-              </div>
-              <span className="font-bold text-lg">{bonusPoints} pts</span>
-            </div>
-            {/* Puntos por referidos */}
-            <div className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-lg">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                  <UserPlus className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Por referidos</p>
-                  <p className="text-xs text-muted-foreground">Comisiones por tu red</p>
-                </div>
-              </div>
-              <span className="font-bold text-lg">{referralPoints} pts</span>
-            </div>
-            {/* Puntos usados en canjes */}
-            <div className="flex items-center justify-between p-3 bg-red-500/10 rounded-lg">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
-                  <Gift className="w-4 h-4 text-red-500/70" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Usados en canjes</p>
-                  <p className="text-xs text-muted-foreground">Premios canjeados</p>
-                </div>
-              </div>
-              <span className="font-bold text-lg">{totalSpent} pts</span>
-            </div>
-
-            {/* Total ganado */}
-            <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
-              <div>
-                <span className="font-bold">Total ganado</span>
-                <p className="text-xs text-muted-foreground">Para el ranking</p>
-              </div>
-              <span className="font-black text-xl">{totalPoints} pts</span>
-            </div>
-
-            {/* Puntos disponibles */}
-            <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/20">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Trophy className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">Disponibles para canjear</p>
-                  <p className="text-xs text-muted-foreground">Total − Usados</p>
-                </div>
-              </div>
-              <span className="font-black text-xl text-primary">{availablePoints} pts</span>
-            </div>
-
-            {accuracy > 0 && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
-                <TrendingUp className="w-4 h-4 text-foreground" />
-                Precisión: <span className="font-bold text-foreground">{accuracy}%</span>
-                ({correctPreds.length} aciertos de {scoredPreds.length} evaluados)
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <PointsBreakdown
+          predictionPoints={predictionPoints}
+          bonusPoints={bonusPoints}
+          referralPoints={referralPoints}
+          totalSpent={totalSpent}
+          totalPoints={totalPoints}
+          availablePoints={availablePoints}
+          accuracy={accuracy}
+          correctPreds={correctPreds}
+          scoredPreds={scoredPreds}
+        />
       </m.div>
 
       {/* Personal Data */}
       <m.div variants={itemVariants}>
-        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-3">
-          <User className="w-4 h-4" />
-          Datos personales
-        </div>
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
-              <InfoRow label="Nombre completo" value={user?.full_name} />
-              <InfoRow label="Correo electrónico" value={user?.email} />
-              <InfoRow label="Cédula" value={user?.cedula} />
-              <EditableSocialRow
-                label="Instagram"
-                value={user?.instagram ? `@${user.instagram}` : null}
-                field="instagram"
-                editingField={editingField}
-                editValue={editValue}
-                onStartEdit={() => { setEditValue(user?.instagram || ''); setEditingField('instagram'); }}
-                onChange={(v) => setEditValue(v)}
-                onSave={() => handleSaveSocial('instagram')}
-                onCancel={() => setEditingField(null)}
-              />
-              <EditableSocialRow
-                label="TikTok"
-                value={user?.tiktok ? `@${user.tiktok}` : null}
-                field="tiktok"
-                editingField={editingField}
-                editValue={editValue}
-                onStartEdit={() => { setEditValue(user?.tiktok || ''); setEditingField('tiktok'); }}
-                onChange={(v) => setEditValue(v)}
-                onSave={() => handleSaveSocial('tiktok')}
-                onCancel={() => setEditingField(null)}
-              />
-              <InfoRow label="WhatsApp" value={user?.phone || user?.whatsapp} />
-            </div>
-          </CardContent>
-        </Card>
+        <PersonalData
+          user={user}
+          editingField={editingField}
+          editValue={editValue}
+          onStartEdit={(field) => { const val = user?.[field] || ''; setEditValue(val); setEditingField(field); }}
+          onChange={(v) => setEditValue(v)}
+          onSave={(field) => handleSaveSocial(field)}
+          onCancel={() => setEditingField(null)}
+        />
       </m.div>
 
       {/* Tabs */}
@@ -439,42 +286,7 @@ export default function Profile() {
               transition={{ duration: 0.2 }}
               className="space-y-4"
             >
-              {/* Bonuses history */}
-              {bonuses.length > 0 ? (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-foreground" />
-                      Historial de Bonos
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-border/50">
-                      {bonuses.map(b => (
-                        <div key={b.id} className="px-4 py-3 flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-medium">{b.reason}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {b.type === 'welcome' ? 'Bono de bienvenida' : 'Bono otorgado'}
-                              {b.created_date && ` · ${new Date(b.created_date).toLocaleDateString('es-PA')}`}
-                            </p>
-                          </div>
-                          <Badge className="bg-foreground text-background border-0 shrink-0 font-bold">
-                            +{b.points}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardContent className="p-6 text-center text-muted-foreground">
-                    <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Aún no has recibido bonos.</p>
-                  </CardContent>
-                </Card>
-              )}
+              <OverviewTab bonuses={bonuses} myCommissions={myCommissions} allUsers={allUsers} matchMap={matchMap} />
             </m.div>
           )}
 
@@ -486,66 +298,7 @@ export default function Profile() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
             >
-              {isLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
-                </div>
-              ) : predictions.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p>Aún no has hecho pronósticos.</p>
-                    <p className="text-xs mt-1">Ve a la sección Partidos para comenzar.</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {predictions.map((pred, i) => {
-                    const match = matchMap[pred.match_id];
-                    if (!match) return null;
-                    return (
-                      <m.div
-                        key={pred.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.03, duration: 0.2 }}
-                      >
-                        <Card className="card-hover">
-                          <CardContent className="p-3 md:p-4 flex items-center justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <p className="font-semibold text-sm truncate">{match.team1} vs {match.team2}</p>
-                                {pred.scored && (
-                                  <Badge className={`shrink-0 text-[10px] px-1.5 py-0 ${pred.is_correct ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
-                                    {pred.is_correct ? '+100' : '0'}
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>Tu pronóstico: <strong>{pred.pred_team1} - {pred.pred_team2}</strong></span>
-                                {match.status === 'finished' && (
-                                  <span>| Real: {match.result_team1} - {match.result_team2}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              {pred.scored ? (
-                                pred.is_correct ? (
-                                  <CheckCircle2 className="w-5 h-5 text-foreground" />
-                                ) : (
-                                  <X className="w-5 h-5 text-destructive/60" />
-                                )
-                              ) : (
-                                <Clock className="w-5 h-5 text-muted-foreground/40" />
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </m.div>
-                    );
-                  })}
-                </div>
-              )}
+              <PredictionsTab predictions={predictions} matchMap={matchMap} isLoading={isLoading} />
             </m.div>
           )}
 
@@ -557,48 +310,7 @@ export default function Profile() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
             >
-              {isLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
-                </div>
-              ) : redemptions.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    <Gift className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p>No has canjeado premios aún.</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {redemptions.map((r, i) => (
-                    <m.div
-                      key={r.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05, duration: 0.2 }}
-                    >
-                      <Card className="card-hover">
-                        <CardContent className="p-3 md:p-4 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center">
-                              <Gift className="w-4 h-4 text-muted-foreground" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm">{r.prize_name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {r.points_spent} pts · {new Date(r.created_date).toLocaleDateString('es-PA')}
-                              </p>
-                            </div>
-                          </div>
-                          <Badge variant={r.status === 'delivered' ? 'default' : r.status === 'approved' ? 'secondary' : 'outline'} className="shrink-0">
-                            {r.status === 'pending' ? 'Pendiente' : r.status === 'approved' ? 'Aprobado' : 'Entregado'}
-                          </Badge>
-                        </CardContent>
-                      </Card>
-                    </m.div>
-                  ))}
-                </div>
-              )}
+              <RedemptionsTab redemptions={redemptions} isLoading={isLoading} />
             </m.div>
           )}
 
@@ -611,114 +323,7 @@ export default function Profile() {
               transition={{ duration: 0.2 }}
               className="space-y-4"
             >
-              {/* Tu código de referido */}
-              <Card>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <UserPlus className="w-5 h-5" />
-                    <h3 className="font-semibold">Tu código de referido</h3>
-                  </div>
-                  <div className="flex items-center gap-2 bg-muted rounded-lg p-3">
-                    <code className="flex-1 text-lg font-bold tracking-wider text-center">
-                      {user?.referral_code || '—'}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 shrink-0"
-                      onClick={() => {
-                        if (user?.referral_code) {
-                          navigator.clipboard.writeText(user.referral_code);
-                          toast.success('¡Código copiado!');
-                        }
-                      }}
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      Copiar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 shrink-0"
-                      onClick={() => {
-                        if (user?.referral_code) {
-                          const url = `${window.location.origin}/register?ref=${user.referral_code}`;
-                          navigator.clipboard.writeText(url);
-                          toast.success('¡Link de invitación copiado! Compártelo con tus amigos.');
-                        }
-                      }}
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      Link
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Comparte tu código para ganar <strong>10 pts</strong> por cada amigo que se registre y <strong>5 pts</strong> por cada acierto de ellos.
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Estadísticas */}
-              <div className="grid grid-cols-2 gap-3">
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <Users className="w-6 h-6 mx-auto mb-1 text-foreground" />
-                    <p className="text-2xl font-black">{myReferrals.length}</p>
-                    <p className="text-xs text-muted-foreground">Personas referidas</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <Award className="w-6 h-6 mx-auto mb-1 text-foreground" />
-                    <p className="text-2xl font-black">{referralPoints}</p>
-                    <p className="text-xs text-muted-foreground">Puntos por referidos</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Lista de referidos */}
-              {myReferrals.length > 0 ? (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      Tus referidos
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-border/50">
-                      {myReferrals.map(r => {
-                        const referredUser = allUsers.find(u => u.email === r.referred_email);
-                        return (
-                          <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-medium">
-                                {referredUser?.full_name || r.referred_email}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                @{referredUser?.instagram || '—'} · {new Date(r.created_date).toLocaleDateString('es-PA')}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-muted-foreground">
-                                {referredUser?.prediction_points || 0} pts
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardContent className="p-6 text-center text-muted-foreground">
-                    <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Aún no has referido a nadie.</p>
-                    <p className="text-xs mt-1">Comparte tu código de referido para empezar a ganar puntos extra.</p>
-                  </CardContent>
-                </Card>
-              )}
+              <ReferralsTab user={user} myReferrals={myReferrals} referralPoints={referralPoints} allUsers={allUsers} />
             </m.div>
           )}
         </AnimatePresence>

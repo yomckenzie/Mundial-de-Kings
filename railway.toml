@@ -4,3 +4,5 @@ buildCommand = "corepack enable && pnpm install --frozen-lockfile && pnpm run bu
 [deploy]
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
+healthcheckPath = "/"
+healthcheckTimeout = 30

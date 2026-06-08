@@ -1,14 +1,20 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Search, ChevronLeft, ChevronRight, Download, Filter, X, Gift, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Download, Filter, X, Gift, Trash2, AlertTriangle, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import GrantPointsModal from '@/components/admin/GrantPointsModal';
+import UserCard from './UserCard';
+import FiltersPanel from './FiltersPanel';
+import CreateReferrerDialog from './CreateReferrerDialog';
+import DeleteUserDialog from './DeleteUserDialog';
+import UserSearchBar from './UserSearchBar';
+import UserPagination from './UserPagination';
 
 const PAGE_SIZE = 20;
 
@@ -20,6 +26,7 @@ export default function AdminUsers() {
     grantUser: null,
     deleteUser: null,
     deletingUser: false,
+    customReferrer: { open: false, name: '', code: '', points: '' },
     filters: {
       dateFrom: '',
       dateTo: '',
@@ -93,6 +100,52 @@ export default function AdminUsers() {
         minCanjes: '', maxCanjes: '',
       },
     }));
+  };
+
+  const createCustomReferrer = useMutation({
+    mutationFn: (data) => api.entities.User.create(data),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      setUi(prev => ({ ...prev, customReferrer: { open: false, name: '', code: '', points: '' } }));
+      toast.success(`✅ Referidor personalizado "${vars.full_name}" creado con código "${vars.referral_code}"`);
+    },
+    onError: (err) => toast.error('Error al crear referidor: ' + (err?.message || err)),
+  });
+
+  const handleCreateCustomReferrer = () => {
+    const { name, code, points } = ui.customReferrer;
+    if (!name.trim() || !code.trim()) {
+      toast.error('Nombre y código de referido son obligatorios');
+      return;
+    }
+    // Validar que el código no exista ya
+    const existing = users.find(u => u.referral_code?.toLowerCase() === code.trim().toLowerCase());
+    if (existing) {
+      toast.error('Ese código de referido ya existe');
+      return;
+    }
+    const bonusAmount = parseInt(points, 10);
+    if (Number.isNaN(bonusAmount) || bonusAmount < 0) {
+      toast.error('Los puntos deben ser un número válido mayor o igual a 0');
+      return;
+    }
+    const now = new Date().toISOString();
+    createCustomReferrer.mutate({
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      email: `referrer_${code.trim().toLowerCase()}@chessking.referral`,
+      full_name: name.trim(),
+      role: 'user',
+      referral_code: code.trim().toUpperCase(),
+      referral_bonus_amount: bonusAmount,
+      referral_points: 0,
+      total_points: 0,
+      prediction_points: 0,
+      bonus_points: 0,
+      profile_complete: true,
+      created_date: now,
+      instagram: 'referido',
+      tiktok: 'referido',
+    });
   };
 
   const handleDeleteUser = useCallback(async () => {
@@ -190,208 +243,74 @@ export default function AdminUsers() {
 
   return (
     <div className="space-y-4">
-      {/* Búsqueda + botones */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nombre, cédula, correo o Instagram..."
-            className="pl-9"
-            value={ui.search}
-            onChange={(e) => { setUi(prev => ({ ...prev, search: e.target.value, page: 0 })); }}
-          />
-        </div>
-        <Button size="sm" variant={ui.showFilters ? 'default' : 'outline'} onClick={() => setUi(prev => ({ ...prev, showFilters: !prev.showFilters }))} className="gap-1.5">
-          <Filter className="w-4 h-4" />
-          Filtros
-          {hasActiveFilters && <span className="bg-secondary text-secondary-foreground rounded-full text-xs w-4 h-4 flex items-center justify-center">!</span>}
-        </Button>
-        <Button size="sm" variant="outline" onClick={exportCSV} className="gap-1.5">
-          <Download className="w-4 h-4" />
-          CSV
-        </Button>
-      </div>
+      <UserSearchBar
+        search={ui.search}
+        showFilters={ui.showFilters}
+        hasActiveFilters={hasActiveFilters}
+        onSearchChange={(value) => setUi(prev => ({ ...prev, search: value, page: 0 }))}
+        onToggleFilters={() => setUi(prev => ({ ...prev, showFilters: !prev.showFilters }))}
+        onExport={exportCSV}
+        onCustomReferrer={() => setUi(prev => ({ ...prev, customReferrer: { ...prev.customReferrer, open: true } }))}
+      />
 
       {/* Panel de filtros */}
       {ui.showFilters && (
-        <Card>
-          <CardContent className="p-4 space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs">Registro desde</Label>
-                <Input type="date" value={ui.filters.dateFrom} onChange={e => { setFilter('dateFrom', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Registro hasta</Label>
-                <Input type="date" value={ui.filters.dateTo} onChange={e => { setFilter('dateTo', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Puntos mín.</Label>
-                <Input type="number" min="0" placeholder="0" value={ui.filters.minPoints} onChange={e => { setFilter('minPoints', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Puntos máx.</Label>
-                <Input type="number" min="0" placeholder="∞" value={ui.filters.maxPoints} onChange={e => { setFilter('maxPoints', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Aciertos mín.</Label>
-                <Input type="number" min="0" placeholder="0" value={ui.filters.minAciertos} onChange={e => { setFilter('minAciertos', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Aciertos máx.</Label>
-                <Input type="number" min="0" placeholder="∞" value={ui.filters.maxAciertos} onChange={e => { setFilter('maxAciertos', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Canjes mín.</Label>
-                <Input type="number" min="0" placeholder="0" value={ui.filters.minCanjes} onChange={e => { setFilter('minCanjes', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Canjes máx.</Label>
-                <Input type="number" min="0" placeholder="∞" value={ui.filters.maxCanjes} onChange={e => { setFilter('maxCanjes', e.target.value); setUi(prev => ({ ...prev, page: 0 })); }} />
-              </div>
-            </div>
-            {hasActiveFilters && (
-              <Button size="sm" variant="ghost" onClick={resetFilters} className="gap-1.5 text-muted-foreground">
-                <X className="w-3 h-3" /> Limpiar filtros
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <FiltersPanel
+          filters={ui.filters}
+          onFilterChange={(key, value) => { setFilter(key, value); setUi(prev => ({ ...prev, page: 0 })); }}
+          onReset={resetFilters}
+          hasActiveFilters={hasActiveFilters}
+        />
       )}
 
       <p className="text-sm text-muted-foreground">{filtered.length} usuarios encontrados</p>
 
       <div className="space-y-2">
         {paged.map(u => (
-          <Card key={u.id}>
-            <CardContent className="p-3 text-sm">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div>
-                  <p className="text-muted-foreground text-xs">Nombre</p>
-                  <p className="font-medium">{u.full_name}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Cédula</p>
-                  <p>{u.cedula}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Instagram</p>
-                  <p>@{u.instagram}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Puntos</p>
-                  <p className="font-bold">{u.total_points || 0}</p>
-                  <p className="text-xs text-muted-foreground">🎯 {u.prediction_points || 0} · 🎁 {u.bonus_points || 0}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                <div>
-                  <p className="text-muted-foreground text-xs">Correo</p>
-                  <p>{u.email}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">TikTok</p>
-                  <p>@{u.tiktok}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Aciertos</p>
-                  <p className="font-medium">{aciertosMap[u.email] || 0}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Canjes</p>
-                  <p className="font-medium">{canjesMap[u.email] || 0}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
-                <div>
-                  <p className="text-muted-foreground text-xs">Código referido</p>
-                  <p className="font-mono text-xs">{u.referral_code || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Referidos</p>
-                  <p className="font-medium">{referredCountMap[u.email] || 0}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Puntos por referidos</p>
-                  <p className="font-medium">{u.referral_points || 0}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Referido por</p>
-                  <p className="font-mono text-xs truncate" title={u.referred_by || ''}>{u.referred_by || '—'}</p>
-                </div>
-              </div>
-              <div className="mt-1 flex items-center justify-between">
-                <p className="text-muted-foreground text-xs">Registro: {u.created_date ? new Date(u.created_date).toLocaleDateString('es-PA') : '-'}</p>
-                <div className="flex gap-1.5">
-                  <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => setUi(prev => ({ ...prev, grantUser: u }))}>
-                    <Gift className="w-3 h-3" /> Otorgar puntos
-                  </Button>
-                  {u.role !== 'admin' && (
-                    <Button size="sm" variant="destructive" className="gap-1.5 h-7 text-xs" onClick={() => setUi(prev => ({ ...prev, deleteUser: u }))}>
-                      <Trash2 className="w-3 h-3" /> Eliminar
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <UserCard
+            key={u.id}
+            user={u}
+            aciertosMap={aciertosMap}
+            canjesMap={canjesMap}
+            referredCountMap={referredCountMap}
+            onGrantPoints={(user) => setUi(prev => ({ ...prev, grantUser: user }))}
+            onDelete={(user) => setUi(prev => ({ ...prev, deleteUser: user }))}
+          />
         ))}
       </div>
+
+      <CreateReferrerDialog
+        open={ui.customReferrer.open}
+        name={ui.customReferrer.name}
+        code={ui.customReferrer.code}
+        points={ui.customReferrer.points}
+        onNameChange={(value) => setUi(prev => ({ ...prev, customReferrer: { ...prev.customReferrer, name: value } }))}
+        onCodeChange={(value) => setUi(prev => ({ ...prev, customReferrer: { ...prev.customReferrer, code: value } }))}
+        onPointsChange={(value) => setUi(prev => ({ ...prev, customReferrer: { ...prev.customReferrer, points: value } }))}
+        onClose={() => setUi(prev => ({ ...prev, customReferrer: { open: false, name: '', code: '', points: '' } }))}
+        onCreate={handleCreateCustomReferrer}
+        isPending={createCustomReferrer.isPending}
+      />
 
       {ui.grantUser && (
         <GrantPointsModal user={ui.grantUser} open={!!ui.grantUser} onClose={() => setUi(prev => ({ ...prev, grantUser: null }))} />
       )}
 
-      {/* Confirmación de eliminación */}
-      <Dialog open={!!ui.deleteUser} onOpenChange={(open) => { if (!open) setUi(prev => ({ ...prev, deleteUser: null })); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="w-5 h-5" />
-              Eliminar usuario
-            </DialogTitle>
-            <DialogDescription className="pt-2">
-              ¿Estás seguro de eliminar a <strong>{ui.deleteUser?.full_name || ui.deleteUser?.email}</strong>?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm space-y-1">
-              <p className="font-medium text-destructive">Esta acción no se puede deshacer.</p>
-              <p className="text-muted-foreground text-xs">
-                Se eliminarán permanentemente:
-              </p>
-              <ul className="text-xs text-muted-foreground list-disc list-inside space-y-0.5">
-                <li>El usuario y su perfil completo</li>
-                <li>Todos sus pronósticos ({aciertosMap[ui.deleteUser?.email] || 0} aciertos)</li>
-                <li>Todos sus canjes ({canjesMap[ui.deleteUser?.email] || 0} canjes)</li>
-                <li>Puntos extra otorgados</li>
-                <li>Tickets de soporte</li>
-              </ul>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={() => setUi(prev => ({ ...prev, deleteUser: null }))}>
-                Cancelar
-              </Button>
-              <Button variant="destructive" size="sm" onClick={handleDeleteUser} disabled={ui.deletingUser} className="gap-1.5">
-                <Trash2 className="w-4 h-4" />
-                {ui.deletingUser ? 'Eliminando...' : 'Eliminar usuario'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <DeleteUserDialog
+        user={ui.deleteUser}
+        open={!!ui.deleteUser}
+        aciertosMap={aciertosMap}
+        canjesMap={canjesMap}
+        deleting={ui.deletingUser}
+        onConfirm={handleDeleteUser}
+        onClose={() => setUi(prev => ({ ...prev, deleteUser: null }))}
+      />
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4">
-          <Button variant="outline" size="sm" disabled={ui.page === 0} onClick={() => setUi(prev => ({ ...prev, page: prev.page - 1 }))}>
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground">Página {ui.page + 1} de {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={ui.page >= totalPages - 1} onClick={() => setUi(prev => ({ ...prev, page: prev.page + 1 }))}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-      )}
+      <UserPagination
+        page={ui.page}
+        totalPages={totalPages}
+        onPageChange={(page) => setUi(prev => ({ ...prev, page }))}
+      />
     </div>
   );
 }

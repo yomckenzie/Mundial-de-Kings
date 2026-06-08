@@ -244,15 +244,8 @@ export const db = {
     }
   },
 
-  // Sincronizar TODAS las tablas a Supabase (con await para asegurar que llegue)
-  async _syncAllToSupabase() {
-    if (!isSupabaseAvailable()) return;
-    if (_syncToSupabaseInProgress) {
-      _resyncQueued = true;
-      return;
-    }
-
-    // Procesar eliminaciones pendientes primero (fuera del bucle, para evitar await dentro del loop)
+  // Procesar eliminaciones pendientes en Supabase
+  async _processPendingDeletes() {
     if (_pendingDeletes.length > 0 && supabase) {
       const deletes = _pendingDeletes.splice(0);
       await Promise.all(
@@ -261,27 +254,45 @@ export const db = {
         )
       );
     }
+  },
 
-    // Bucle: procesa todas las re-sincronizaciones encoladas antes de resolver
-    // (antes era fire-and-forget, lo que causaba race conditions con el polling)
-    do {
-      _resyncQueued = false;
-      _syncToSupabaseInProgress = true;
-      try {
-        const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
-        const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
-          const records = this._data[jsKey] || [];
-          if (records.length > 0) acc.push({ jsKey, records });
-          return acc;
-        }, []);
-        // Las tablas se sincronizan en paralelo (no await dentro del loop)
-        await Promise.all(
-          tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
-        );
-      } finally {
-        _syncToSupabaseInProgress = false;
+  // Sincronizar un solo lote de tablas a Supabase
+  async _syncBatchToSupabase() {
+    _syncToSupabaseInProgress = true;
+    try {
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
+      const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
+        const records = this._data[jsKey] || [];
+        if (records.length > 0) acc.push({ jsKey, records });
+        return acc;
+      }, []);
+      await Promise.all(
+        tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
+      );
+    } finally {
+      _syncToSupabaseInProgress = false;
+    }
+  },
+
+  // Sincronizar TODAS las tablas a Supabase (con await para asegurar que llegue)
+  async _syncAllToSupabase() {
+    if (!isSupabaseAvailable()) return;
+    if (_syncToSupabaseInProgress) {
+      _resyncQueued = true;
+      return;
+    }
+
+    await this._processPendingDeletes();
+
+    // Bucle recursivo: procesa todas las re-sincronizaciones encoladas
+    const runSync = async () => {
+      await this._syncBatchToSupabase();
+      if (_resyncQueued) {
+        _resyncQueued = false;
+        await runSync();
       }
-    } while (_resyncQueued);
+    };
+    await runSync();
   },
 
   // Forzar sincronización manual desde Supabase
@@ -1036,6 +1047,12 @@ export const db = {
         user_email: data.user_email || '',
         user_name: data.user_name || '',
         status: data.status || 'pending',
+        verified: false,
+        verified_at: null,
+        verified_by: null,
+        rejected: false,
+        rejected_at: null,
+        rejected_by: null,
         messages: initialMsg
           ? [{ sender: 'user', text: initialMsg, created_date: now }]
           : [],
@@ -1116,6 +1133,62 @@ export const db = {
         if (hasUnread) count++;
       }
       return count;
+    },
+
+    /**
+     * Marca un ticket como verificado (conversación real confirmada por el admin).
+     * Retorna el ticket actualizado.
+     */
+    verify(id, adminEmail) {
+      const d = db._init();
+      const idx = d.supportTickets.findIndex(t => t.id === id);
+      if (idx === -1) throw new Error('Ticket not found');
+      d.supportTickets[idx].verified = true;
+      d.supportTickets[idx].verified_at = getNow();
+      d.supportTickets[idx].verified_by = adminEmail || 'admin';
+      d.supportTickets[idx].updated_at = getNow();
+      // Registrar en auditoría
+      d.auditLogs.push({
+        id: makeId(),
+        created_date: getNow(),
+        action: 'ticket_verified',
+        admin_email: adminEmail || 'admin',
+        details: JSON.stringify({ ticket_id: id, subject: d.supportTickets[idx].subject }),
+      });
+      save(d);
+      _syncInProgress = {};
+      db._syncAllToSupabase();
+      notifyReactComponents();
+      return d.supportTickets[idx];
+    },
+
+    /**
+     * Marca un ticket como rechazado (conversación NO real / spam / falsa).
+     * Retorna el ticket actualizado.
+     */
+    reject(id, adminEmail) {
+      const d = db._init();
+      const idx = d.supportTickets.findIndex(t => t.id === id);
+      if (idx === -1) throw new Error('Ticket not found');
+      d.supportTickets[idx].rejected = true;
+      d.supportTickets[idx].rejected_at = getNow();
+      d.supportTickets[idx].rejected_by = adminEmail || 'admin';
+      d.supportTickets[idx].updated_at = getNow();
+      // Cerrar el ticket automáticamente al rechazar
+      d.supportTickets[idx].status = 'closed';
+      // Registrar en auditoría
+      d.auditLogs.push({
+        id: makeId(),
+        created_date: getNow(),
+        action: 'ticket_rejected',
+        admin_email: adminEmail || 'admin',
+        details: JSON.stringify({ ticket_id: id, subject: d.supportTickets[idx].subject }),
+      });
+      save(d);
+      _syncInProgress = {};
+      db._syncAllToSupabase();
+      notifyReactComponents();
+      return d.supportTickets[idx];
     },
 
     /**
@@ -1218,16 +1291,28 @@ export const db = {
    * Acredita el bono de referido (10 pts) a quien refirió a un nuevo usuario.
    * Retorna el usuario actualizado o null si no hay referente.
    */
-  async awardReferralBonus(referralCode) {
+  async awardReferralBonus(referralCode, referredEmail) {
     if (!referralCode) return null;
     const d = db._init();
     const referrer = d.users.find(u => u.referral_code === referralCode);
     if (!referrer) return null;
-    const newRefPoints = (referrer.referral_points || 0) + 10;
-    const newTotal = (referrer.total_points || 0) + 10;
+    const bonusAmount = referrer.referral_bonus_amount || 10;
+    const newRefPoints = (referrer.referral_points || 0) + bonusAmount;
+    const newTotal = (referrer.total_points || 0) + bonusAmount;
     referrer.referral_points = newRefPoints;
     referrer.total_points = newTotal;
     referrer.updated_at = getNow();
+    // Registrar la comisión para que aparezca en el historial
+    d.referralCommissions.push({
+      id: makeId(),
+      from_email: referredEmail || 'desconocido',
+      to_email: referrer.email,
+      match_id: null,
+      level: 1,
+      points_earned: bonusAmount,
+      type: 'registration',
+      created_date: getNow(),
+    });
     save(d);
     _syncInProgress = {};
     await db._syncAllToSupabase();

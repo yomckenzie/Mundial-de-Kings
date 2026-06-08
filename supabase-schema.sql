@@ -278,8 +278,11 @@ CREATE TABLE IF NOT EXISTS referral_commissions (
   match_id TEXT,
   level INTEGER NOT NULL,
   points_earned INTEGER DEFAULT 0,
+  type TEXT DEFAULT 'commission',
   created_date TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE referral_commissions ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'commission';
 
 -- Índices
 CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_email);

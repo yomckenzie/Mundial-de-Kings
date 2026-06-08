@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw, Trophy } from 'lucide-react';
+import TeamFlag from '@/components/TeamFlag';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -104,186 +105,215 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
             <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-medium">{match.group_stage}</p>
           )}
 
-          {/* Teams & Score */}
-          <div className="flex items-center justify-center gap-3 md:gap-6 py-4">
-            <span className="font-bold text-base md:text-lg text-right flex-1">{match.team1}</span>
-
-            <div className="flex flex-col items-center gap-1">
-              {/* Tiempo transcurrido arriba del marcador */}
-              {isLive && displayElapsed && (
-                <div className="text-[11px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider">
-                  {displayElapsed}'
-                </div>
-              )}
-
-              {match.status === 'finished' || isLive ? (
-                <m.div
-                  className={`font-bold px-5 py-2.5 rounded-xl text-lg min-w-[90px] text-center ${
-                    isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
-                  }`}
-                  initial={isLive ? { scale: 1 } : undefined}
-                  animate={isLive ? { scale: [1, 1.03, 1] } : undefined}
-                  transition={isLive ? { repeat: Infinity, duration: 2 } : undefined}
-                >
-                  {match.result_team1 != null ? match.result_team1 : '-'}
-                  {' - '}
-                  {match.result_team2 != null ? match.result_team2 : '-'}
-                </m.div>
-              ) : (
-                <div className="px-5 py-2.5 rounded-xl bg-muted/50">
-                  <span className="text-muted-foreground font-bold text-lg">VS</span>
-                </div>
-              )}
+          {/* Teams, Score & Prediction */}
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-2 md:gap-4 py-4 items-start">
+            {/* Team 1 */}
+            <div className="flex flex-col items-center gap-1.5">
+              <TeamFlag team={match.team1} isLive={isLive} size="hero" />
+              <span className="font-bold text-base md:text-lg text-center">{match.team1}</span>
             </div>
 
-            <span className="font-bold text-base md:text-lg text-left flex-1">{match.team2}</span>
-          </div>
-
-          {/* Status / Prediction area */}
-          {isLive ? (
-            <div className="mt-3 space-y-2">
-              <div className="text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                Partido en curso — pronósticos cerrados
+            {/* Center column: Score + Prediction */}
+            <div className="flex flex-col items-center gap-3 min-w-[120px]">
+              {/* Score / VS */}
+              <div className="flex flex-col items-center gap-1">
+                {isLive && displayElapsed && (
+                  <div className="text-[11px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider">
+                    {displayElapsed}'
+                  </div>
+                )}
+                {match.status === 'finished' || isLive ? (
+                  <m.div
+                    className={`font-bold px-4 py-2 rounded-xl text-base min-w-[80px] text-center ${
+                      isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
+                    }`}
+                    initial={isLive ? { scale: 1 } : undefined}
+                    animate={isLive ? { scale: [1, 1.03, 1] } : undefined}
+                    transition={isLive ? { repeat: Infinity, duration: 2 } : undefined}
+                  >
+                    {match.result_team1 != null ? match.result_team1 : '-'}
+                    {' - '}
+                    {match.result_team2 != null ? match.result_team2 : '-'}
+                  </m.div>
+                ) : (
+                  <div className="px-4 py-2 rounded-xl bg-muted/50">
+                    <span className="text-muted-foreground font-bold text-base">VS</span>
+                  </div>
+                )}
               </div>
-              {existing && (
+
+              {/* Prediction - compact & centered */}
+              {isLive ? (
+                <div className="space-y-2 w-full">
+                  <div className="text-center text-[11px] text-muted-foreground flex items-center justify-center gap-1 py-1.5 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                    Partido en curso
+                  </div>
+                  {existing && (
+                    <m.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                    >
+                      <div className="bg-muted/40 border border-border/50 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="text-lg font-black">{existing.pred_team1}</span>
+                          <span className="text-base font-bold text-muted-foreground/40">-</span>
+                          <span className="text-lg font-black">{existing.pred_team2}</span>
+                        </div>
+                        {existing.scored ? (
+                          <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
+                            existing.is_correct
+                              ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400'
+                          }`}>
+                            {existing.is_correct ? (
+                              <><CheckCircle2 className="w-4 h-4" /><span className="font-semibold text-xs">¡Acertaste! +100</span></>
+                            ) : (
+                              <><X className="w-4 h-4" /><span className="font-semibold text-xs">No acertaste</span></>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico:</p>
+                            <p className="text-xs font-bold text-foreground text-center">
+                              {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
+                            </p>
+                            <div className="text-center text-[11px] text-amber-600 dark:text-amber-400 font-medium py-1.5 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 space-y-0.5">
+                              <p>⏳ Pendiente del resultado final — si aciertas ganas</p>
+                              <p className="font-bold">+100 pts</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </m.div>
+                  )}
+                </div>
+              ) : existing ? (
                 <m.div
-                  className="p-3 rounded-xl bg-muted/50 text-center text-sm"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="w-full"
                 >
-                  <p className="text-muted-foreground mb-1">Tu pronóstico:</p>
-                  <p className="font-bold text-foreground text-base">
-                    {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
-                  </p>
-                  {existing.scored ? (
-                    <m.div
-                      className={`mt-2 flex items-center justify-center gap-1.5 ${existing.is_correct ? 'text-foreground' : 'text-destructive'}`}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                    >
-                      {existing.is_correct ? (
-                        <><CheckCircle2 className="w-4 h-4" /> ¡Acertaste! +100 pts</>
-                      ) : (
-                        <><X className="w-4 h-4" /> No acertaste</>
-                      )}
-                    </m.div>
-                  ) : (
-                    <m.p
-                      className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                    >
-                      ⏳ Pendiente del resultado final — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
-                    </m.p>
-                  )}
+                  <div className="bg-muted/40 border border-border/50 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-lg font-black">{existing.pred_team1}</span>
+                      <span className="text-base font-bold text-muted-foreground/40">-</span>
+                      <span className="text-lg font-black">{existing.pred_team2}</span>
+                    </div>
+                    {existing.scored ? (
+                      <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
+                        existing.is_correct
+                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400'
+                      }`}>
+                        {existing.is_correct ? (
+                          <><CheckCircle2 className="w-4 h-4" /><span className="font-semibold text-xs">¡Acertaste! +100</span></>
+                        ) : (
+                          <><X className="w-4 h-4" /><span className="font-semibold text-xs">No acertaste</span></>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico:</p>
+                        <p className="text-xs font-bold text-foreground text-center">
+                          {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
+                        </p>
+                        <div className="text-center text-[11px] text-amber-600 dark:text-amber-400 font-medium py-1.5 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 space-y-0.5">
+                          <p>⏳ Pendiente del resultado final — si aciertas ganas</p>
+                          <p className="font-bold">+100 pts</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </m.div>
-              )}
-            </div>
-          ) : existing ? (
-            <m.div
-              className="mt-3 p-3 rounded-xl bg-muted/50 text-center text-sm"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <p className="text-muted-foreground mb-1">Tu pronóstico:</p>
-              <p className="font-bold text-foreground text-base">
-                {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
-              </p>
-              {existing.scored ? (
+              ) : match.status === 'finished' ? (
+                <div className="text-[11px] text-muted-foreground flex items-center justify-center gap-1 py-1.5 px-3 bg-muted/30 rounded-lg w-full">
+                  <Lock className="w-3 h-3" />
+                  Finalizado
+                </div>
+              ) : match.status === 'pending' && !isOpen ? (
+                <div className="text-[11px] text-muted-foreground flex items-center justify-center gap-1 py-1.5 px-3 bg-muted/30 rounded-lg w-full">
+                  <Clock className="w-3 h-3" />
+                  {(() => {
+                    const t = getTimeUntilOpen(match.match_date, match.match_time);
+                    return t ? `Abre en ${t}` : 'Abriendo pronto...';
+                  })()}
+                </div>
+              ) : !user && isOpen ? (
+                <Link to="/register" className="w-full">
+                  <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs w-full">
+                    <UserPlus className="w-3 h-3" />
+                    Registrarme
+                  </Button>
+                </Link>
+              ) : isOpen ? (
                 <m.div
-                  className={`mt-2 flex items-center justify-center gap-1.5 ${existing.is_correct ? 'text-foreground' : 'text-destructive'}`}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="w-full"
                 >
-                  {existing.is_correct ? (
-                    <><CheckCircle2 className="w-4 h-4" /> ¡Acertaste! +100 pts</>
-                  ) : (
-                    <><X className="w-4 h-4" /> No acertaste</>
-                  )}
+                  <div className="bg-muted/40 border border-border/50 rounded-xl p-3 space-y-2.5">
+                    {/* Score inputs side by side */}
+                    <div className="flex items-center justify-center gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        className="w-14 h-10 text-center text-base font-bold"
+                        placeholder="0"
+                        value={predictions[match.id]?.team1 ?? ''}
+                        onChange={(e) => handlePredict(match.id, 'team1', e.target.value)}
+                      />
+                      <span className="text-lg font-bold text-muted-foreground/40">-</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        className="w-14 h-10 text-center text-base font-bold"
+                        placeholder="0"
+                        value={predictions[match.id]?.team2 ?? ''}
+                        onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
+                      />
+                    </div>
+
+                    {/* Submit button */}
+                    <Button
+                      onClick={() => handleSubmit({
+                        match_id: match.id,
+                        user_email: user.email,
+                        pred_team1: Number(predictions[match.id]?.team1),
+                        pred_team2: Number(predictions[match.id]?.team2),
+                      })}
+                      disabled={submitPrediction.isPending}
+                      size="sm"
+                      className="w-full gap-1.5 h-9 text-sm font-semibold"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      {submitPrediction.isPending ? 'Enviando...' : 'Enviar Pronóstico'}
+                    </Button>
+
+                    {/* Info */}
+                    <div className="flex items-center justify-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/20 px-2 py-1.5 rounded-lg">
+                      <Trophy className="w-3 h-3 shrink-0" />
+                      <span><strong>100 pts</strong> si aciertas</span>
+                    </div>
+                  </div>
                 </m.div>
               ) : (
-                <m.p
-                  className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  ⏳ Pendiente del resultado final — si aciertas ganas <strong className="text-foreground">+100 pts</strong>
-                </m.p>
+                <div className="text-[11px] text-muted-foreground flex items-center justify-center gap-1 py-1.5 px-3 bg-muted/30 rounded-lg w-full">
+                  <Lock className="w-3 h-3" />
+                  Pronósticos cerrados
+                </div>
               )}
-            </m.div>
-          ) : match.status === 'finished' ? (
-            <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
-              <Lock className="w-4 h-4" />
-              Partido finalizado
             </div>
-          ) : match.status === 'pending' && !isOpen ? (
-            <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
-              <Clock className="w-4 h-4" />
-              {(() => {
-                const t = getTimeUntilOpen(match.match_date, match.match_time);
-                return t ? `Pronósticos abren en ${t}` : 'Pronósticos abriendo pronto...';
-              })()}
+
+            {/* Team 2 */}
+            <div className="flex flex-col items-center gap-1.5">
+              <TeamFlag team={match.team2} isLive={isLive} size="hero" />
+              <span className="font-bold text-base md:text-lg text-center">{match.team2}</span>
             </div>
-          ) : !user && isOpen ? (
-            <div className="mt-3 text-center">
-              <Link to="/register">
-                <Button size="sm" variant="outline" className="gap-2">
-                  <UserPlus className="w-4 h-4" />
-                  Regístrate para pronosticar
-                </Button>
-              </Link>
-            </div>
-          ) : isOpen ? (
-            <m.div
-              className="mt-3 flex flex-col items-center gap-3"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              <div className="flex items-center justify-center gap-3">
-                <Input
-                  type="number"
-                  min="0"
-                  className="w-16 text-center"
-                  placeholder="0"
-                  value={predictions[match.id]?.team1 ?? ''}
-                  onChange={(e) => handlePredict(match.id, 'team1', e.target.value)}
-                />
-                <span className="text-muted-foreground font-bold">-</span>
-                <Input
-                  type="number"
-                  min="0"
-                  className="w-16 text-center"
-                  placeholder="0"
-                  value={predictions[match.id]?.team2 ?? ''}
-                  onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
-                />
-              </div>
-              <Button
-                size="sm"
-                onClick={() => handleSubmit({
-                  match_id: match.id,
-                  user_email: user.email,
-                  pred_team1: Number(predictions[match.id]?.team1),
-                  pred_team2: Number(predictions[match.id]?.team2),
-                })}
-                disabled={submitPrediction.isPending}
-                className="gap-1.5 w-full max-w-[200px]"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Enviar Pronóstico
-              </Button>
-              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-full">
-                <Trophy className="w-3.5 h-3.5" />
-                Ganas <strong>100 pts</strong> si aciertas el marcador exacto
-              </span>
-            </m.div>
-          ) : (
-            <div className="mt-3 text-center text-sm text-muted-foreground flex items-center justify-center gap-1.5 py-2 bg-muted/30 rounded-lg">
-              <Lock className="w-4 h-4" />
-              Pronósticos cerrados
-            </div>
-          )}
+          </div>
         </CardContent>
       </Card>
     </m.div>
@@ -406,12 +436,15 @@ export default function Matches() {
   };
 
   const handleSubmit = (data) => {
+    // Si algún campo está vacío, se envía como 0 automáticamente
     const pred = predictionsState[data.match_id];
-    if (pred?.team1 === undefined || pred?.team2 === undefined || pred.team1 === '' || pred.team2 === '') {
-      toast.error('Ingresa el marcador para ambos equipos');
-      return;
-    }
-    submitPrediction.mutate(data);
+    const t1 = pred?.team1 !== undefined && pred?.team1 !== '' ? Number(pred.team1) : 0;
+    const t2 = pred?.team2 !== undefined && pred?.team2 !== '' ? Number(pred.team2) : 0;
+    submitPrediction.mutate({
+      ...data,
+      pred_team1: t1,
+      pred_team2: t2,
+    });
   };
 
   const liveMatches = matches.filter(m => m.status === 'live');

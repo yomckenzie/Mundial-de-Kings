@@ -246,7 +246,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
 
       // Otorgar bono de referido (10 pts) al referente
       if (referrerData) {
-        await db.awardReferralBonus(cleanReferralCode);
+        await db.awardReferralBonus(cleanReferralCode, form.email);
       }
 
       // Iniciar sesión automáticamente

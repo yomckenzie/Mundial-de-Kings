@@ -1,10 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 
 export default function DailyRegistrationsChart({ users }) {
+  const [charts, setCharts] = useState(null);
+
+  useEffect(() => {
+    import('recharts').then(mod => setCharts(mod));
+  }, []);
+
+  if (!charts) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Registros por Día (últimos 14 días)</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[260px] flex items-center justify-center text-muted-foreground text-sm">
+          Cargando gráfica…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } = charts;
+
   // Last 14 days
   const days = Array.from({ length: 14 }, (_, i) => {
     const d = subDays(new Date(), 13 - i);

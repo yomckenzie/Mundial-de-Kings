@@ -77,6 +77,30 @@ Mantente conectado a nuestras redes sociales y pendiente de todas nuestras publi
 Durante el Mundial estaremos realizando dinámicas, retos y actividades especiales donde podrás ganar puntos adicionales para canjear más premios.
 Síguenos, participa y aumenta tus posibilidades de ganar.`
   },
+  {
+    id: 'referrals',
+    title: 'Sistema de Referidos',
+    content: `Invita a tus amigos y gana puntos extra por cada persona que se registre con tu código.
+
+¿Cómo funciona?
+
+• Cada usuario tiene un código de referido único.
+• Puedes encontrar tu código en tu perfil, en la pestaña "Referidos".
+• Comparte tu código con tus amigos para que lo ingresen al registrarse.
+
+¿Cuánto gano?
+
+• +10 puntos por cada amigo que se registre con tu código.
+• +5 puntos adicionales cada vez que un amigo que referiste acierte un pronóstico.
+
+¿Dónde veo mis referidos?
+
+• En tu perfil, en la pestaña "Referidos" puedes ver:
+  - Tu código de referido
+  - Cuántas personas has referido
+  - Los puntos que has ganado por referidos
+  - La lista de tus referidos`
+  },
 ];
 
 export default function Info() {
@@ -93,8 +117,19 @@ export default function Info() {
     const settings = await api.entities.AppSettings.list();
     const found = settings.find(r => r.key === SETTING_KEY);
     if (found) {
-      settingIdRef.current = found.id;
-      setSections(JSON.parse(found.value));
+      const parsed = JSON.parse(found.value);
+      // Auto-agregar secciones nuevas que no existan (migración)
+      const existingIds = new Set(parsed.map(s => s.id));
+      const missing = DEFAULT_SECTIONS.filter(s => !existingIds.has(s.id));
+      if (missing.length > 0) {
+        parsed.push(...missing);
+        settingIdRef.current = found.id;
+        const value = JSON.stringify(parsed);
+        await api.entities.AppSettings.update(found.id, { value });
+      } else {
+        settingIdRef.current = found.id;
+      }
+      setSections(parsed);
     } else {
       setSections(DEFAULT_SECTIONS);
     }

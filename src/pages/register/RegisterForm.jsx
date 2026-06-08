@@ -68,6 +68,7 @@ export default function RegisterForm({ form, fieldErrors, isLoading, handleChang
                     placeholder="6000-0000"
                     value={form.phone}
                     onChange={handleChange}
+                    maxLength={15}
                     className={`flex-1 min-w-0 ${fieldErrors.phone ? 'border-destructive' : ''}`}
                     aria-label="Número de teléfono"
                   />
@@ -109,6 +110,7 @@ export default function RegisterForm({ form, fieldErrors, isLoading, handleChang
                   value={form.cedula}
                   onChange={handleChange}
                   inputMode={form.doc_type === 'cedula' ? 'numeric' : 'text'}
+                  maxLength={form.doc_type === 'cedula' ? 10 : 15}
                   className={fieldErrors.cedula ? 'border-destructive' : ''}
                 />
                 {fieldErrors.cedula && <p className="text-[11px] text-destructive">{fieldErrors.cedula}</p>}

@@ -1,8 +1,27 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function TopUsersChart({ users }) {
+  const [charts, setCharts] = useState(null);
+
+  useEffect(() => {
+    import('recharts').then(mod => setCharts(mod));
+  }, []);
+
+  if (!charts) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Top 10 Usuarios por Puntos</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[260px] flex items-center justify-center text-muted-foreground text-sm">
+          Cargando gráfica…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } = charts;
   const data = users
     .toSorted((a, b) => (b.total_points || 0) - (a.total_points || 0))
     .slice(0, 10)

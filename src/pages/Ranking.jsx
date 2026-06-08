@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import RankingExportCard from '@/components/RankingExportCard';
 import RankingPodium from './ranking/RankingPodium';
 import MyRankCard from './ranking/MyRankCard';
+import RankingTable from './ranking/RankingTable';
 
 const PAGE_SIZE = 20;
 
@@ -208,9 +209,7 @@ export default function Ranking() {
       <RankingPodium top3={top3} />
 
       {/* ─── My Position Card ─── */}
-      <MyRankCard myUser={myUser} myRank={myRank} allUsers={allUsers} />
-
-      {/* ─── Table ─── */}
+      <MyRankCard myUser={myUser} myRank={myRank} allUsers={allUsers} />      {/* ─── Table ─── */}
       <m.div variants={itemVariants}>
         <Card className="overflow-hidden shadow-lg">
           <CardHeader className="pb-3 border-b border-border/50 bg-muted/10">
@@ -226,130 +225,7 @@ export default function Ranking() {
           </CardHeader>
           <CardContent className="p-0">
             <AnimatePresence mode="wait">
-              {pagedUsers.length === 0 ? (
-                <m.div
-                  key="empty"
-                  className="py-16 text-center"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto mb-4">
-                    <Target className="w-8 h-8 text-muted-foreground/40" />
-                  </div>
-                  <p className="text-muted-foreground font-medium">No hay usuarios registrados aún.</p>
-                  <p className="text-sm text-muted-foreground/60 mt-1">
-                    ¡Sé el primero en participar!
-                  </p>
-                </m.div>
-              ) : (
-                <m.div
-                  key="list"
-                  className="divide-y divide-border/40"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  {/* Header row */}
-                  <div className="hidden md:grid grid-cols-12 px-5 py-3 text-[11px] font-bold text-muted-foreground uppercase tracking-[0.12em] bg-muted/20">
-                    <div className="col-span-1">#</div>
-                    <div className="col-span-7">Usuario</div>
-                    <div className="col-span-2 text-right">Puntos</div>
-                    <div className="col-span-2 text-right">Diferencia</div>
-                  </div>
-
-                  {pagedUsers.map((u, i) => {
-                    const pos = page * PAGE_SIZE + i + 1;
-                    const isMe = u.email === user?.email;
-                    const prevUser = i > 0 ? pagedUsers[i - 1] : null;
-                    const gap = getPointGap(u.prediction_points, prevUser?.prediction_points);
-                    const badge = getRankBadge(pos);
-                    const RankIcon = badge.icon;
-
-                    return (
-                      <m.div
-                        key={u.id}
-                        custom={i}
-                        variants={itemVariants}
-                        layout
-                        className={`${getRowStyle(pos)} ${isMe ? 'bg-primary/[0.04] border-l-primary border-l-[3px]' : ''}`}
-                      >
-                        {/* Mobile layout */}
-                        <div className="flex items-center justify-between md:hidden px-4 py-3">
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            {/* Rank badge */}
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${pos <= 10 ? badge.bg : ''} ${pos <= 3 ? 'border-2 ' + badge.bg : ''}`}>
-                              {RankIcon ? (
-                                <RankIcon className={`w-4 h-4 ${badge.text}`} />
-                              ) : (
-                                <span className={`text-xs font-bold ${badge.text}`}>{pos}</span>
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-sm truncate">
-                                @{u.instagram}
-                                {isMe && <span className="text-foreground text-xs ml-1.5 font-bold">(Tú)</span>}
-                              </p>
-                              {u.full_name && (
-                                <p className="text-[11px] text-muted-foreground truncate">{u.full_name}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0 ml-2">
-                            <p className="font-bold text-sm">{u.prediction_points || 0}</p>
-                            {gap && (
-                              <p className="text-[10px] text-muted-foreground/60">-{gap}</p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Desktop layout */}
-                        <div className="hidden md:grid grid-cols-12 px-5 py-3.5 items-center">
-                          <div className="col-span-1 flex items-center">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center ${pos <= 10 ? badge.bg : ''} ${pos <= 3 ? 'border-2 ' + badge.bg : ''}`}>
-                              {RankIcon ? (
-                                <RankIcon className={`w-4 h-4 ${badge.text}`} />
-                              ) : (
-                                <span className={`text-xs font-bold ${badge.text}`}>{pos}</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="col-span-7">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-sm truncate">@{u.instagram}</p>
-                              {isMe && (
-                                <span className="text-[10px] font-bold text-foreground uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-muted">
-                                  Tú
-                                </span>
-                              )}
-                            </div>
-                            {u.full_name && (
-                              <p className="text-xs text-muted-foreground/70 truncate">{u.full_name}</p>
-                            )}
-                          </div>
-                          <div className="col-span-2 text-right">
-                            <p className="font-bold text-base tabular-nums">{u.prediction_points || 0}</p>
-                          </div>
-                          <div className="col-span-2 text-right">
-                            {gap ? (
-                              <div className="inline-flex items-center gap-1 text-xs text-muted-foreground/50">
-                                <Zap className="w-3 h-3" />
-                                <span className="tabular-nums">{gap}</span>
-                              </div>
-                            ) : (
-                              pos === 1 && (
-                                <div className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
-                                  <Crown className="w-3 h-3" />
-                                  <span>LÍDER</span>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      </m.div>
-                    );
-                  })}
-                </m.div>
-              )}
+              <RankingTable pagedUsers={pagedUsers} page={page} pageSize={PAGE_SIZE} user={user} />
             </AnimatePresence>
           </CardContent>
         </Card>

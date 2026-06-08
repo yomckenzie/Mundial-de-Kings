@@ -5,7 +5,7 @@ import { db } from '@/lib/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MessageCircle, Send, CheckCheck, ChevronDown, ChevronUp, User, ShieldAlert, X } from 'lucide-react';
+import { MessageCircle, Send, CheckCheck, ChevronDown, ChevronUp, User, ShieldAlert, X, ThumbsDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
@@ -62,12 +62,13 @@ function TicketMessages({ ticket }) {
   );
 }
 
-function TicketCard({ ticket, onSendMessage, onCloseTicket, sending }) {
+function TicketCard({ ticket, onSendMessage, onCloseTicket, onVerifyTicket, onRejectTicket, sending }) {
   const [expanded, setExpanded] = useState(false);
   const [inputText, setInputText] = useState('');
   const [closing, setClosing] = useState(false);
   const qc = useQueryClient();
   const isClosed = ticket.status === 'closed';
+  const isRejected = ticket.rejected;
 
   const handleToggleExpand = () => {
     const willExpand = !expanded;
@@ -101,7 +102,7 @@ function TicketCard({ ticket, onSendMessage, onCloseTicket, sending }) {
   const hasUnread = messages.some(m => m.sender === 'user' && new Date(m.created_date).getTime() > lastRead);
 
   return (
-    <Card className={`border ${hasUnread && !expanded ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}>
+    <Card className={`border ${hasUnread && !expanded ? 'border-primary/40 ring-1 ring-primary/20' : ''} ${isRejected ? 'opacity-75' : ''}`}>
       <CardContent className="p-0">
         {/* Header */}
         <button
@@ -111,21 +112,34 @@ function TicketCard({ ticket, onSendMessage, onCloseTicket, sending }) {
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+              isRejected ? 'bg-red-100 dark:bg-red-900/30' :
               isClosed ? 'bg-muted' : ticket.status === 'answered' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'
             }`}>
               <MessageCircle className={`w-4 h-4 ${
+                isRejected ? 'text-red-600 dark:text-red-400' :
                 isClosed ? 'text-muted-foreground' : ticket.status === 'answered' ? 'text-emerald-600 dark:text-emerald-400' : 'text-yellow-600 dark:text-yellow-400'
               }`} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-sm truncate">{ticket.subject}</p>
+                {ticket.verified && (
+                  <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium flex items-center gap-0.5" title="Verificado como real">
+                    ✓ Real
+                  </span>
+                )}
+                {ticket.rejected && (
+                  <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 font-medium flex items-center gap-0.5" title="Marcado como no real">
+                    ✗ No real
+                  </span>
+                )}
                 {hasUnread && !expanded && (
                   <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                {ticket.user_name || ticket.user_email} · {format(new Date(ticket.created_date), "d MMM yyyy, HH:mm", { locale: es })}                </p>
+                {ticket.user_name || ticket.user_email} · {format(new Date(ticket.created_date), "d MMM yyyy, HH:mm", { locale: es })}
+              </p>
             </div>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${statusColor[ticket.status]}`}>
               {statusLabel[ticket.status]}
@@ -180,7 +194,29 @@ function TicketCard({ ticket, onSendMessage, onCloseTicket, sending }) {
                         <span className="hidden sm:inline">Enviar</span>
                       </Button>
                     </div>
-                    <div className="flex justify-end">
+                    <div className="flex items-center justify-end gap-2">
+                      {!ticket.verified && !ticket.rejected && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onVerifyTicket(ticket.id)}
+                            className="text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-800 dark:hover:bg-emerald-950/30 gap-1.5"
+                          >
+                            <CheckCheck className="w-3.5 h-3.5" />
+                            Verificar como real
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onRejectTicket(ticket.id)}
+                            className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/30 gap-1.5"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                            Marcar como no real
+                          </Button>
+                        </>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -249,6 +285,35 @@ export default function AdminSupport() {
     },
   });
 
+  const verifyMutation = useMutation({
+    mutationFn: (id) => {
+      const admin = db.getCurrentUser();
+      return db.supportTickets.verify(id, admin?.email || 'admin');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-tickets'] });
+      toast.success('Ticket verificado como real ✓');
+    },
+    onError: (err) => {
+      toast.error('Error al verificar: ' + (err?.message || err));
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id) => {
+      const admin = db.getCurrentUser();
+      return db.supportTickets.reject(id, admin?.email || 'admin');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-tickets'] });
+      qc.invalidateQueries({ queryKey: ['admin-support-unread'] });
+      toast.success('Ticket marcado como no real y cerrado');
+    },
+    onError: (err) => {
+      toast.error('Error al rechazar: ' + (err?.message || err));
+    },
+  });
+
   const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter);
   const pendingCount = tickets.filter(t => t.status === 'pending').length;
 
@@ -308,6 +373,8 @@ export default function AdminSupport() {
               ticket={ticket}
               onSendMessage={(id, text) => sendMessageMutation.mutate({ id, text })}
               onCloseTicket={(id) => closeMutation.mutate(id)}
+              onVerifyTicket={(id) => verifyMutation.mutate(id)}
+              onRejectTicket={(id) => rejectMutation.mutate(id)}
               sending={sendMessageMutation.isPending}
             />
           ))}
