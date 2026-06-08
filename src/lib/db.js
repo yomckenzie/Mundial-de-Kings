@@ -679,7 +679,7 @@ export const db = {
       for (const u of d.users || []) {
         if (u.role === 'admin') continue;
         u.prediction_points = 0;
-        u.total_points = u.bonus_points || 0;
+        u.total_points = (u.bonus_points || 0) + (u.referral_points || 0);
         u.updated_at = now;
       }
 

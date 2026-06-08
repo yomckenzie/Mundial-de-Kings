@@ -127,7 +127,7 @@ const client = {
           Object.entries(pointsMap).forEach(([email, points]) => {
             const user = db.users.findByEmail(email);
             if (user) {
-              db.users.update(user.id, { prediction_points: points, total_points: (user.bonus_points || 0) + points });
+              db.users.update(user.id, { prediction_points: points, total_points: (user.bonus_points || 0) + points + (user.referral_points || 0) });
               updated++;
             }
           });
