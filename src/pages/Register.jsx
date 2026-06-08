@@ -6,7 +6,7 @@ import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 import { toast } from 'sonner';
 import RegisterHeader from './register/RegisterHeader';
 import RegisterForm from './register/RegisterForm';
-import { DEFAULT_DIAL_CODE } from '@/lib/countryCodes';
+import { DEFAULT_DIAL_CODE, PHONE_DIGITS } from '@/lib/countryCodes';
 
 const normalizeCedula = (v) => (v || '').replace(/[\s-]/g, '').trim().toLowerCase();
 
@@ -42,8 +42,11 @@ export default function Register() {
   });
 
   const handleChange = (e) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    setFieldErrors(prev => ({ ...prev, [e.target.name]: '' }));
+    const { name, value } = e.target;
+    // Filtrar solo dígitos para el teléfono
+    const newValue = name === 'phone' ? value.replace(/\D/g, '') : value;
+    setForm(prev => ({ ...prev, [name]: newValue }));
+    setFieldErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleChangeField = (name, value) => {
@@ -70,8 +73,25 @@ if (!form.email) errors.email = 'Campo obligatorio';
       }
     }
     if (!form.phone) errors.phone = 'Campo obligatorio';
-    else if (form.phone.replace(/\D/g, '').length < 6) errors.phone = 'Número demasiado corto';
+    else {
+      const digitsOnly = form.phone.replace(/\D/g, '');
+      if (digitsOnly.length === 0) errors.phone = 'Debe contener solo números';
+      else {
+        const expected = PHONE_DIGITS[form.phone_country] || 8;
+        if (digitsOnly.length !== expected) errors.phone = `Debe tener ${expected} dígitos para ${form.phone_country}`;
+      }
+      // Verificar teléfono duplicado (número completo con código de país)
+      if (!errors.phone) {
+        const fullDigits = `${form.phone_country.replace(/\D/g, '')}${digitsOnly}`;
+        const existing = db._init().users.find(u => {
+          const existingDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+          return existingDigits === fullDigits;
+        });
+        if (existing) errors.phone = 'Este número de teléfono ya está registrado';
+      }
+    }
     if (!form.cedula) errors.cedula = 'Campo obligatorio';
+    else if (!/^[a-zA-Z0-9-]+$/.test(form.cedula)) errors.cedula = 'Solo letras, números y guiones';
     if (!form.instagram_user) errors.instagram_user = 'Campo obligatorio';
     if (!form.tiktok_user) errors.tiktok_user = 'Campo obligatorio';
     if (!form.password) errors.password = 'Campo obligatorio';
@@ -205,7 +225,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
         });
       }
 
-      localStorage.setItem('chessking_db:v1', JSON.stringify(d));
+      // Guardar en localStorage (db._persist() se encarga via setCurrentUserEmail)
 
       // Otorgar bono de referido (10 pts) al referente
       if (referrerData) {
