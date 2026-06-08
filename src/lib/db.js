@@ -987,10 +987,32 @@ export const db = {
   },
 
   // --- SupportTickets ---
+  /**
+   * Migra un ticket del formato antiguo (message + admin_reply) al nuevo formato (messages array).
+   */
+  _migrateTicket(t) {
+    if (!t.messages && (t.message || t.admin_reply)) {
+      const msgs = [];
+      if (t.message) {
+        msgs.push({ sender: 'user', text: t.message, created_date: t.created_date || getNow() });
+      }
+      if (t.admin_reply) {
+        msgs.push({ sender: 'admin', text: t.admin_reply, created_date: t.updated_at || getNow() });
+      }
+      t.messages = msgs;
+      t.message = undefined;
+      t.admin_reply = undefined;
+    }
+    if (!t.messages) t.messages = [];
+    if (!t.user_read_at) t.user_read_at = t.created_date || getNow();
+    if (!t.admin_read_at) t.admin_read_at = t.created_date || getNow();
+    return t;
+  },
+
   supportTickets: {
     list(order) {
       const d = db._init().supportTickets;
-      return sortBy(d, order);
+      return sortBy(d, order).map(t => db._migrateTicket(t));
     },
     filter(fields, order) {
       let d = db._init().supportTickets.filter(t =>
@@ -1001,11 +1023,29 @@ export const db = {
         const dir = order.startsWith('-') ? -1 : 1;
         d.sort((a, b) => ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir);
       }
-      return d;
+      return d.map(t => db._migrateTicket(t));
     },
     create(data) {
       const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
+      const now = getNow();
+      const initialMsg = data.message || '';
+      const record = {
+        id: makeId(),
+        created_date: now,
+        subject: data.subject || '',
+        user_email: data.user_email || '',
+        user_name: data.user_name || '',
+        status: data.status || 'pending',
+        messages: initialMsg
+          ? [{ sender: 'user', text: initialMsg, created_date: now }]
+          : [],
+        user_read_at: now,
+        admin_read_at: data.admin_read_at || null,
+        ...data,
+      };
+      // Limpiar campos viejos si los pasaron
+      delete record.message;
+      delete record.admin_reply;
       d.supportTickets.push(record);
       db._persist();
       return record;
@@ -1014,9 +1054,86 @@ export const db = {
       const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
+      // No permitir sobrescribir messages con update directo
+      if (data.messages) delete data.messages;
       d.supportTickets[idx] = { ...d.supportTickets[idx], ...data, updated_at: getNow() };
       db._persist();
+      return db._migrateTicket(d.supportTickets[idx]);
+    },
+
+    /**
+     * Agrega un mensaje al chat del ticket.
+     */
+    addMessage(id, sender, text) {
+      const d = db._init();
+      const idx = d.supportTickets.findIndex(t => t.id === id);
+      if (idx === -1) throw new Error('Ticket not found');
+      if (!d.supportTickets[idx].messages) {
+        db._migrateTicket(d.supportTickets[idx]);
+      }
+      const msg = { sender, text, created_date: getNow() };
+      d.supportTickets[idx].messages.push(msg);
+      d.supportTickets[idx].updated_at = getNow();
+      // Si el usuario responde, el ticket vuelve a "pending"; si el admin responde, "answered"
+      if (sender === 'user' && d.supportTickets[idx].status !== 'closed') {
+        d.supportTickets[idx].status = 'pending';
+      } else if (sender === 'admin') {
+        d.supportTickets[idx].status = 'answered';
+      }
+      db._persist();
       return d.supportTickets[idx];
+    },
+
+    /**
+     * Marca un ticket como leído por el usuario o admin.
+     */
+    markRead(id, role) {
+      const d = db._init();
+      const idx = d.supportTickets.findIndex(t => t.id === id);
+      if (idx === -1) throw new Error('Ticket not found');
+      const now = getNow();
+      if (role === 'user') {
+        d.supportTickets[idx].user_read_at = now;
+      } else if (role === 'admin') {
+        d.supportTickets[idx].admin_read_at = now;
+      }
+      db._persist();
+    },
+
+    /**
+     * Cuenta tickets no leídos para un usuario (tickets con mensajes del admin
+     * después del último read del usuario).
+     */
+    unreadCount(email) {
+      const d = db._init().supportTickets.filter(t => t.user_email === email && t.status !== 'closed');
+      let count = 0;
+      for (const t of d) {
+        db._migrateTicket(t);
+        const lastRead = new Date(t.user_read_at || 0).getTime();
+        const hasUnread = (t.messages || []).some(m =>
+          m.sender === 'admin' && new Date(m.created_date).getTime() > lastRead
+        );
+        if (hasUnread) count++;
+      }
+      return count;
+    },
+
+    /**
+     * Cuenta tickets no leídos para el admin (tickets con mensajes del usuario
+     * después del último read del admin, excluyendo cerrados).
+     */
+    adminUnreadCount() {
+      const d = db._init().supportTickets.filter(t => t.status !== 'closed');
+      let count = 0;
+      for (const t of d) {
+        db._migrateTicket(t);
+        const lastRead = new Date(t.admin_read_at || 0).getTime();
+        const hasUnread = (t.messages || []).some(m =>
+          m.sender === 'user' && new Date(m.created_date).getTime() > lastRead
+        );
+        if (hasUnread) count++;
+      }
+      return count;
     },
   },
 

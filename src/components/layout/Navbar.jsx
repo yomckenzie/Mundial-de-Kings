@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { m, AnimatePresence } from 'framer-motion';
 import { Trophy, Menu, X, Home, Target, Gift, User, Shield, UserPlus, LogIn, Info, HeadphonesIcon, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
+import { db } from '@/lib/db';
 
 const PUBLIC_LINKS = [
   { to: '/', label: 'Inicio', icon: Home },
@@ -32,6 +34,13 @@ export default function Navbar({ user }) {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const isAdmin = user?.role === 'admin';
+
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['nav-unread', user?.email],
+    queryFn: () => user ? db.supportTickets.unreadCount(user.email) : 0,
+    enabled: !!user,
+    refetchInterval: 20000,
+  });
 
   const authLinks = user ? [
     { to: '/profile', label: 'Mi Perfil', icon: User },
@@ -70,6 +79,11 @@ export default function Navbar({ user }) {
                   >
                     <l.icon className="w-4 h-4" />
                     {l.label}
+                    {l.to === '/support' && unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center shadow-lg">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
                     {isActive(l.to) && (
                       <m.span
                         layoutId="nav-active"
@@ -160,7 +174,7 @@ export default function Navbar({ user }) {
                     initial="hidden"
                     animate="visible"
                   >
-                    <Link to={l.to} onClick={() => setOpen(false)}>
+                    <Link to={l.to} onClick={() => setOpen(false)} className="relative">
                       <Button
                         variant={isActive(l.to) ? 'default' : 'ghost'}
                         className="w-full justify-start gap-2"
@@ -168,6 +182,11 @@ export default function Navbar({ user }) {
                       >
                         <l.icon className="w-4 h-4" />
                         {l.label}
+                        {l.to === '/support' && unreadCount > 0 && (
+                          <span className="ml-auto w-4 h-4 rounded-full bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                          </span>
+                        )}
                       </Button>
                     </Link>
                   </m.div>
