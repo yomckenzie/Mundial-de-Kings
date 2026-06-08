@@ -49,7 +49,7 @@ function TicketMessages({ ticket }) {
         const isLast = i === messages.length - 1;
         return (
           <div
-            key={i}
+            key={msg.created_date || i}
             ref={isLast ? lastMsgRef : null}
             className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
           >
@@ -90,14 +90,15 @@ function TicketCard({ ticket, onSendMessage, sending }) {
   const isClosed = ticket.status === 'closed';
   const StatusIcon = statusIcon[ticket.status] || Clock;
 
-  // Marcar como leído al expandir
-  React.useEffect(() => {
-    if (expanded) {
+  const handleToggleExpand = () => {
+    const willExpand = !expanded;
+    setExpanded(willExpand);
+    if (willExpand) {
       db.supportTickets.markRead(ticket.id, 'user');
       qc.invalidateQueries({ queryKey: ['my-tickets'] });
       qc.invalidateQueries({ queryKey: ['support-unread'] });
     }
-  }, [expanded, ticket.id, qc]);
+  };
 
   const handleSend = () => {
     const text = inputText.trim();
@@ -117,7 +118,7 @@ function TicketCard({ ticket, onSendMessage, sending }) {
         {/* Header - clickeable para expandir */}
         <button
           type="button"
-          onClick={() => setExpanded(!expanded)}
+          onClick={handleToggleExpand}
           className="w-full flex items-center justify-between p-4 text-left hover:bg-accent/30 transition"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">

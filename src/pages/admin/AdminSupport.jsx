@@ -38,7 +38,7 @@ function TicketMessages({ ticket }) {
         const isUser = msg.sender === 'user';
         const isLast = i === messages.length - 1;
         return (
-          <div key={i} ref={isLast ? lastMsgRef : null} className={`flex ${isUser ? 'justify-start' : 'justify-end'}`}>
+          <div key={msg.created_date || i} ref={isLast ? lastMsgRef : null} className={`flex ${isUser ? 'justify-start' : 'justify-end'}`}>
             <div className={`max-w-[85%] rounded-xl px-3.5 py-2 text-sm ${
               isUser
                 ? 'bg-muted text-foreground rounded-bl-md border border-border/50'
@@ -69,14 +69,15 @@ function TicketCard({ ticket, onSendMessage, onCloseTicket, sending }) {
   const qc = useQueryClient();
   const isClosed = ticket.status === 'closed';
 
-  // Marcar como leído al expandir
-  React.useEffect(() => {
-    if (expanded) {
+  const handleToggleExpand = () => {
+    const willExpand = !expanded;
+    setExpanded(willExpand);
+    if (willExpand) {
       db.supportTickets.markRead(ticket.id, 'admin');
       qc.invalidateQueries({ queryKey: ['admin-tickets'] });
       qc.invalidateQueries({ queryKey: ['admin-support-unread'] });
     }
-  }, [expanded, ticket.id, qc]);
+  };
 
   const handleSend = () => {
     const text = inputText.trim();
@@ -105,7 +106,7 @@ function TicketCard({ ticket, onSendMessage, onCloseTicket, sending }) {
         {/* Header */}
         <button
           type="button"
-          onClick={() => setExpanded(!expanded)}
+          onClick={handleToggleExpand}
           className="w-full flex items-center justify-between p-4 text-left hover:bg-accent/30 transition"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">

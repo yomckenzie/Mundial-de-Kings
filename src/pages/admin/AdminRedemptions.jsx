@@ -103,7 +103,15 @@ function UserProfileCard({ user, open, onClose }) {
     ? format(new Date(user.created_date), "d MMM yyyy", { locale: es })
     : '—';
 
-  if (!user) return null;
+  if (!user) {
+    // Cuando no hay usuario, renderizamos el Dialog con open=false
+    // para que Radix complete su animación de cierre sin errores.
+    return (
+      <Dialog open={false} onOpenChange={() => {}}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" />
+      </Dialog>
+    );
+  }
 
   const toggleSection = (id) => {
     setExpandedSection(prev => prev === id ? null : id);
