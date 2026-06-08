@@ -427,11 +427,7 @@ export default function Prizes() {
               <div className="bg-muted/30 rounded-lg p-4 text-sm space-y-2 text-left">
                 <p className="flex items-center gap-2">
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                  Te indicaremos el punto de recogida por <strong>WhatsApp</strong>.
-                </p>
-                <p className="flex items-center gap-2">
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                  La recogida se realiza solo los fines de semana (sábado y domingo).
+                  Te indicaremos el punto de recogida por <strong className="whitespace-nowrap">WhatsApp</strong>.
                 </p>
                 <p className="flex items-center gap-2">
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
