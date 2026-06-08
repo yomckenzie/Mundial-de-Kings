@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, Sparkles, LogIn, UserPlus, Users, Copy, Share2 } from 'lucide-react';
+import { User, Trophy, Target, CheckCircle2, X, Gift, Star, Clock, TrendingUp, Award, Sparkles, LogIn, UserPlus, Users, Copy, Share2, Pencil, Check, XCircle } from 'lucide-react';
 import ProfileStats from './profile/ProfileStats';
 
 const tabs = [
@@ -41,10 +41,80 @@ function InfoRow({ label, value, children }) {
   );
 }
 
+function EditableSocialRow({ label, value, editingField, field, editValue, onStartEdit, onChange, onSave, onCancel }) {
+  const isEditing = editingField === field;
+  return (
+    <div className="flex items-center justify-between py-1.5 gap-2">
+      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
+      {isEditing ? (
+        <div className="flex items-center gap-1 flex-1 justify-end">
+          <div className="relative flex-1 max-w-[180px]">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span>
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => onChange(e.target.value.replace('@', ''))}
+              onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+              className="w-full pl-6 pr-2 py-1 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              autoFocus
+              placeholder="usuario"
+            />
+          </div>
+          <button type="button" onClick={onSave} className="p-1 rounded hover:bg-muted transition" title="Guardar">
+            <Check className="w-4 h-4 text-emerald-500" />
+          </button>
+          <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-muted transition" title="Cancelar">
+            <XCircle className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onStartEdit}
+          className="flex items-center gap-1.5 text-sm font-medium text-right hover:text-foreground/80 transition group"
+        >
+          <span>{value || '—'}</span>
+          <Pencil className="w-3 h-3 text-muted-foreground/40 group-hover:text-muted-foreground transition" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 
 export default function Profile() {
   const { user, setUser } = useOutletContext();
   const [activeTab, setActiveTab] = useState('overview');
+  const [editingField, setEditingField] = useState(null);
+  const [editValue, setEditValue] = useState('');
+
+  const handleSaveSocial = (field) => {
+    const clean = editValue.replace('@', '').trim();
+    if (!clean) {
+      toast.error('El campo no puede estar vacío');
+      return;
+    }
+    // No guardar si el valor no cambió
+    if (clean.toLowerCase() === (user[field] || '').toLowerCase()) {
+      setEditingField(null);
+      return;
+    }
+    // Verificar duplicados (case-insensitive, excluyendo al usuario actual)
+    const duplicate = db._init().users.find(u =>
+      u.id !== user.id &&
+      u[field] && u[field].toLowerCase() === clean.toLowerCase()
+    );
+    if (duplicate) {
+      toast.error(`Este usuario de ${field === 'instagram' ? 'Instagram' : 'TikTok'} ya está registrado por otra cuenta`);
+      return;
+    }
+    // Actualizar usuario local + Supabase (vía _persist)
+    db.users.update(user.id, { [field]: clean });
+    const updated = db.getCurrentUser();
+    if (updated) setUser(updated);
+    setEditingField(null);
+    toast.success(`@${clean} actualizado`);
+  };
 
   const userEmail = user?.email || '';
 
@@ -297,8 +367,28 @@ export default function Profile() {
               <InfoRow label="Nombre completo" value={user?.full_name} />
               <InfoRow label="Correo electrónico" value={user?.email} />
               <InfoRow label="Cédula" value={user?.cedula} />
-              <InfoRow label="Instagram" value={user?.instagram ? `@${user.instagram}` : null} />
-              <InfoRow label="TikTok" value={user?.tiktok ? `@${user.tiktok}` : null} />
+              <EditableSocialRow
+                label="Instagram"
+                value={user?.instagram ? `@${user.instagram}` : null}
+                field="instagram"
+                editingField={editingField}
+                editValue={editValue}
+                onStartEdit={() => { setEditValue(user?.instagram || ''); setEditingField('instagram'); }}
+                onChange={(v) => setEditValue(v)}
+                onSave={() => handleSaveSocial('instagram')}
+                onCancel={() => setEditingField(null)}
+              />
+              <EditableSocialRow
+                label="TikTok"
+                value={user?.tiktok ? `@${user.tiktok}` : null}
+                field="tiktok"
+                editingField={editingField}
+                editValue={editValue}
+                onStartEdit={() => { setEditValue(user?.tiktok || ''); setEditingField('tiktok'); }}
+                onChange={(v) => setEditValue(v)}
+                onSave={() => handleSaveSocial('tiktok')}
+                onCancel={() => setEditingField(null)}
+              />
               <InfoRow label="WhatsApp" value={user?.phone || user?.whatsapp} />
             </div>
           </CardContent>
