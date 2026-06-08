@@ -1071,6 +1071,21 @@ export const db = {
     },
   },
 
+  // --- Audit Logs ---
+  auditLogs: {
+    list(order) {
+      const d = db._init().auditLogs;
+      return sortBy(d, order || '-created_date');
+    },
+    create(data) {
+      const d = db._init();
+      const record = { id: makeId(), created_date: getNow(), ...data };
+      d.auditLogs.push(record);
+      db._persist();
+      return record;
+    },
+  },
+
   // --- Referral helpers ---
 
   /**
