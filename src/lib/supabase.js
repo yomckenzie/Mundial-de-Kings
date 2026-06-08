@@ -142,7 +142,11 @@ export async function deleteRecords(tableName, field, value) {
  */
 export function stripLocalFields(records) {
   return records.map(r => {
-    const { created_date, updated_at, live_started_at, messages, user_read_at, admin_read_at, password, ...clean } = r
+    // Preservar password en el sync porque la app compara passwords localmente
+    // contra los datos de localStorage que a su vez vienen de Supabase.
+    // Sin el password en Supabase, un usuario registrado en otro dispositivo
+    // no puede iniciar sesión localmente.
+    const { created_date, updated_at, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r
     return clean
   })
 }
@@ -292,7 +296,10 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
             // Registro recien creado localmente — preservar
             result.push(local)
           } else if (!USER_GENERATED_TABLES.has(tableName)) {
-            // Tabla de admin — la nube manda
+            // Admin table — preservar registros locales que no están en la nube.
+            // Evita que un sync desde una BD vacía borre datos locales.
+            // Se subirán a Supabase en el próximo ciclo _syncAllToSupabase().
+            result.push(local)
             changed = true
           } else {
             // Tabla userGenerated sin limpieza activa — preservar (modo offline)
