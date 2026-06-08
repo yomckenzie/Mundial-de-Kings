@@ -307,8 +307,21 @@ export default function Profile() {
               </div>
               <span className="font-bold text-lg">{bonusPoints} pts</span>
             </div>
+            {/* Puntos por referidos */}
+            <div className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-lg">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <UserPlus className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Por referidos</p>
+                  <p className="text-xs text-muted-foreground">Comisiones por tu red</p>
+                </div>
+              </div>
+              <span className="font-bold text-lg">{referralPoints} pts</span>
+            </div>
             {/* Puntos usados en canjes */}
-            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+            <div className="flex items-center justify-between p-3 bg-red-500/10 rounded-lg">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
                   <Gift className="w-4 h-4 text-red-500/70" />
