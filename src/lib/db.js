@@ -252,27 +252,29 @@ export const db = {
       return;
     }
 
+    // Procesar eliminaciones pendientes primero (fuera del bucle, para evitar await dentro del loop)
+    if (_pendingDeletes.length > 0 && supabase) {
+      const deletes = _pendingDeletes.splice(0);
+      await Promise.all(
+        deletes.map(({ tableName, id }) =>
+          supabase.from(tableName).delete().eq('id', id).then(() => null).catch(() => null)
+        )
+      );
+    }
+
     // Bucle: procesa todas las re-sincronizaciones encoladas antes de resolver
     // (antes era fire-and-forget, lo que causaba race conditions con el polling)
     do {
       _resyncQueued = false;
       _syncToSupabaseInProgress = true;
       try {
-        // Procesar eliminaciones pendientes primero
-        if (_pendingDeletes.length > 0 && supabase) {
-          const deletes = _pendingDeletes.splice(0);
-          await Promise.all(
-            deletes.map(({ tableName, id }) =>
-              supabase.from(tableName).delete().eq('id', id).then(() => null).catch(() => null)
-            )
-          );
-        }
         const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
         const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
           const records = this._data[jsKey] || [];
           if (records.length > 0) acc.push({ jsKey, records });
           return acc;
         }, []);
+        // Las tablas se sincronizan en paralelo (no await dentro del loop)
         await Promise.all(
           tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
         );

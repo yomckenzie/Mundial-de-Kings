@@ -56,14 +56,14 @@ function EditableSocialRow({ label, value, editingField, field, editValue, onSta
               onChange={(e) => onChange(e.target.value.replace('@', ''))}
               onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
               className="w-full pl-6 pr-2 py-1 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              autoFocus
               placeholder="usuario"
+              aria-label={label}
             />
           </div>
-          <button type="button" onClick={onSave} className="p-1 rounded hover:bg-muted transition" title="Guardar">
+          <button type="button" onClick={onSave} className="p-1 rounded hover:bg-muted transition" title="Guardar" aria-label="Guardar">
             <Check className="w-4 h-4 text-emerald-500" />
           </button>
-          <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-muted transition" title="Cancelar">
+          <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-muted transition" title="Cancelar" aria-label="Cancelar">
             <XCircle className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
@@ -72,6 +72,7 @@ function EditableSocialRow({ label, value, editingField, field, editValue, onSta
           type="button"
           onClick={onStartEdit}
           className="flex items-center gap-1.5 text-sm font-medium text-right hover:text-foreground/80 transition group"
+          aria-label={`Editar ${label}`}
         >
           <span>{value || '—'}</span>
           <Pencil className="w-3 h-3 text-muted-foreground/40 group-hover:text-muted-foreground transition" />

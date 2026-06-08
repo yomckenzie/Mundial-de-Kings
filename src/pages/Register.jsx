@@ -160,7 +160,7 @@ if (!form.email) errors.email = 'Campo obligatorio';
         }
 
         if (!referrerData) {
-          console.warn('[Register] Código de referido no encontrado:', cleanReferralCode, 'Usuarios locales:', d.users.filter(u => u.referral_code).map(u => u.referral_code));
+          console.warn('[Register] Código de referido no encontrado:', cleanReferralCode, 'Usuarios locales:', d.users.reduce((acc, u) => { if (u.referral_code) acc.push(u.referral_code); return acc; }, []));
           setFieldErrors(prev => ({ ...prev, referral_code: 'Código de invitación inválido' }));
           setIsLoading(false);
           return;
