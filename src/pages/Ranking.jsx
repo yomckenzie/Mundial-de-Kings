@@ -196,12 +196,7 @@ export default function Ranking() {
             </Button>
           </div>
         )}
-        {!isAdmin && (
-          <Button onClick={handleRefresh} size="sm" variant="outline" disabled={refreshing} className="gap-2">
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Actualizar</span>
-          </Button>
-        )}
+
         {lastSyncedAt && (
           <p className="w-full text-right text-[11px] text-muted-foreground/60 -mt-1">
             Última sincronización: {lastSyncedAt.toLocaleTimeString('es-PA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
