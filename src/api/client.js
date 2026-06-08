@@ -124,13 +124,22 @@ const client = {
             }
           });
           let updated = 0;
+          // Actualizar usuarios directamente (evita triggers de sync individuales
+          // que causaban race conditions con el polling de 60s, sobrescribiendo
+          // los puntos recién calculados con datos remotos desactualizados)
           Object.entries(pointsMap).forEach(([email, points]) => {
             const user = db.users.findByEmail(email);
             if (user) {
-              db.users.update(user.id, { prediction_points: points, total_points: (user.bonus_points || 0) + points + (user.referral_points || 0) });
+              user.prediction_points = points;
+              user.total_points = (user.bonus_points || 0) + points + (user.referral_points || 0);
+              user.updated_at = new Date().toISOString();
               updated++;
             }
           });
+          // Guardar y sincronizar una sola vez con await
+          if (updated > 0) {
+            await db._persist();
+          }
           return { data: { success: true, updated } };
         }
         default:

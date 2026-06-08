@@ -252,33 +252,34 @@ export const db = {
       return;
     }
 
-    _syncToSupabaseInProgress = true;
-    try {
-      // Procesar eliminaciones pendientes primero
-      if (_pendingDeletes.length > 0 && supabase) {
-        const deletes = _pendingDeletes.splice(0);
+    // Bucle: procesa todas las re-sincronizaciones encoladas antes de resolver
+    // (antes era fire-and-forget, lo que causaba race conditions con el polling)
+    do {
+      _resyncQueued = false;
+      _syncToSupabaseInProgress = true;
+      try {
+        // Procesar eliminaciones pendientes primero
+        if (_pendingDeletes.length > 0 && supabase) {
+          const deletes = _pendingDeletes.splice(0);
+          await Promise.all(
+            deletes.map(({ tableName, id }) =>
+              supabase.from(tableName).delete().eq('id', id).then(() => null).catch(() => null)
+            )
+          );
+        }
+        const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
+        const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
+          const records = this._data[jsKey] || [];
+          if (records.length > 0) acc.push({ jsKey, records });
+          return acc;
+        }, []);
         await Promise.all(
-          deletes.map(({ tableName, id }) =>
-            supabase.from(tableName).delete().eq('id', id).then(() => null).catch(() => null)
-          )
+          tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
         );
+      } finally {
+        _syncToSupabaseInProgress = false;
       }
-      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
-      const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
-        const records = this._data[jsKey] || [];
-        if (records.length > 0) acc.push({ jsKey, records });
-        return acc;
-      }, []);
-      await Promise.all(
-        tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
-      );
-    } finally {
-      _syncToSupabaseInProgress = false;
-      if (_resyncQueued) {
-        _resyncQueued = false;
-        this._syncAllToSupabase();
-      }
-    }
+    } while (_resyncQueued);
   },
 
   // Forzar sincronización manual desde Supabase
