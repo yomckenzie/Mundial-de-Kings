@@ -472,31 +472,33 @@ export default function AdminRedemptions() {
                     <Package className="w-4 h-4 text-muted-foreground" />
                     <span className="text-sm">{r.prize_name} · {r.points_spent} pts</span>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap justify-end">
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-1"
+                      className="gap-1 text-xs px-2"
                       onClick={() => setSelectedUser(user)}
                     >
                       <User className="w-3.5 h-3.5" />
-                      Perfil
+                      <span className="hidden sm:inline">Perfil</span>
                     </Button>
                     {r.status === 'pending' && (
                       <Button
                         size="sm"
                         variant="outline"
+                        className="text-xs px-2 gap-1"
                         onClick={() => updateStatus.mutate({ id: r.id, status: 'approved' })}
                       >
-                        <CheckCircle2 className="w-4 h-4 mr-1" /> Aprobar
+                        <CheckCircle2 className="w-4 h-4" /> <span className="hidden sm:inline">Aprobar</span>
                       </Button>
                     )}
                     {r.status === 'approved' && (
                       <Button
                         size="sm"
+                        className="text-xs px-2 gap-1"
                         onClick={() => updateStatus.mutate({ id: r.id, status: 'delivered' })}
                       >
-                        <Package className="w-4 h-4 mr-1" /> Marcar Entregado
+                        <Package className="w-4 h-4" /> <span className="hidden sm:inline">Entregar</span>
                       </Button>
                     )}
                   </div>
@@ -507,14 +509,12 @@ export default function AdminRedemptions() {
         })}
       </div>
 
-      {/* Modal perfil visual */}
-      {selectedUser && (
-        <UserProfileCard
-          user={selectedUser}
-          open={!!selectedUser}
-          onClose={() => setSelectedUser(null)}
-        />
-      )}
+      {/* Modal perfil visual — siempre renderizado, open controla visibilidad */}
+      <UserProfileCard
+        user={selectedUser}
+        open={!!selectedUser}
+        onClose={() => setSelectedUser(null)}
+      />
     </div>
   );
 }
