@@ -22,11 +22,31 @@ const statusColors = {
   delivered: 'bg-accent text-accent-foreground',
 };
 
+function SectionToggle({ id, icon: Icon, label, count, color, expanded, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(id)}
+      className="w-full flex items-center justify-between p-3 rounded-xl border bg-card hover:bg-accent/50 transition"
+    >
+      <div className="flex items-center gap-2.5">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${color}`}>
+          <Icon className="w-4 h-4 text-white" />
+        </div>
+        <div className="text-left">
+          <p className="text-sm font-semibold">{label}</p>
+          <p className="text-xs text-muted-foreground">{count} registros</p>
+        </div>
+      </div>
+      {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+    </button>
+  );
+}
+
 function UserProfileCard({ user, open, onClose }) {
   const [expandedSection, setExpandedSection] = useState(null);
-  if (!user) return null;
 
-  const userEmail = user.email;
+  const userEmail = user?.email || '';
 
   const { data: predictions = [] } = useQuery({
     queryKey: ['user-predictions', userEmail],
@@ -83,28 +103,11 @@ function UserProfileCard({ user, open, onClose }) {
     ? format(new Date(user.created_date), "d MMM yyyy", { locale: es })
     : '—';
 
+  if (!user) return null;
+
   const toggleSection = (id) => {
     setExpandedSection(prev => prev === id ? null : id);
   };
-
-  const SectionToggle = ({ id, icon: Icon, label, count, color }) => (
-    <button
-      type="button"
-      onClick={() => toggleSection(id)}
-      className="w-full flex items-center justify-between p-3 rounded-xl border bg-card hover:bg-accent/50 transition"
-    >
-      <div className="flex items-center gap-2.5">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${color}`}>
-          <Icon className="w-4 h-4 text-white" />
-        </div>
-        <div className="text-left">
-          <p className="text-sm font-semibold">{label}</p>
-          <p className="text-xs text-muted-foreground">{count} registros</p>
-        </div>
-      </div>
-      {expandedSection === id ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-    </button>
-  );
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -249,7 +252,7 @@ function UserProfileCard({ user, open, onClose }) {
           </div>
 
           {/* Pronósticos */}
-          <SectionToggle id="predictions" icon={Target} label="Pronósticos" count={predictions.length} color="bg-gradient-to-br from-blue-500 to-blue-600" />
+          <SectionToggle id="predictions" icon={Target} label="Pronósticos" count={predictions.length} color="bg-gradient-to-br from-blue-500 to-blue-600" expanded={expandedSection === 'predictions'} onToggle={toggleSection} />
           {expandedSection === 'predictions' && (
             <div className="space-y-1.5 pl-2">
               {predictions.length === 0 ? (
@@ -285,7 +288,7 @@ function UserProfileCard({ user, open, onClose }) {
           )}
 
           {/* Bonos */}
-          <SectionToggle id="bonuses" icon={Sparkles} label="Bonos recibidos" count={bonuses.length} color="bg-gradient-to-br from-emerald-500 to-emerald-600" />
+          <SectionToggle id="bonuses" icon={Sparkles} label="Bonos recibidos" count={bonuses.length} color="bg-gradient-to-br from-emerald-500 to-emerald-600" expanded={expandedSection === 'bonuses'} onToggle={toggleSection} />
           {expandedSection === 'bonuses' && (
             <div className="space-y-1.5 pl-2">
               {bonuses.length === 0 ? (
@@ -308,7 +311,7 @@ function UserProfileCard({ user, open, onClose }) {
           )}
 
           {/* Canjes */}
-          <SectionToggle id="redemptions" icon={Gift} label="Canjes realizados" count={redemptions.length} color="bg-gradient-to-br from-rose-500 to-rose-600" />
+          <SectionToggle id="redemptions" icon={Gift} label="Canjes realizados" count={redemptions.length} color="bg-gradient-to-br from-rose-500 to-rose-600" expanded={expandedSection === 'redemptions'} onToggle={toggleSection} />
           {expandedSection === 'redemptions' && (
             <div className="space-y-1.5 pl-2">
               {redemptions.length === 0 ? (
@@ -336,7 +339,7 @@ function UserProfileCard({ user, open, onClose }) {
           )}
 
           {/* Comisiones por referidos */}
-          <SectionToggle id="commissions" icon={Users} label="Comisiones por referidos" count={userCommissions.length} color="bg-gradient-to-br from-purple-500 to-purple-600" />
+          <SectionToggle id="commissions" icon={Users} label="Comisiones por referidos" count={userCommissions.length} color="bg-gradient-to-br from-purple-500 to-purple-600" expanded={expandedSection === 'commissions'} onToggle={toggleSection} />
           {expandedSection === 'commissions' && (
             <div className="space-y-1.5 pl-2">
               {userCommissions.length === 0 ? (
