@@ -12,10 +12,25 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw, Trophy } from 'lucide-react';
 import TeamFlag from '@/components/TeamFlag';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { formatTime12h } from '@/lib/utils';
+
+// Referencia fija para parsear fechas en hora LOCAL (igual que el panel admin
+// en MatchGroupList.jsx). Evita el desfase de zona horaria que ocurre al usar
+// new Date('yyyy-MM-dd'), que interpreta la fecha como UTC y resta el offset
+// local (mostrando un día antes en zonas UTC negativas como Panamá, UTC-5).
+const PARSE_REF = new Date(0);
+
+const formatMatchDate = (dateStr) => {
+  if (!dateStr) return '';
+  // Tomar solo la parte de fecha por si viene un timestamp ISO de Supabase
+  const datePart = String(dateStr).split('T')[0];
+  const d = parse(datePart, 'yyyy-MM-dd', PARSE_REF);
+  if (isNaN(d.getTime())) return dateStr;
+  return format(d, "d 'de' MMMM", { locale: es });
+};
 
 const statusMap = {
   pending: { label: 'Próximamente', class: 'bg-muted text-muted-foreground' },
@@ -93,7 +108,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="w-4 h-4" />
-              {match.match_date && (() => { const d = new Date(match.match_date + 'T12:00:00'); return isNaN(d.getTime()) ? match.match_date : format(d, "d 'de' MMMM", { locale: es }); })()}
+              {formatMatchDate(match.match_date)}
               <Clock className="w-4 h-4 ml-1" />
               {formatTime12h(match.match_time)}
             </div>
@@ -107,15 +122,15 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
           )}
 
           {/* Teams, Score & Prediction */}
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-2 md:gap-4 py-4 items-start">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-1.5 sm:gap-3 md:gap-4 py-4 items-start">
             {/* Team 1 */}
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center gap-1.5 min-w-0">
               <TeamFlag team={match.team1} isLive={isLive} size="hero" />
-              <span className="font-bold text-base md:text-lg text-center">{match.team1}</span>
+              <span className="font-bold text-xs sm:text-base md:text-lg text-center leading-tight break-words w-full">{match.team1}</span>
             </div>
 
             {/* Center column: Score + Prediction */}
-            <div className="flex flex-col items-center gap-3 min-w-[120px]">
+            <div className="flex flex-col items-center gap-3 w-[130px] sm:w-[150px] md:min-w-[170px]">
               {/* Score / VS */}
               <div className="flex flex-col items-center gap-1">
                 {isLive && displayElapsed && (
@@ -310,9 +325,9 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
             </div>
 
             {/* Team 2 */}
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center gap-1.5 min-w-0">
               <TeamFlag team={match.team2} isLive={isLive} size="hero" />
-              <span className="font-bold text-base md:text-lg text-center">{match.team2}</span>
+              <span className="font-bold text-xs sm:text-base md:text-lg text-center leading-tight break-words w-full">{match.team2}</span>
             </div>
           </div>
         </CardContent>

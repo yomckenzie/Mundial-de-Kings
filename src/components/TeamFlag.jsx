@@ -13,7 +13,7 @@ const sizeClasses = {
   md: 'w-9 h-9 text-lg',
   lg: 'w-16 h-16',
   xl: 'w-24 h-24 sm:w-28 sm:h-28',
-  hero: 'w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36',
+  hero: 'w-16 h-16 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36',
 };
 
 const SVG_SIZES = new Set(['lg', 'xl', 'hero']);

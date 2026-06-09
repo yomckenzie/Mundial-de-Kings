@@ -7,7 +7,9 @@ const PARSE_REF = new Date(0);
 
 function formatDate(dateStr) {
   try {
-    const d = parse(dateStr, 'yyyy-MM-dd', PARSE_REF);
+    // Tomar solo la parte de fecha por si viene un timestamp ISO de Supabase
+    const datePart = String(dateStr).split('T')[0];
+    const d = parse(datePart, 'yyyy-MM-dd', PARSE_REF);
     if (isNaN(d.getTime())) return dateStr;
     return format(d, "d 'de' MMMM yyyy", { locale: es });
   } catch {

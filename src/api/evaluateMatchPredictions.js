@@ -11,7 +11,15 @@ import { api } from './client';
  * @returns {{ evaluated: number, correct: number }}
  */
 export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2) {
-  const predictions = await api.entities.Prediction.filter({ match_id: matchId });
+  const allMatchPredictions = await api.entities.Prediction.filter({ match_id: matchId });
+  if (allMatchPredictions.length === 0) return { evaluated: 0, correct: 0 };
+
+  // Excluir pronósticos de usuarios admin: el admin no participa en el ranking
+  // ni debe acumular puntos de predicción (evita "partidos acertados" fantasma
+  // de pronósticos de prueba hechos con la sesión del admin).
+  const adminUsers = await api.entities.User.filter({ role: 'admin' });
+  const adminEmails = new Set(adminUsers.map(u => u.email));
+  const predictions = allMatchPredictions.filter(p => !adminEmails.has(p.user_email));
   if (predictions.length === 0) return { evaluated: 0, correct: 0 };
 
   // 1. Revertir puntos existentes de pronósticos ya puntuados

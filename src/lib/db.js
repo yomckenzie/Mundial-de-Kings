@@ -273,11 +273,20 @@ export const db = {
   async _processPendingDeletes() {
     if (_pendingDeletes.length > 0 && supabase) {
       const deletes = _pendingDeletes.splice(0);
-      await Promise.all(
+      const results = await Promise.all(
         deletes.map(({ tableName, id }) =>
-          supabase.from(tableName).delete().eq('id', id).then(() => null).catch(() => null)
+          supabase.from(tableName).delete().eq('id', id)
+            .then(({ error }) => (error ? { tableName, id, error } : null))
+            .catch((err) => ({ tableName, id, error: err }))
         )
       );
+      // Re-encolar los borrados que fallaron para reintentar en el próximo ciclo
+      // (evita que un fallo transitorio deje el registro "vivo" para siempre).
+      const failed = results.filter(Boolean);
+      for (const f of failed) {
+        console.warn(`[DB] Falló DELETE ${f.tableName}/${f.id}:`, f.error?.message || f.error);
+        _pendingDeletes.push({ tableName: f.tableName, id: f.id });
+      }
     }
   },
 
@@ -1304,14 +1313,37 @@ export const db = {
         sizes: db._getAvailableSizes(updated),
       };
     },
-    remove(id) {
-      const d = db._init();
-      const idx = d.prizes.findIndex(p => p.id === id);
-      if (idx === -1) throw new Error('Prize not found');
-      d.prizes.splice(idx, 1);
-      _pendingDeletes.push({ tableName: 'prizes', id });
-      db._persist();
-      return true;
+    async remove(id) {
+      // Bloquear sync FROM Supabase y sync TO en _persist() para evitar
+      // que el polling vuelva a traer el premio antes de que el DELETE termine
+      // (race condition que "resucitaba" premios borrados en otros dispositivos).
+      _blockFromSync = true;
+      _skipBackgroundSync = true;
+      try {
+        const d = db._init();
+        const idx = d.prizes.findIndex(p => p.id === id);
+        if (idx === -1) throw new Error('Prize not found');
+        d.prizes.splice(idx, 1);
+        save(d);
+
+        // Eliminar DIRECTAMENTE de Supabase con await (no silencioso) para
+        // garantizar que el borrado se propague antes de cualquier upsert.
+        if (isSupabaseAvailable() && supabase) {
+          const { error } = await supabase.from('prizes').delete().eq('id', id);
+          if (error) {
+            throw new Error('No se pudo eliminar el premio en Supabase: ' + (error.message || error));
+          }
+        }
+
+        // Subir el resto del estado y descargar fresco desde la nube.
+        _skipBackgroundSync = false;
+        await db.syncAdminChanges();
+        notifyReactComponents();
+        return true;
+      } finally {
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
+      }
     },
   },
 
