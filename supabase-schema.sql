@@ -72,6 +72,11 @@ ALTER TABLE prizes ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE prizes ADD COLUMN IF NOT EXISTS points_cost INTEGER DEFAULT 0;
 ALTER TABLE prizes ADD COLUMN IF NOT EXISTS units_available INTEGER DEFAULT 0;
 ALTER TABLE prizes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+-- Tallas: JSONB con formato {"S": 5, "M": 10, "L": 3, "XL": 0}
+ALTER TABLE prizes ADD COLUMN IF NOT EXISTS sizes JSONB DEFAULT NULL;
+-- Stock base (original) para cálculo dinámico: stock_actual = original_stock - canjes_aprobados
+ALTER TABLE prizes ADD COLUMN IF NOT EXISTS original_stock INTEGER DEFAULT 0;
+ALTER TABLE prizes ADD COLUMN IF NOT EXISTS original_sizes JSONB DEFAULT NULL;
 
 -- 5. REDEMPTIONS
 CREATE TABLE IF NOT EXISTS redemptions (
@@ -86,6 +91,10 @@ ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+-- Talla seleccionada por el usuario al canjear
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS selected_size TEXT;
+-- Índice para calcular stock dinámico por premio
+CREATE INDEX IF NOT EXISTS idx_redemptions_prize_status ON redemptions(prize_id, status);
 
 -- 6. SUPPORT TICKETS
 CREATE TABLE IF NOT EXISTS support_tickets (

@@ -90,11 +90,14 @@ export default function AdminRedemptions() {
         });
       }
 
-      // 2. Devolver la unidad al stock del premio
+      // 2. ✅ STOCK DINÁMICO: Ya NO devolvemos stock al premio.
+      //    El stock disponible se calcula como:
+      //      stock_actual = original_stock - canjes_activos
+      //    Al cambiar el status a 'rejected', esta redención ya no cuenta
+      //    como "canje activo", por lo que el stock "vuelve" automáticamente.
+      //    No hace falta modificar el premio.
       if (prize) {
-        await api.entities.Prize.update(prize.id, {
-          units_available: (prize.units_available || 0) + 1,
-        });
+        // No-op: el stock se recalcula solo desde las redemptions activas
       }
 
       // 3. Marcar canje como rechazado con razón + timestamp
@@ -196,7 +199,14 @@ export default function AdminRedemptions() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Package className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">{r.prize_name} · {r.points_spent} pts</span>
+                    <span className="text-sm">
+                      {r.prize_name} · {r.points_spent} pts
+                      {r.selected_size && (
+                        <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 align-middle">
+                          Talla: {r.selected_size}
+                        </Badge>
+                      )}
+                    </span>
                   </div>
                   <div className="flex gap-1 flex-wrap justify-end">
                     <Button

@@ -19,6 +19,7 @@ let _syncToSupabaseInProgress = false;
 let _syncFromSupabaseInProgress = false;
 let _resyncQueued = false;
 let _blockFromSync = false; // Bloquea sync FROM Supabase durante operaciones destructivas
+let _skipBackgroundSync = false; // Bloquea sync TO Supabase en _persist() durante operaciones admin
 const _pendingDeletes = []; // { tableName, id }[]
 const CLEAN_AT_KEY = 'chessking_last_clean_at';
 let _lastCleanAt = (() => { try { return localStorage.getItem(CLEAN_AT_KEY) || null; } catch { return null; } })();
@@ -156,7 +157,31 @@ export const db = {
     save(this._data);
     // Limpiar locks para que los cambios se suban a Supabase
     _syncInProgress = {};
+    // Durante operaciones admin (dedup, clean), el sync explícito se encarga.
+    // Evita race condition donde _persist() lanza un sync que choca con el admin sync.
+    if (_skipBackgroundSync) return Promise.resolve();
     return this._syncAllToSupabase();
+  },
+
+  /**
+   * Sincronización round-trip para operaciones admin:
+   * 1. Sube datos locales a Supabase
+   * 2. Descarga datos frescos desde Supabase
+   * Garantiza que otros dispositivos vean los cambios inmediatamente.
+   * Retorna { success, error } con visibilidad de errores.
+   */
+  async syncAdminChanges() {
+    if (!isSupabaseAvailable()) return { success: false, error: 'Supabase no disponible' };
+    try {
+      // 1. Subir cambios locales a Supabase
+      await this._syncAllToSupabase();
+      // 2. Descargar estado fresco desde Supabase
+      await this._syncAllFromSupabaseForce();
+      return { success: true };
+    } catch (err) {
+      console.error('[DB] syncAdminChanges error:', err);
+      return { success: false, error: err?.message || String(err) };
+    }
   },
 
   // Sincronizar TODAS las tablas desde Supabase
@@ -369,10 +394,10 @@ export const db = {
    * También resetea referral_points y referred_by en admin users.
    */
   async cleanUserData() {
-    // Bloquear sync FROM Supabase para evitar race condition:
-    // _init() lanza _syncAllFromSupabase() en background que restauraría
-    // los usuarios borrados desde Supabase después de la limpieza local.
+    // Bloquear sync FROM Supabase Y sync TO en _persist() para evitar
+    // race conditions durante la operación destructiva.
     _blockFromSync = true;
+    _skipBackgroundSync = true;
     const d = this._init({ skipSync: true });
     const now = getNow();
 
@@ -550,6 +575,18 @@ export const db = {
     }
 
     _blockFromSync = false;
+    _skipBackgroundSync = false;
+
+    // Sync round-trip: subir admin + tablas limpiadas, luego descargar fresco
+    try {
+      const syncResult = await this.syncAdminChanges();
+      if (!syncResult.success) {
+        console.error('[cleanUserData] Sync to Supabase failed:', syncResult.error);
+      }
+    } catch (syncErr) {
+      console.error('[cleanUserData] Sync error:', syncErr);
+    }
+
     notifyReactComponents();
 
     return {
@@ -846,6 +883,14 @@ export const db = {
         d.matches = d.matches.filter(m => !newFixtureIds.has(m.fixture_id));
       }
 
+      // También eliminar por team+date combo para prevenir duplicados sin fixture_id
+      const newCombos = new Set(matchesArray.map(m => `${m.team1 || ''}|${m.team2 || ''}|${m.match_date || ''}`));
+      d.matches = d.matches.filter(m => {
+        if (m.fixture_id != null && newFixtureIds.has(m.fixture_id)) return false;
+        const combo = `${m.team1 || ''}|${m.team2 || ''}|${m.match_date || ''}`;
+        return !newCombos.has(combo);
+      });
+
       const records = matchesArray.map(m => ({
         id: makeId(),
         created_date: now,
@@ -860,86 +905,214 @@ export const db = {
      * Deduplicar partidos: agrupa por fixture_id, mantiene solo una copia,
      * re-apunta predicciones a la copia conservada y elimina los duplicados.
      * Retorna { deleted, repointed } con el conteo.
+     *
+     * Robustez anti-reaparición (arregla race con sync/poll/API):
+     *  1. Bloquea _syncAllFromSupabase durante toda la operación.
+     *  2. Elimina los duplicados en Supabase DIRECTAMENTE con await
+     *     (no usa _pendingDeletes silencioso).
+     *  3. Hace un pase de verificación post-DELETE.
+     *  4. Modifica d.matches y predicciones en memoria.
+     *  5. Sube predicciones re-apuntadas a Supabase ANTES de los partidos.
+     *  6. Sube d.matches ya limpio a Supabase.
+     *  7. Hace un sync final forzado desde Supabase para que la memoria
+     *     refleje 100% la nube (descarta cualquier duplicado que aún exista).
+     *  8. Libera el bloqueo.
      */
     async deduplicate() {
-      const d = db._init();
-      const predictions = d.predictions || [];
-      const matches = d.matches;
+      // Bloquear poll FROM Supabase y sync TO en _persist() para evitar
+      // race conditions durante la operación.
+      _blockFromSync = true;
+      _skipBackgroundSync = true;
 
-      // 1. Agrupar por fixture_id (los que no tienen fixture_id se tratan individualmente)
-      const groups = {};
-      const noFixture = [];
-      for (const m of matches) {
-        const key = m.fixture_id != null ? String(m.fixture_id) : null;
-        if (key == null) {
-          noFixture.push(m);
-          continue;
+      try {
+        const d = this._init({ skipSync: true });
+        const predictions = d.predictions || [];
+        const matches = d.matches;
+
+        // 1. Agrupar por fixture_id (los que no tienen fixture_id se tratan individualmente)
+        const groups = {};
+        const noFixture = [];
+        for (const m of matches) {
+          const key = m.fixture_id != null ? String(m.fixture_id) : null;
+          if (key == null) {
+            noFixture.push(m);
+            continue;
+          }
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(m);
         }
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(m);
-      }
 
-      const toDelete = []; // IDs a eliminar
-      const repointMap = {}; // matchIdViejo → matchIdNuevo
+        const toDelete = []; // IDs a eliminar
+        const repointMap = {}; // matchIdViejo → matchIdNuevo
 
-      for (const key of Object.keys(groups)) {
-        const group = groups[key];
-        if (group.length <= 1) continue; // no hay duplicado
+        for (const key of Object.keys(groups)) {
+          const group = groups[key];
+          if (group.length <= 1) continue; // no hay duplicado
 
-        // Elegir cuál conservar: el que tenga predicciones; si varios, el más reciente
-        let keep = group[0];
-        for (const m of group) {
-          const hasPreds = predictions.some(p => p.match_id === m.id);
-          const currentHasPreds = predictions.some(p => p.match_id === keep.id);
-          if (hasPreds && !currentHasPreds) {
-            keep = m;
-          } else if (hasPreds === currentHasPreds) {
-            // Ambos tienen o no tienen predicciones → preferir el que tenga más datos
-            const keepScore = Object.keys(keep).length;
-            const mScore = Object.keys(m).length;
-            if (mScore > keepScore) keep = m;
+          // Elegir cuál conservar: el que tenga predicciones; si varios, el más reciente
+          let keep = group[0];
+          for (const m of group) {
+            const hasPreds = predictions.some(p => p.match_id === m.id);
+            const currentHasPreds = predictions.some(p => p.match_id === keep.id);
+            if (hasPreds && !currentHasPreds) {
+              keep = m;
+            } else if (hasPreds === currentHasPreds) {
+              // Ambos tienen o no tienen predicciones → preferir el que tenga más datos
+              const keepScore = Object.keys(keep).length;
+              const mScore = Object.keys(m).length;
+              if (mScore > keepScore) keep = m;
+            }
+          }
+
+          // Marcar duplicados para eliminar y crear re-asignaciones
+          for (const m of group) {
+            if (m.id !== keep.id) {
+              toDelete.push(m.id);
+              repointMap[m.id] = keep.id;
+            }
           }
         }
 
-        // Marcar duplicados para eliminar y crear re-asignaciones
-        for (const m of group) {
-          if (m.id !== keep.id) {
-            toDelete.push(m.id);
-            repointMap[m.id] = keep.id;
+        if (toDelete.length === 0) {
+          return { deleted: 0, repointed: 0 };
+        }
+
+        // ── ELIMINAR DE SUPABASE PRIMERO (DIRECTO, no silencioso) ──
+        if (isSupabaseAvailable() && supabase) {
+          const BATCH = 50;
+          const idBatches = [];
+          for (let i = 0; i < toDelete.length; i += BATCH) {
+            idBatches.push(toDelete.slice(i, i + BATCH));
+          }
+          // DELETE batches en paralelo; capturar errores para reportar
+          const deleteErrors = [];
+          await Promise.all(
+            idBatches.map(async (idBatch) => {
+              const { error } = await supabase
+                .from('matches')
+                .delete()
+                .in('id', idBatch);
+              if (error) {
+                deleteErrors.push(error.message || JSON.stringify(error));
+              }
+            })
+          );
+
+          if (deleteErrors.length > 0) {
+            // Si TODOS los batches fallaron, abortar para no corromper el estado
+            // local con un push que no tiene contraparte en la nube.
+            const allFailed = deleteErrors.length === idBatches.length;
+            if (allFailed) {
+              throw new Error(
+                'No se pudieron eliminar los duplicados en Supabase: ' +
+                deleteErrors.join('; ')
+              );
+            }
+            // Si solo algunos fallaron, continuar (pase de verificación los recoge)
+          }
+
+          // ── Pase de verificación: re-eliminar cualquier residuo ──
+          try {
+            const { data: remaining } = await supabase
+              .from('matches')
+              .select('id')
+              .in('id', toDelete)
+              .limit(5000);
+            if (remaining && remaining.length > 0) {
+              const remainingBatches = [];
+              for (let i = 0; i < remaining.length; i += BATCH) {
+                remainingBatches.push(remaining.slice(i, i + BATCH).map(r => r.id));
+              }
+              await Promise.all(
+                remainingBatches.map((ids) =>
+                  supabase.from('matches').delete().in('id', ids)
+                )
+              );
+            }
+          } catch {
+            /* continuar — el sync final forzado detectará cualquier residuo */
           }
         }
-      }
 
-      if (toDelete.length === 0) {
-        return { deleted: 0, repointed: 0 };
-      }
-
-      // 2. Re-apuntar predicciones que referencien a un match eliminado
-      let repointed = 0;
-      for (const pred of predictions) {
-        const newMatchId = repointMap[pred.match_id];
-        if (newMatchId) {
-          pred.match_id = newMatchId;
-          pred.updated_at = getNow();
-          repointed++;
+        // ── MODIFICAR MEMORIA LOCAL ──
+        // 2. Re-apuntar predicciones que referencien a un match eliminado
+        let repointed = 0;
+        for (const pred of predictions) {
+          const newMatchId = repointMap[pred.match_id];
+          if (newMatchId) {
+            pred.match_id = newMatchId;
+            pred.updated_at = getNow();
+            repointed++;
+          }
         }
+
+        // 3. Eliminar duplicados del array local
+        const deleteSet = new Set(toDelete);
+        d.matches = d.matches.filter(m => !deleteSet.has(m.id));
+
+        // 4. Guardar en localStorage
+        save(d);
+
+        // ── SUBIR PREDICCIONES RE-APUNTADAS ANTES QUE NADA ──
+        if (repointed > 0 && isSupabaseAvailable() && supabase) {
+          try {
+            // Subir solo las predicciones afectadas
+            const affected = predictions.filter(p => p.match_id && deleteSet.size > 0 && Object.values(repointMap).includes(p.match_id));
+            if (affected.length > 0) {
+              // Subir en batches
+              const BATCH = 100;
+              for (let i = 0; i < affected.length; i += BATCH) {
+                const batch = affected.slice(i, i + BATCH);
+                // stripLocalFields limpia campos no existentes en Supabase
+                const cleaned = batch.map(p => {
+                  const { created_date, updated_at, ...rest } = p;
+                  return rest;
+                });
+                const { error } = await supabase
+                  .from('predictions')
+                  .upsert(cleaned, { onConflict: 'id' });
+                if (error) {
+                  /* error silencioso — no es crítico, las predicciones
+                     se re-subirán en el próximo _syncAllToSupabase */
+                }
+              }
+            }
+          } catch {
+            /* continuar */
+          }
+        }
+
+        // ── SUBIR PARTIDOS LIMPIOS A SUPABASE ──
+        // d.matches ya no tiene los duplicados, así que el upsert sube
+        // solo los que deben existir. Los duplicados restantes en Supabase
+        // (si los hubiera por fallo del DELETE) serán recogidos por el
+        // sync forzado al final, que sobrescribirá d.matches con la nube.
+        try {
+          await syncTableToSupabaseFn('matches', d.matches);
+        } catch {
+          /* continuar */
+        }
+
+        // ── SYNC ROUND-TRIP COMPLETO ──
+        // 1. Subir cambios locales a Supabase (partidos limpios + predicciones re-asignadas)
+        // 2. Descargar estado fresco desde Supabase (garantiza consistencia)
+        try {
+          const syncResult = await this.syncAdminChanges();
+          if (!syncResult.success) {
+            console.error('[Deduplicate] Sync to Supabase failed:', syncResult.error);
+          }
+        } catch (syncErr) {
+          console.error('[Deduplicate] Sync error:', syncErr);
+        }
+
+        notifyReactComponents();
+
+        return { deleted: toDelete.length, repointed };
+      } finally {
+        // Liberar el bloqueo SIEMPRE, incluso si hubo error
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
       }
-
-      // 3. Eliminar duplicados del array local
-      const deleteSet = new Set(toDelete);
-      d.matches = d.matches.filter(m => !deleteSet.has(m.id));
-
-      // 4. Marcar eliminaciones pendientes para que se borren de Supabase
-      for (const id of toDelete) {
-        _pendingDeletes.push({ tableName: 'matches', id });
-      }
-
-      // 5. Persistir y sincronizar
-      save(d);
-      await db._syncAllToSupabase();
-      notifyReactComponents();
-
-      return { deleted: toDelete.length, repointed };
     },
   },
 
@@ -985,26 +1158,129 @@ export const db = {
     },
   },
 
+  // --- Helpers para Stock Dinámico ---
+  /**
+   * Calcula el total de unidades sumando el stock de todas las tallas.
+   */
+  _sumSizesStock(sizes) {
+    if (!sizes || typeof sizes !== 'object') return 0;
+    return Object.values(sizes).reduce((sum, stock) => sum + (Number(stock) || 0), 0);
+  },
+
+  /**
+   * Obtiene el stock disponible de un premio calculándolo dinámicamente:
+   *   stock_actual = original_stock - redemptions_activas
+   *
+   * Si el premio NO tiene original_stock (legacy), usa units_available directamente.
+   */
+  _getAvailableStock(prize) {
+    const d = db._init();
+    // Si tiene original_stock, calcular dinámicamente
+    if (prize.original_stock !== undefined && prize.original_stock !== null) {
+      const activeRedemptions = (d.redemptions || []).filter(
+        r => r.prize_id === prize.id && ['pending', 'approved', 'delivered'].includes(r.status)
+      ).length;
+      return Math.max(0, prize.original_stock - activeRedemptions);
+    }
+    // Legacy: usar units_available tal cual
+    return prize.units_available || 0;
+  },
+
+  /**
+   * Obtiene las tallas disponibles calculándolas dinámicamente:
+   *   talla_actual[X] = original_sizes[X] - redemptions_activas_con_esa_talla
+   *
+   * Si el premio NO tiene original_sizes (legacy), devuelve sizes tal cual.
+   */
+  _getAvailableSizes(prize) {
+    const d = db._init();
+    if (!prize.original_sizes || typeof prize.original_sizes !== 'object' || Object.keys(prize.original_sizes).length === 0) {
+      // Legacy: devolver sizes como están
+      return prize.sizes || null;
+    }
+    // Calcular dinámicamente
+    const available = { ...prize.original_sizes };
+    const redemptions = (d.redemptions || []).filter(
+      r => r.prize_id === prize.id && ['pending', 'approved', 'delivered'].includes(r.status)
+    );
+    for (const r of redemptions) {
+      if (r.selected_size && available[r.selected_size] !== undefined) {
+        available[r.selected_size] = Math.max(0, available[r.selected_size] - 1);
+      }
+    }
+    return available;
+  },
+
+  /**
+   * Migración one-time: convertir premios legacy (sin original_stock) al
+   * nuevo formato de stock dinámico.
+   * original_stock = units_available + redemptions_activas
+   * original_sizes = sizes (copia)
+   */
+  _migratePrizeToDynamic(p) {
+    if (p.original_stock !== undefined && p.original_stock !== null) return; // ya migrado
+    const d = db._init();
+    const activeCount = (d.redemptions || []).filter(
+      r => r.prize_id === p.id && ['pending', 'approved', 'delivered'].includes(r.status)
+    ).length;
+    p.original_stock = (p.units_available || 0) + activeCount;
+    if (p.sizes && typeof p.sizes === 'object' && Object.keys(p.sizes).length > 0) {
+      p.original_sizes = { ...p.sizes };
+    }
+  },
+
   // --- Prizes ---
   prizes: {
     list(order) {
       const d = db._init().prizes;
-      return sortBy(d, order);
+      // Migrar premios legacy a dinámico (one-time)
+      for (const p of d.prizes) {
+        db._migratePrizeToDynamic(p);
+      }
+      return sortBy(d, order).map(p => ({
+        ...p,
+        units_available: db._getAvailableStock(p),
+        sizes: db._getAvailableSizes(p),
+      }));
     },
     filter(fields, order) {
       let d = db._init().prizes.filter(p =>
         Object.entries(fields).every(([k, v]) => p[k] === v)
       );
+      // Migrar premios legacy a dinámico
+      for (const p of d) {
+        db._migratePrizeToDynamic(p);
+      }
       if (order) {
         const field = order.startsWith('-') ? order.slice(1) : order;
         const dir = order.startsWith('-') ? -1 : 1;
         d.sort((a, b) => ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir);
       }
-      return d;
+      return d.map(p => ({
+        ...p,
+        units_available: db._getAvailableStock(p),
+        sizes: db._getAvailableSizes(p),
+      }));
     },
     create(data) {
       const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
+      const originalSizes = data.original_sizes || data.sizes || null;
+      const originalStock = data.original_stock !== undefined
+        ? Number(data.original_stock)
+        : (originalSizes
+            ? db._sumSizesStock(originalSizes)
+            : (Number(data.units_available) || 0));
+      const record = {
+        id: makeId(),
+        created_date: getNow(),
+        ...data,
+        // Guardar valores originales
+        original_stock: originalStock,
+        original_sizes: originalSizes,
+        // Valores calculados (se recalculan al leer)
+        units_available: originalStock,
+        sizes: originalSizes ? { ...originalSizes } : (data.sizes || null),
+      };
       d.prizes.push(record);
       db._persist();
       return record;
@@ -1013,9 +1289,20 @@ export const db = {
       const d = db._init();
       const idx = d.prizes.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prize not found');
-      d.prizes[idx] = { ...d.prizes[idx], ...data, updated_at: getNow() };
+      const updateData = { ...data, updated_at: getNow() };
+      // Si se actualizan original_sizes, recalcular original_stock
+      if (data.original_sizes !== undefined) {
+        updateData.original_stock = db._sumSizesStock(data.original_sizes);
+      }
+      d.prizes[idx] = { ...d.prizes[idx], ...updateData };
       db._persist();
-      return d.prizes[idx];
+      // Retornar con valores calculados
+      const updated = d.prizes[idx];
+      return {
+        ...updated,
+        units_available: db._getAvailableStock(updated),
+        sizes: db._getAvailableSizes(updated),
+      };
     },
     remove(id) {
       const d = db._init();

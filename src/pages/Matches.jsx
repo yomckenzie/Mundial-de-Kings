@@ -93,7 +93,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="w-4 h-4" />
-              {match.match_date && (() => { const d = new Date(match.match_date); return isNaN(d.getTime()) ? match.match_date : format(d, "d 'de' MMMM", { locale: es }); })()}
+              {match.match_date && (() => { const d = new Date(match.match_date + 'T12:00:00'); return isNaN(d.getTime()) ? match.match_date : format(d, "d 'de' MMMM", { locale: es }); })()}
               <Clock className="w-4 h-4 ml-1" />
               {formatTime12h(match.match_time)}
             </div>

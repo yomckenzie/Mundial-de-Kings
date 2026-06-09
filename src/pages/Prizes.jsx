@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight, Search } from 'lucide-react';
+import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight, Search, Construction } from 'lucide-react';
 import PrizeCard from './prizes/PrizeCard';
 import ConfirmRedeemDialog from './prizes/ConfirmRedeemDialog';
 import PreviewImageDialog from './prizes/PreviewImageDialog';
@@ -55,20 +55,24 @@ export default function Prizes() {
   const userEmail = user?.email || '';
 
   const [modal, setModal] = useState({ confirmPrize: null, cedulaInput: '', cedulaError: '', showSuccess: null, previewImage: null });
+  const [selectedSize, setSelectedSize] = useState('');
 
   const { data: prizes = [], isLoading } = useQuery({
     queryKey: ['prizes'],
     queryFn: async () => {
-      let prizes = db._init().prizes.filter(p => p.status === 'active');
-      if (prizes.length === 0) {
-        db.seedIfEmpty();
-        prizes = db._init().prizes.filter(p => p.status === 'active');
-        if (prizes.length === 0) {
-          const allPrizes = db._init().prizes;
-          if (allPrizes.length > 0) return allPrizes;
-        }
-      }
-      return prizes;
+      // ✅ Usar api.entities.Prize.list() que aplica el stock dinámico:
+      //    stock_actual = original_stock - canjes_activos
+      //    tallas_actuales = original_sizes - canjes_por_talla
+      const allPrizes = await api.entities.Prize.list();
+      const active = allPrizes.filter(p => p.status === 'active');
+      if (active.length > 0) return active;
+      // Fallback: si no hay activos, mostrar todos
+      if (allPrizes.length > 0) return allPrizes;
+      // Seedear datos por defecto
+      db.seedIfEmpty();
+      const seeded = await api.entities.Prize.list();
+      const seededActive = seeded.filter(p => p.status === 'active');
+      return seededActive.length > 0 ? seededActive : seeded;
     },
     staleTime: 1000 * 60,
     retry: 1,
@@ -96,16 +100,20 @@ export default function Prizes() {
         throw new Error('Este premio está agotado');
       }
 
+      // ✅ STOCK DINÁMICO: Ya NO modificamos el premio al canjear.
+      // El stock disponible se calcula automáticamente como:
+      //   stock_actual = original_stock - canjes_activos
+      // Solo creamos la redención — el stock se descuenta solo.
+
+      const sizeToRedeem = selectedSize || null;
+
       await api.entities.Redemption.create({
         user_email: user.email,
         prize_id: prize.id,
         prize_name: prize.name,
         points_spent: prize.points_cost,
         status: 'pending',
-      });
-
-      await api.entities.Prize.update(prize.id, {
-        units_available: prize.units_available - 1,
+        selected_size: sizeToRedeem,
       });
 
       // NOTA: ya NO descontamos de total_points. total_points representa
@@ -119,6 +127,7 @@ export default function Prizes() {
       queryClient.invalidateQueries({ queryKey: ['my-redemptions'] });
       queryClient.invalidateQueries({ queryKey: ['my-bonuses'] });
       setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '', showSuccess: prize }));
+      setSelectedSize('');
     },
     onError: (err) => {
       toast.error(err.message);
@@ -127,6 +136,7 @@ export default function Prizes() {
 
   const openConfirmDialog = (prize) => {
     setModal(m => ({ ...m, cedulaInput: '', cedulaError: '', confirmPrize: prize }));
+    setSelectedSize('');
   };
 
   const handleConfirmRedeem = () => {
@@ -176,6 +186,17 @@ export default function Prizes() {
       initial="hidden"
       animate="visible"
     >
+      {/* Banner de canjeos desactivados */}
+      <m.div
+        className="bg-muted/80 border border-border rounded-xl p-3 flex items-center gap-3 text-sm"
+        variants={itemVariants}
+      >
+        <Construction className="w-5 h-5 shrink-0 text-muted-foreground" />
+        <p className="text-muted-foreground">
+          Los canjeos están <strong>temporalmente desactivados</strong> mientras actualizamos los puntos de los premios. ¡Vuelve pronto!
+        </p>
+      </m.div>
+
       {/* Header */}
       <m.div className="flex items-center justify-between" variants={itemVariants}>
         <div>
@@ -266,10 +287,15 @@ export default function Prizes() {
         open={!!modal.confirmPrize}
         cedulaInput={modal.cedulaInput}
         cedulaError={modal.cedulaError}
+        selectedSize={selectedSize}
+        setSelectedSize={setSelectedSize}
         pending={redeemMutation.isPending}
         onCedulaChange={(v) => setModal(m => ({ ...m, cedulaInput: v, cedulaError: '' }))}
         onConfirm={handleConfirmRedeem}
-        onClose={() => setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '' }))}
+        onClose={() => {
+          setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '' }));
+          setSelectedSize('');
+        }}
       />
 
       <PreviewImageDialog

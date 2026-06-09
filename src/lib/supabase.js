@@ -137,6 +137,7 @@ export function stripLocalFields(records) {
     // Eliminar password y campos de control local en el sync.
     // Con Supabase Auth, la contraseña se maneja de forma segura por Supabase.
     const { password, created_date, updated_at, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r
+    // sizes y selected_size SÍ existen en Supabase, se conservan
     return clean
   })
 }
@@ -147,8 +148,7 @@ export function stripLocalFields(records) {
  * @param {string} tableName - Nombre de la tabla
  * @param {Array} records - Registros a sincronizar
  * @param {string} conflictColumn - Columna para resolver conflictos (default: 'id')
- */
-export async function syncTableToSupabase(tableName, records, conflictColumn = 'id') {
+ */export async function syncTableToSupabase(tableName, records, conflictColumn = 'id') {
   if (!supabase || !records) return false
   const cleanedRecords = stripLocalFields(records)
   try {
@@ -158,9 +158,11 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
     if (error) throw error
     return true
   } catch (err) {
+    // Log error para visibilidad (antes se fallaba silenciosamente)
+    console.warn(`[Supabase] syncTableToSupabase(${tableName}) error:`, err?.code || err?.message || err)
+
     // Si falla por violación de foreign key (prize_id no existe), omite el batch
     if (err.code === '23503') {
-      // FK violation, omitiendo sync temporalmente
       return false
     }
     // Si falla por unique constraint (ej: email duplicado en users),
@@ -178,8 +180,7 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
       if (successCount === 0 && records.length > 0) {
         try {
           const { data: existing } = await supabase
-            .from(tableName)
-            .select('id, email')
+            .from(tableName).select('id, email')
           const existingEmails = new Set((existing || []).map(r => r.email))
           const fallbackResults = await Promise.all(cleanedRecords.map(async (record) => {
             if (!existingEmails.has(record.email)) {
@@ -197,8 +198,7 @@ export async function syncTableToSupabase(tableName, records, conflictColumn = '
       }
       return successCount > 0
     }
-    // Fallback: si no existe la constraint UNIQUE para la columna de conflicto (ej: key)
-    // reintentar con 'id' como columna de conflicto
+    // Fallback: si no existe la constraint UNIQUE para la columna de conflicto
     if (conflictColumn !== 'id' && (err.code === '42P10' || err.message?.includes('ON CONFLICT'))) {
       return await syncTableToSupabase(tableName, records, 'id')
     }
@@ -258,8 +258,13 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       const remoteKeys = new Set(remoteData.map(r => r.key))
       for (const local of localRecords) {
         if (!remoteKeys.has(local.key)) {
-          result.push(local)
-          changed = true
+          // Si el setting no está en la nube y fue creado hace más de 5 minutos,
+          // se asume que fue eliminado en la nube y lo removemos localmente.
+          if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)) {
+            result.push(local)
+          } else {
+            changed = true
+          }
         }
       }
     } else {
@@ -289,10 +294,10 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
             // Registro recien creado localmente — preservar
             result.push(local)
           } else if (!USER_GENERATED_TABLES.has(tableName)) {
-            // Admin table — preservar registros locales que no están en la nube.
-            // Evita que un sync desde una BD vacía borre datos locales.
-            // Se subirán a Supabase en el próximo ciclo _syncAllToSupabase().
-            result.push(local)
+            // Admin table — la nube es la autoridad. Si el registro no está en la nube,
+            // significa que fue eliminado por el administrador. NO lo preservamos,
+            // permitiendo que se elimine localmente, a menos que haya sido creado
+            // recientemente (hace menos de 5 minutos).
             changed = true
           } else {
             // Tabla userGenerated sin limpieza activa — preservar (modo offline)
@@ -313,6 +318,42 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       const deduped = Array.from(keyMap.values())
       if (deduped.length !== result.length) {
 
+        result.length = 0
+        result.push(...deduped)
+      }
+    }
+
+    // Deduplicar partidos por fixture_id (evita duplicados por seed múltiple o sync entre dispositivos)
+    if (changed && tableName === 'matches') {
+      const fixtureMap = new Map()
+      for (const rec of result) {
+        const fKey = rec.fixture_id != null ? String(rec.fixture_id) : null
+        if (fKey == null) {
+          // Sin fixture_id: deduplicar por team1+team2+match_date
+          const combo = `${rec.team1 || ''}|${rec.team2 || ''}|${rec.match_date || ''}`
+          const existing = fixtureMap.get(combo)
+          if (!existing) {
+            fixtureMap.set(combo, rec)
+          } else {
+            // Preferir el que tenga más datos (más campos llenos)
+            if (Object.keys(rec).length > Object.keys(existing).length) {
+              fixtureMap.set(combo, rec)
+            }
+          }
+        } else {
+          const existing = fixtureMap.get(fKey)
+          if (!existing) {
+            fixtureMap.set(fKey, rec)
+          } else {
+            // Preferir el que tenga más datos
+            if (Object.keys(rec).length > Object.keys(existing).length) {
+              fixtureMap.set(fKey, rec)
+            }
+          }
+        }
+      }
+      const deduped = Array.from(fixtureMap.values())
+      if (deduped.length !== result.length) {
         result.length = 0
         result.push(...deduped)
       }
