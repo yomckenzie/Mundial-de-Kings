@@ -165,37 +165,19 @@ export function stripLocalFields(records) {
     if (err.code === '23503') {
       return false
     }
-    // Si falla por unique constraint (ej: email duplicado en users),
-    // intentar uno por uno cambiando la columna de conflicto
+    // Si falla por unique constraint o conflict HTTP, reintentar uno por uno
+    // con onConflict basado en la columna 'id' (funciona para TODAS las tablas)
     if (err.code === '23505' || err.status === 409) {
       const results = await Promise.all(cleanedRecords.map(async (record) => {
         try {
           const { error: indError } = await supabase
             .from(tableName)
-            .upsert(record, { onConflict: 'email' })
+            .upsert(record, { onConflict: 'id' })
           return !indError ? 1 : 0
         } catch { return 0 }
       }))
-      let successCount = results.reduce((sum, v) => sum + v, 0)
-      if (successCount === 0 && records.length > 0) {
-        try {
-          const { data: existing } = await supabase
-            .from(tableName).select('id, email')
-          const existingEmails = new Set((existing || []).map(r => r.email))
-          const fallbackResults = await Promise.all(cleanedRecords.map(async (record) => {
-            if (!existingEmails.has(record.email)) {
-              try {
-                const { error: indError } = await supabase
-                  .from(tableName)
-                  .upsert(record, { onConflict: 'id' })
-                return !indError ? 1 : 0
-              } catch { return 0 }
-            }
-            return 0
-          }))
-          successCount = fallbackResults.reduce((sum, v) => sum + v, 0)
-        } catch {}
-      }
+      const successCount = results.reduce((sum, v) => sum + v, 0)
+      // Si alguno se subió correctamente, consideramos éxito parcial
       return successCount > 0
     }
     // Fallback: si no existe la constraint UNIQUE para la columna de conflicto
