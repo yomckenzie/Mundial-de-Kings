@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, ChevronRight } from 'lucide-react';
 import { m } from 'framer-motion';
@@ -9,6 +9,7 @@ export default function SuccessDialog({ prize, open, onClose }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="sr-only">Premio canjeado</DialogTitle>
+          <DialogDescription className="sr-only">Confirmación de canje exitoso e instrucciones de recogida.</DialogDescription>
         </DialogHeader>
         {prize && (
           <div className="text-center space-y-4 py-2">

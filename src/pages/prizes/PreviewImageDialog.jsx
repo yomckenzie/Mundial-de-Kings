@@ -1,9 +1,11 @@
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 export default function PreviewImageDialog({ prize, open, onClose }) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl p-1 bg-black/95 border-0">
+        <DialogTitle className="sr-only">{prize?.name || 'Vista previa del premio'}</DialogTitle>
+        <DialogDescription className="sr-only">Vista ampliada de la imagen del premio.</DialogDescription>
         {prize && (
           <div className="relative">
             <img

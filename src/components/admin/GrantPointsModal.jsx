@@ -35,9 +35,9 @@ export default function GrantPointsModal({ user, open, onClose }) {
         api.entities.PointsBonus.create({
           user_email: user.email,
           user_name: user.full_name || '',
-          points: pts,
+          amount: pts,
           reason: reason.trim(),
-          granted_by: me.email,
+          given_by: me.email,
           type: 'manual',
         }),
       ]);

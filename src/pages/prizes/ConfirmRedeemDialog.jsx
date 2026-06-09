@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Gift, CheckCircle2 } from 'lucide-react';
@@ -12,6 +12,7 @@ export default function ConfirmRedeemDialog({ prize, open, cedulaInput, cedulaEr
             <Gift className="w-5 h-5" />
             Confirmar canje
           </DialogTitle>
+          <DialogDescription className="sr-only">Confirma tu identidad ingresando tu cédula para canjear el premio.</DialogDescription>
         </DialogHeader>
         {prize && (
           <div className="space-y-4">

@@ -59,7 +59,7 @@ export function BonusesHistory({ bonuses }) {
           {b.created_date && ` · ${format(new Date(b.created_date), 'd MMM yyyy', { locale: es })}`}
         </p>
       </div>
-      <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-0 text-xs font-bold">+{b.points}</Badge>
+      <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-0 text-xs font-bold">+{b.amount ?? b.points}</Badge>
     </div>
   ));
 }

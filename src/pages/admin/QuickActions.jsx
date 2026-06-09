@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Database, Layers, RefreshCw, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -38,6 +38,7 @@ export default function QuickActions({ onSeed, seeding, hasLocked, onDedupe, ded
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevo Partido</DialogTitle>
+            <DialogDescription className="sr-only">Crear un nuevo partido manual ingresando los equipos, fecha, hora y fase.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">

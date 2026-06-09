@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -92,6 +92,7 @@ export default function AdminPrizes() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editId ? 'Editar Premio' : 'Nuevo Premio'}</DialogTitle>
+            <DialogDescription className="sr-only">Formulario para crear o editar un premio del catálogo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div><Label>Nombre</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>

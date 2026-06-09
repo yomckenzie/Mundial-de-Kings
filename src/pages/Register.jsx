@@ -230,10 +230,10 @@ if (!form.email) errors.email = 'Campo obligatorio';
         id: `welcome_${recordId}`,
         user_email: form.email,
         user_name: form.full_name,
-        points: 100,
+        amount: 100,
         reason: 'Bono de bienvenida',
         type: 'welcome',
-        granted_by: 'system',
+        given_by: 'system',
         created_date: new Date().toISOString(),
       };
 

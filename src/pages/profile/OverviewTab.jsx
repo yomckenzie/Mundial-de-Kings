@@ -26,7 +26,7 @@ export default function OverviewTab({ bonuses, myCommissions, allUsers, matchMap
                     </p>
                   </div>
                   <Badge className="bg-foreground text-background border-0 shrink-0 font-bold">
-                    +{b.points}
+                    +{b.amount ?? b.points}
                   </Badge>
                 </div>
               ))}
