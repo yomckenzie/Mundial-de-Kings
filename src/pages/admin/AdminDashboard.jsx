@@ -56,12 +56,12 @@ export default function AdminDashboard() {
   const [cleanLoading, setCleanLoading] = useState(false);
 
   const handleCleanUserData = async () => {
-    const msg = '¿Eliminar TODOS los datos de usuarios?\n\nSe borrarán:\n• Todos los usuarios (excepto admin)\n• Todos los pronósticos\n• Todos los canjes\n• Todos los puntos extra\n\nLos partidos NO se modifican. Esta acción NO se puede deshacer.';
+    const msg = '¿Eliminar TODOS los datos de usuarios?\n\nSe borrarán:\n• Todos los usuarios (excepto admin)\n• Todos los pronósticos\n• Todos los canjes\n• Todos los puntos extra\n• Todos los tickets de soporte\n• Todos los referidos y sus comisiones\n\nLos partidos NO se modifican. Esta acción NO se puede deshacer.';
     if (!window.confirm(msg)) return;
     setCleanLoading(true);
     try {
       const result = await api.admin.cleanUserData();
-      toast.success(`✅ ${result.deletedUsers} usuarios, ${result.deletedPredictions} pronósticos, ${result.deletedRedemptions} canjes y ${result.deletedBonuses} puntos extra eliminados`);
+      toast.success(`✅ ${result.deletedUsers} usuarios, ${result.deletedPredictions} pronósticos, ${result.deletedRedemptions} canjes, ${result.deletedBonuses} puntos extra, ${result.deletedReferrals} referidos y ${result.deletedCommissions} comisiones eliminados`);
       queryClient.invalidateQueries();
     } catch (err) {
       toast.error('Error al limpiar datos: ' + (err.message || 'Error'));

@@ -363,6 +363,10 @@ export const db = {
    * - Pronósticos
    * - Canjes
    * - Puntos extra (pointsBonuses)
+   * - Tickets de soporte
+   * - Referidos (referrals)
+   * - Comisiones de referidos (referralCommissions)
+   * También resetea referral_points y referred_by en admin users.
    */
   async cleanUserData() {
     // Bloquear sync FROM Supabase para evitar race condition:
@@ -400,7 +404,22 @@ export const db = {
     const ticketsToDelete = [...(d.supportTickets || [])];
     d.supportTickets = [];
 
-    // 6. Eliminar usuarios NO admin
+    // 6. Eliminar todos los referidos (registros referrer→referred)
+    const referralsToDelete = [...(d.referrals || [])];
+    d.referrals = [];
+
+    // 7. Eliminar todas las comisiones de referidos
+    const commissionsToDelete = [...(d.referralCommissions || [])];
+    d.referralCommissions = [];
+
+    // 8. Resetear contadores de referidos en usuarios admin
+    for (const u of d.users) {
+      u.referral_points = 0;
+      u.referred_by = null;
+      u.updated_at = now;
+    }
+
+    // 9. Eliminar usuarios NO admin
     d.users = adminUsers;
 
     // 7. Guardar en localStorage
@@ -451,6 +470,8 @@ export const db = {
         deleteAllFromTable('redemptions'),
         deleteAllFromTable('points_bonuses'),
         deleteAllFromTable('support_tickets'),
+        deleteAllFromTable('referrals'),
+        deleteAllFromTable('referral_commissions'),
       ]);
 
 
@@ -494,7 +515,14 @@ export const db = {
     _blockFromSync = false;
     notifyReactComponents();
 
-    return { deletedUsers: nonAdminIds.length, deletedPredictions: predsToDelete.length, deletedRedemptions: redemptionsToDelete.length, deletedBonuses: bonusesToDelete.length };
+    return {
+      deletedUsers: nonAdminIds.length,
+      deletedPredictions: predsToDelete.length,
+      deletedRedemptions: redemptionsToDelete.length,
+      deletedBonuses: bonusesToDelete.length,
+      deletedReferrals: referralsToDelete.length,
+      deletedCommissions: commissionsToDelete.length,
+    };
   },
 
   // --- Users ---
