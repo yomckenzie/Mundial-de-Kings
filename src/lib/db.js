@@ -510,6 +510,43 @@ export const db = {
 
       // Subir admin user + tablas que NO se limpiaron (matches, prizes, appSettings)
       await this._syncAllToSupabase();
+
+      // ── Pase de verificación: re-eliminar cualquier residuo en Supabase ──
+      // (Por si el primer batch falló parcialmente o quedaron filas huerfanas)
+      try {
+        const tableNames = ['predictions', 'redemptions', 'points_bonuses', 'support_tickets', 'referrals', 'referral_commissions'];
+        await Promise.all(
+          tableNames.map(async (table) => {
+            try {
+              const { data: remaining } = await supabase.from(table).select('id').limit(5000);
+              if (remaining && remaining.length > 0) {
+                const ids = remaining.map(r => r.id);
+                const batches = [];
+                for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH));
+                await Promise.all(batches.map((batch) => supabase.from(table).delete().in('id', batch)));
+              }
+            } catch {}
+          })
+        );
+        // Re-eliminar usuarios no-admin que pudieran haber quedado
+        try {
+          const { data: stillUsers } = await supabase.from('users').select('id, role').limit(5000);
+          if (stillUsers && stillUsers.length > 0) {
+            const stillNonAdmin = stillUsers.filter(u => u.role !== 'admin').map(u => u.id);
+            if (stillNonAdmin.length > 0) {
+              const batches = [];
+              for (let i = 0; i < stillNonAdmin.length; i += BATCH) batches.push(stillNonAdmin.slice(i, i + BATCH));
+              await Promise.all(batches.map((batch) => supabase.from('users').delete().in('id', batch)));
+            }
+          }
+        } catch {}
+      } catch {}
+
+      // Forzar un sync final desde Supabase para que el estado en memoria
+      // refleje exactamente lo que hay en la nube (sin datos residuales).
+      try {
+        await this._syncAllFromSupabaseForce();
+      } catch {}
     }
 
     _blockFromSync = false;

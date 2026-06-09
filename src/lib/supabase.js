@@ -266,7 +266,14 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       const remoteIds = new Set(remoteData.map(r => r.id))
       // Tablas donde la nube manda incluso para limpieza de registros huérfanos.
       // (Consistente con ADMIN_TABLES arriba.)
-      const cloudAuthoritativeTables = ['predictions', 'support_tickets', 'redemptions', 'users']
+      // Cuando hay un "clean" activo, TODAS las tablas limpiadas se vuelven
+      // cloud-authoritative: si el remoto no las tiene, no se preservan
+      // locales (evita que reaparezcan en otros dispositivos tras un clean).
+      const cleanAffectedTables = [
+        'predictions', 'support_tickets', 'redemptions', 'users',
+        'points_bonuses', 'referrals', 'referral_commissions',
+      ]
+      const cloudAuthoritativeTables = cleanAffectedTables
 
       // Si hay lastCleanAt activo y es una tabla cloudAuthoritative,
       // la nube es la autoridad: NO preservar registros locales ausentes.
