@@ -290,18 +290,14 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
           if (isCleanActive) {
             // Limpieza activa — descartar todos los registros ausentes en remoto
             changed = true
-          } else if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)) {
-            // Registro recien creado localmente — preservar
+          } else if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 15 * 60 * 1000)) {
+            // Registro recien creado localmente (menos de 15 min) — preservar para permitir sync offline inicial
             result.push(local)
-          } else if (!USER_GENERATED_TABLES.has(tableName)) {
-            // Admin table — la nube es la autoridad. Si el registro no está en la nube,
-            // significa que fue eliminado por el administrador. NO lo preservamos,
-            // permitiendo que se elimine localmente, a menos que haya sido creado
-            // recientemente (hace menos de 5 minutos).
-            changed = true
           } else {
-            // Tabla userGenerated sin limpieza activa — preservar (modo offline)
-            result.push(local)
+            // La nube es la autoridad. Si el registro no está en la nube y es antiguo,
+            // significa que fue eliminado. NO lo preservamos, permitiendo que se elimine
+            // localmente para todas las tablas (premios, predicciones, partidos, etc.).
+            changed = true
           }
         }
       }
