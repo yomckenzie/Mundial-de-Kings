@@ -15,6 +15,7 @@ import TeamFlag from '@/components/TeamFlag';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { formatTime12h } from '@/lib/utils';
 
 const statusMap = {
   pending: { label: 'Próximamente', class: 'bg-muted text-muted-foreground' },
@@ -94,7 +95,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               <Calendar className="w-4 h-4" />
               {match.match_date && (() => { const d = new Date(match.match_date); return isNaN(d.getTime()) ? match.match_date : format(d, "d 'de' MMMM", { locale: es }); })()}
               <Clock className="w-4 h-4 ml-1" />
-              {match.match_time}
+              {formatTime12h(match.match_time)}
             </div>
             <Badge className={`${st.class} border-0`}>
               {isLive ? 'EN VIVO' : st.label}

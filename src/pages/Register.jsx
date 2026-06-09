@@ -171,11 +171,31 @@ if (!form.email) errors.email = 'Campo obligatorio';
         }
       }
 
+      // 1. Registrar el usuario en Supabase Auth
+      if (!isSupabaseAvailable()) {
+        throw new Error('El servicio de base de datos no está disponible.');
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      const authUser = authData.user;
+      if (!authUser) {
+        throw new Error('No se pudo completar el registro de credenciales.');
+      }
+
       // Generar código de referido para el nuevo usuario
       const userReferralCode = db.generateReferralCode(form.full_name, form.email);
       const fullPhone = `${form.phone_country} ${stripDialCode(form.phone, form.phone_country)}`.trim();
 
-      const recordId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      // Usamos el UUID de Supabase Auth para ligar el perfil público
+      const recordId = authUser.id;
       const userData = {
         id: recordId,
         email: form.email,
@@ -186,7 +206,6 @@ if (!form.email) errors.email = 'Campo obligatorio';
         cedula: form.cedula,
         instagram: form.instagram_user.replace('@', ''),
         tiktok: form.tiktok_user.replace('@', ''),
-        password: form.password,
         referral_code: userReferralCode,
         referred_by: cleanReferralCode || null,
         referral_points: 0,
@@ -197,10 +216,13 @@ if (!form.email) errors.email = 'Campo obligatorio';
         created_date: new Date().toISOString(),
       };
 
-      // Escribir a Supabase PRIMERO (sin locks de por medio)
-      if (isSupabaseAvailable()) {
-        const { error } = await supabase.from('users').upsert(userData, { onConflict: 'id' });
-        if (error) throw new Error(error.message);
+      // 2. Escribir perfil en la tabla pública de Supabase
+      const { error: profileError } = await supabase
+        .from('users')
+        .upsert(userData, { onConflict: 'id' });
+      
+      if (profileError) {
+        throw new Error(`Error al crear perfil de usuario: ${profileError.message}`);
       }
 
       // Crear bono de bienvenida
@@ -216,9 +238,11 @@ if (!form.email) errors.email = 'Campo obligatorio';
       };
 
       // Guardar bono en Supabase
-      if (isSupabaseAvailable()) {
-        const { error: bonusError } = await supabase.from('pointsBonuses').upsert(welcomeBonus, { onConflict: 'id' });
-        if (bonusError) {/* Error silencioso guardando bono */}
+      const { error: bonusError } = await supabase
+        .from('points_bonuses')
+        .upsert(welcomeBonus, { onConflict: 'id' });
+      if (bonusError) {
+        console.error("Error guardando bono:", bonusError);
       }
 
       // Escribir a localStorage directamente (evitar locks del motor de sync)
@@ -241,18 +265,15 @@ if (!form.email) errors.email = 'Campo obligatorio';
         });
       }
 
-      // Guardar en localStorage (db._persist() se encarga via setCurrentUserEmail)
-
       // Otorgar bono de referido (10 pts) al referente
       if (referrerData) {
         await db.awardReferralBonus(cleanReferralCode, form.email);
       }
 
-      // Iniciar sesión automáticamente
+      // Iniciar sesión automáticamente en el DB local
       db.setCurrentUserEmail(form.email);
 
       toast.success('¡Cuenta creada exitosamente!');
-      // Recargar para que AuthContext detecte el usuario
       window.location.href = redirect;
     } catch (err) {
       toast.error(err?.message || 'Error al crear la cuenta. Intenta de nuevo.');

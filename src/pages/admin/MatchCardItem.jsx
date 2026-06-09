@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Clock, Save } from 'lucide-react';
+import { formatTime12h } from '@/lib/utils';
 
 const STATUS_COLORS = {
   pending: 'bg-muted text-muted-foreground',
@@ -48,7 +49,7 @@ export default function MatchCardItem({ match, hasLockedMatches, liveNow, result
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground flex items-center gap-2">
-            <Clock className="w-4 h-4" />{match.match_time}
+            <Clock className="w-4 h-4" />{formatTime12h(match.match_time)}
             {match.group_stage && <Badge variant="outline" className="text-[10px] ml-1">{match.group_stage}</Badge>}
           </div>
           <Badge className={STATUS_COLORS[match.status] || 'bg-muted'}>

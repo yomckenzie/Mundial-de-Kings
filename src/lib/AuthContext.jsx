@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { db } from '@/lib/db';
+import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 
 const AuthContext = createContext();
 
@@ -30,10 +31,52 @@ export const AuthProvider = ({ children }) => {
   const [authState, dispatch] = useReducer(authReducer, null, initialState);
 
   useEffect(() => {
-    dispatch({ type: 'INIT_DONE' });
+    let authSubscription = null;
+
+    const initAuth = async () => {
+      try {
+        if (isSupabaseAvailable()) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            db.setCurrentUserEmail(session.user.email);
+            // Sincronizar desde la nube al cargar para tener datos actualizados
+            await db.forceSyncFromCloud();
+            const current = db.getCurrentUser();
+            dispatch({ type: 'SET_USER', user: current });
+          }
+        }
+      } catch (err) {
+        console.error("Auth init error:", err);
+      } finally {
+        dispatch({ type: 'INIT_DONE' });
+      }
+    };
+
+    initAuth();
+
+    if (isSupabaseAvailable()) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session?.user) {
+          db.setCurrentUserEmail(session.user.email);
+          const current = db.getCurrentUser();
+          dispatch({ type: 'SET_USER', user: current });
+        } else {
+          db.setCurrentUserEmail(null);
+          dispatch({ type: 'LOGOUT' });
+        }
+      });
+      authSubscription = subscription;
+    }
+
+    return () => {
+      if (authSubscription) authSubscription.unsubscribe();
+    };
   }, []);
 
-  const logout = useCallback((shouldRedirect = true) => {
+  const logout = useCallback(async (shouldRedirect = true) => {
+    if (isSupabaseAvailable()) {
+      await supabase.auth.signOut();
+    }
     db.setCurrentUserEmail(null);
     dispatch({ type: 'LOGOUT' });
     localStorage.removeItem('chessking_token');

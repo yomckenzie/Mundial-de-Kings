@@ -134,11 +134,9 @@ export async function deleteRecords(tableName, field, value) {
  */
 export function stripLocalFields(records) {
   return records.map(r => {
-    // Preservar password en el sync porque la app compara passwords localmente
-    // contra los datos de localStorage que a su vez vienen de Supabase.
-    // Sin el password en Supabase, un usuario registrado en otro dispositivo
-    // no puede iniciar sesión localmente.
-    const { created_date, updated_at, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r
+    // Eliminar password y campos de control local en el sync.
+    // Con Supabase Auth, la contraseña se maneja de forma segura por Supabase.
+    const { password, created_date, updated_at, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r
     return clean
   })
 }

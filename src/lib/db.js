@@ -1423,7 +1423,6 @@ export const db = {
         id: makeId(),
         email: 'admin@chessking.com',
         full_name: 'Admin ChessKing',
-        password: 'admin123',
         role: 'admin',
         cedula: 'ADMIN-001',
         instagram: 'chessking_admin',
@@ -1437,7 +1436,6 @@ export const db = {
       };
       d.users.push(admin);
       this._persist();
-
     }
 
     const hasSettings = d.appSettings.length > 0;

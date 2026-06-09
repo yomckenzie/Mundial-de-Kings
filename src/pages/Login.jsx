@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,22 +33,26 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      const users = await api.entities.User.filter({ email: form.email });
-      if (users.length === 0) {
-        toast.error('No existe una cuenta con ese correo');
-        setIsLoading(false);
-        return;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
+      });
+
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          throw new Error('Correo o contraseña incorrectos');
+        }
+        throw error;
       }
 
-      const user = users[0];
-      if (user.password !== form.password) {
-        toast.error('Contraseña incorrecta');
-        setIsLoading(false);
-        return;
-      }
-
+      const user = data.user;
       db.setCurrentUserEmail(user.email);
-      toast.success(`¡Bienvenido, ${user.full_name || user.email}!`);
+
+      // Sincronizar los datos del usuario recién ingresado desde la nube
+      await db.forceSyncFromCloud();
+
+      const profile = db.getCurrentUser();
+      toast.success(`¡Bienvenido, ${profile?.full_name || user.email}!`);
       window.location.href = redirect;
     } catch (err) {
       toast.error(err?.message || 'Error al iniciar sesión');

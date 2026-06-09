@@ -4,3 +4,20 @@ import { twMerge } from "tailwind-merge"
 export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
+
+/**
+ * Convierte una hora en formato 24h ("HH:MM" o "HH:MM:SS") a 12h con AM/PM.
+ * Si el input es vacío, inválido o ya no incluye dos puntos, lo devuelve tal cual.
+ * @param {string} time24
+ * @returns {string}
+ */
+export function formatTime12h(time24) {
+  if (!time24 || typeof time24 !== 'string' || !time24.includes(':')) return time24 || '';
+  const parts = time24.split(':');
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return time24;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = ((h + 11) % 12) + 1; // 0→12, 13→1
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
