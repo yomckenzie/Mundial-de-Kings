@@ -4,7 +4,9 @@ import {
   syncTableToSupabase,
   syncTableFromSupabase,
   stripLocalFields,
-  TABLES
+  TABLES,
+  setupRealtimeSubscriptions,
+  cleanupRealtimeSubscriptions
 } from './supabase.js';
 
 const STORAGE_KEY = 'chessking_db';
@@ -18,6 +20,7 @@ let _pollInterval = null;
 let _syncToSupabaseInProgress = false;
 let _syncFromSupabaseInProgress = false;
 let _resyncQueued = false;
+let _resyncFromQueued = false;
 let _blockFromSync = false; // Bloquea sync FROM Supabase durante operaciones destructivas
 let _skipBackgroundSync = false; // Bloquea sync TO Supabase en _persist() durante operaciones admin
 const _pendingDeletes = []; // { tableName, id }[]
@@ -143,12 +146,36 @@ export const db = {
         });
       }
 
-      // Polling automático cada 60s para detectar cambios de otros admins/dispositivos
+      // Iniciar suscripciones Realtime para detectar cambios al instante
+      setupRealtimeSubscriptions();
+
+      // Escuchar cambios en tiempo real (evento disparado por supabase.js)
+      window.addEventListener('db-cloud-change', (e) => {
+        const { tableName } = e.detail;
+        const jsKey = Object.entries(TABLE_MAP).find(([, v]) => v === tableName)?.[0];
+        if (jsKey) {
+          // Debounce: si llegan varios cambios juntos, solo un sync
+          if (this._cloudChangeTimer) clearTimeout(this._cloudChangeTimer);
+          this._cloudChangeTimer = setTimeout(() => {
+            this._syncSingleTableFromSupabase(jsKey);
+          }, 500);
+        }
+      });
+
+      // Sincronizar al volver a la pestaña (visibility change)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          this._syncAllFromSupabase();
+        }
+      });
+
+      // Polling cada 15s como respaldo (detecta cambios si Realtime no está disponible)
       if (!_pollInterval) {
         _pollInterval = setInterval(() => {
           this._syncAllFromSupabase();
-        }, 60000);
+        }, 15000);
       }
+
     }
     return this._data;
   },
@@ -187,9 +214,9 @@ export const db = {
   // Sincronizar TODAS las tablas desde Supabase
   async _syncAllFromSupabase() {
     if (!isSupabaseAvailable()) return;
-    // Evitar race condition: si estamos subiendo datos, no bajar al mismo tiempo
+    // Si estamos subiendo datos, encolar un sync FROM diferido para cuando termine
     if (_syncToSupabaseInProgress) {
-
+      _resyncFromQueued = true;
       return;
     }
     // Bloqueado durante operaciones destructivas (cleanUserData)
@@ -201,6 +228,25 @@ export const db = {
   async _syncAllFromSupabaseForce() {
     if (!isSupabaseAvailable()) return;
     return this._syncAllFromSupabaseInternal();
+  },
+
+  // Sincronizar UNA SOLA tabla desde Supabase (para Realtime / cambios puntuales)
+  async _syncSingleTableFromSupabase(jsKey) {
+    if (!isSupabaseAvailable() || _blockFromSync) return false;
+    // Si estamos subiendo datos, encolar para no crear race condition
+    if (_syncToSupabaseInProgress) {
+      _resyncFromQueued = true;
+      return false;
+    }
+    const localRecords = this._data[jsKey] || [];
+    const remoteRecords = await syncTableFromSupabaseFn(jsKey, localRecords);
+    if (remoteRecords && remoteRecords !== localRecords) {
+      this._data[jsKey] = remoteRecords;
+      save(this._data);
+      this._notifyReactComponents();
+      return true;
+    }
+    return false;
   },
 
   // Implementación interna de sincronización desde Supabase
@@ -327,9 +373,13 @@ export const db = {
       }
     };
     await runSync();
-  },
 
-  // Forzar sincronización manual desde Supabase
+    // Después de subir, ejecutar cualquier FROM sync encolado
+    if (_resyncFromQueued) {
+      _resyncFromQueued = false;
+      await this._syncAllFromSupabaseInternal();
+    }
+  },
   async forceSync() {
     await this._syncAllFromSupabaseForce();
   },
@@ -1867,5 +1917,37 @@ export const db = {
     }
 
     // NO seedear premios por defecto — el admin los crea desde el panel
+    // PERO si el archivo prizes está vacío, seedear ejemplos para preview
+    if (d.prizes.length === 0) {
+      const now = getNow();
+      const demoPrizes = [
+        {
+          id: makeId(), name: 'Camiseta Oficial', points_cost: 500,
+          description: 'Camiseta oficial del Mundial de Kings — Edición limitada 2026',
+          units_available: 25,
+          image_url: 'https://placehold.co/600x400/10b981/ffffff?text=Camiseta',
+          status: 'active',
+          created_date: now,
+        },
+        {
+          id: makeId(), name: 'Gorra Snapback', points_cost: 300,
+          description: 'Gorra ajustable con logo bordado',
+          units_available: 50,
+          image_url: 'https://placehold.co/600x400/f59e0b/ffffff?text=Gorra',
+          status: 'active',
+          created_date: now,
+        },
+        {
+          id: makeId(), name: 'Pulsera Kings', points_cost: 150,
+          description: 'Pulsera de silicona con diseño exclusivo',
+          units_available: 100,
+          image_url: 'https://placehold.co/600x400/8b5cf6/ffffff?text=Pulsera',
+          status: 'active',
+          created_date: now,
+        },
+      ];
+      d.prizes.push(...demoPrizes);
+      save(d);
+    }
   },
 };

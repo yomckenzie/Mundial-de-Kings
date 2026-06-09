@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Gift, X, Ruler } from 'lucide-react';
+import { Plus, Pencil, Trash2, Gift, X, Ruler, Image as ImageIcon, Check, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 const INITIAL = { name: '', description: '', image_url: '', points_cost: '', status: 'active', original_stock: '' };
@@ -129,10 +129,17 @@ export default function AdminPrizes() {
       return;
     }
     setUploading(true);
-    const { file_url } = await api.integrations.Core.UploadFile({ file });
-    setForm(prev => ({ ...prev, image_url: file_url }));
-    setUploading(false);
-    toast.success('Imagen subida');
+    try {
+      const { file_url } = await api.integrations.Core.UploadFile({ file });
+      setForm(prev => ({ ...prev, image_url: file_url }));
+      setUploading(false);
+      toast.success('Imagen subida');
+    } catch (err) {
+      setUploading(false);
+      toast.error(err.message || 'Error al subir la imagen. Verifica que el bucket "banners" exista en Supabase.');
+      // Limpiar el input file para poder reintentar con el mismo archivo
+      e.target.value = '';
+    }
   };
 
   const addSizeRow = () => {
@@ -192,7 +199,12 @@ export default function AdminPrizes() {
             </div>
             <div>
               <Label>Imagen (máx 5MB)</Label>
-              <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} />
+              <div className="flex gap-2">
+                <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} className="flex-1" />
+                <ImagePickerDialog
+                  onSelect={(url) => setForm(prev => ({ ...prev, image_url: url }))}
+                />
+              </div>
               {uploading && <p className="text-xs text-muted-foreground mt-1">Subiendo imagen...</p>}
               {form.image_url && (
                 <div className="mt-3 relative group rounded-lg overflow-hidden border border-border bg-muted/30">
@@ -361,5 +373,103 @@ export default function AdminPrizes() {
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * ImagePickerDialog — galería de imágenes ya subidas al bucket 'banners'
+ * Permite elegir una existente sin tener que volver a subir el archivo.
+ */
+function ImagePickerDialog({ onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [images, setImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadImages = async () => {
+    setLoading(true);
+    try {
+      const list = await api.integrations.Core.ListFiles({ bucket: 'banners' });
+      setImages(list);
+    } catch {
+      toast.error('Error al cargar las imágenes del sistema');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelect = (url) => {
+    onSelect(url);
+    setOpen(false);
+    toast.success('Imagen seleccionada');
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) loadImages(); }}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="gap-1.5 shrink-0">
+          <ImageIcon className="w-4 h-4" />
+          Sistema
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ImageIcon className="w-5 h-5" />
+            Imágenes del sistema
+          </DialogTitle>
+          <DialogDescription>
+            Selecciona una imagen ya subida al sistema. También puedes subir una nueva usando el botón "Subir archivo".
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-muted-foreground">
+            {images.length > 0 ? `${images.length} imagen(es) disponible(s)` : ''}
+          </p>
+          <Button type="button" variant="ghost" size="sm" onClick={loadImages} disabled={loading} className="gap-1.5 h-7 text-xs">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refrescar
+          </Button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : images.length === 0 ? (
+          <div className="text-center py-16 space-y-2">
+            <ImageIcon className="w-12 h-12 text-muted-foreground/30 mx-auto" />
+            <p className="text-sm text-muted-foreground">No hay imágenes en el sistema.</p>
+            <p className="text-xs text-muted-foreground/60">Sube una imagen usando el botón "Subir archivo" del formulario.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[50vh] overflow-y-auto p-1">
+            {images.map((img) => (
+              <button
+                key={img.id || img.name}
+                type="button"
+                onClick={() => handleSelect(img.publicUrl)}
+                className="group relative aspect-square rounded-lg overflow-hidden border border-border bg-muted/30 hover:border-foreground/50 transition-all cursor-pointer p-0"
+              >
+                <img
+                  src={img.publicUrl}
+                  alt={img.name}
+                  loading="lazy"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Check className="w-[18px] h-[18px]" />
+                  </div>
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1.5">
+                  <p className="text-[10px] text-white truncate text-center leading-tight">{img.name}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

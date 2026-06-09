@@ -260,7 +260,7 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
         if (!remoteKeys.has(local.key)) {
           // Si el setting no está en la nube y fue creado hace más de 5 minutos,
           // se asume que fue eliminado en la nube y lo removemos localmente.
-          if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 5 * 60 * 1000)) {
+          if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 30 * 1000)) {
             result.push(local)
           } else {
             changed = true
@@ -290,8 +290,8 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
           if (isCleanActive) {
             // Limpieza activa — descartar todos los registros ausentes en remoto
             changed = true
-          } else if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 15 * 60 * 1000)) {
-            // Registro recien creado localmente (menos de 15 min) — preservar para permitir sync offline inicial
+          } else if (local.created_date && (Date.now() - new Date(local.created_date).getTime() < 30 * 1000)) {
+            // Registro recien creado localmente (menos de 30s) — preservar para permitir sync offline inicial
             result.push(local)
           } else {
             // La nube es la autoridad. Si el registro no está en la nube y es antiguo,
@@ -394,8 +394,14 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
 export async function uploadImage(blob, originalFileName = 'image.jpg', bucket = 'banners') {
   if (!supabase) return null
   try {
-    const ext = originalFileName.split('.').pop() || 'jpg'
-    const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+    // Usar el contentType real del blob si está disponible, o inferir desde la extensión
+    const ext = originalFileName.split('.').pop()?.toLowerCase() || 'jpg';
+    const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+    const contentType = blob.type || mimeMap[ext] || 'image/jpeg';
+    // Normalizar extensión al tipo MIME real para evitar discrepancias (ej: .png pero image/jpeg)
+    const extMap = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
+    const finalExt = extMap[contentType] || ext;
+    const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${finalExt}`;
     const filePath = `${fileName}`
 
     const { data, error } = await supabase.storage
@@ -403,7 +409,7 @@ export async function uploadImage(blob, originalFileName = 'image.jpg', bucket =
       .upload(filePath, blob, {
         cacheControl: '3600',
         upsert: false,
-        contentType: 'image/jpeg'
+        contentType,
       })
 
     if (error) throw error
@@ -416,4 +422,114 @@ export async function uploadImage(blob, originalFileName = 'image.jpg', bucket =
   } catch {
     return null
   }
+}
+
+/**
+ * Listar imágenes disponibles en un bucket de Supabase Storage.
+ * Retorna un array de { name, publicUrl, created_at }.
+ */
+export async function listImages(bucket = 'banners') {
+  if (!supabase) return []
+  try {
+    const { data, error } = await supabase.storage.from(bucket).list();
+    if (error) throw error
+    if (!data || data.length === 0) return []
+
+    return data
+      .filter(f => f.id && !f.name.startsWith('.')) // filtrar carpetas y archivos ocultos
+      .map(f => {
+        const { data: { publicUrl } } = supabase.storage
+          .from(bucket)
+          .getPublicUrl(f.name)
+        return {
+          name: f.name,
+          publicUrl,
+          created_at: f.created_at,
+          id: f.id,
+          metadata: f.metadata,
+        }
+      })
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)) // más recientes primero
+  } catch {
+    return []
+  }
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────
+ * SUPABASE REALTIME SUBSCRIPTIONS
+ * ─────────────────────────────────────────────────────────────────
+ * Escucha cambios (INSERT / UPDATE / DELETE) en tablas de Supabase
+ * y dispara eventos personalizados para que db.js los procese.
+ *
+ * Requisito: las tablas deben tener Realtime habilitado.
+ *   → Ejecutar supabase-enable-realtime.sql en el SQL Editor.
+ *
+ * Uso:
+ *   setupRealtimeSubscriptions()  // llama una vez al iniciar la app
+ *   cleanupRealtimeSubscriptions() // llama al cerrar sesión / desmontar
+ */
+
+let _realtimeChannels = [];
+
+/**
+ * Configura suscripciones Realtime para todas las tablas.
+ * Cuando se detecta un cambio, dispara el evento 'db-cloud-change'
+ * con detalle { tableName, eventType }.
+ */
+export function setupRealtimeSubscriptions() {
+  if (!supabase) return;
+
+  // Limpiar suscripciones previas por si se llama dos veces
+  cleanupRealtimeSubscriptions();
+
+  const TABLES_TO_WATCH = [
+    'users', 'matches', 'predictions', 'prizes', 'redemptions',
+    'support_tickets', 'points_bonuses', 'app_settings',
+    'audit_logs', 'referrals', 'referral_commissions',
+  ];
+
+  // Usamos varios canales para evitar límites de eventos por canal
+  const CHANNELS = [
+    supabase.channel('cloud-changes-1'),
+    supabase.channel('cloud-changes-2'),
+  ];
+
+  // Repartir las tablas entre los canales
+  TABLES_TO_WATCH.forEach((table, i) => {
+    const channel = CHANNELS[i % CHANNELS.length];
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table },
+      (payload) => {
+        // Disparar evento para que db.js lo capture
+        window.dispatchEvent(new CustomEvent('db-cloud-change', {
+          detail: {
+            tableName: table,
+            eventType: payload.event_type, // INSERT | UPDATE | DELETE
+            newRecord: payload.new,
+            oldRecord: payload.old,
+          },
+        }));
+      }
+    );
+  });
+
+  // Suscribir ambos canales
+  for (const channel of CHANNELS) {
+    channel.subscribe();
+    _realtimeChannels.push(channel);
+  }
+}
+
+/**
+ * Limpia todas las suscripciones Realtime.
+ */
+export function cleanupRealtimeSubscriptions() {
+  if (supabase) {
+    for (const ch of _realtimeChannels) {
+      supabase.removeChannel(ch);
+    }
+  }
+  _realtimeChannels = [];
 }

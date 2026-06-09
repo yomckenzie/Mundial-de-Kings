@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight, Search, Construction } from 'lucide-react';
+import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight, Search } from 'lucide-react';
 import PrizeCard from './prizes/PrizeCard';
 import ConfirmRedeemDialog from './prizes/ConfirmRedeemDialog';
 import PreviewImageDialog from './prizes/PreviewImageDialog';
@@ -186,17 +186,6 @@ export default function Prizes() {
       initial="hidden"
       animate="visible"
     >
-      {/* Banner de canjeos desactivados */}
-      <m.div
-        className="bg-muted/80 border border-border rounded-xl p-3 flex items-center gap-3 text-sm"
-        variants={itemVariants}
-      >
-        <Construction className="w-5 h-5 shrink-0 text-muted-foreground" />
-        <p className="text-muted-foreground">
-          Los canjeos están <strong>temporalmente desactivados</strong> mientras actualizamos los puntos de los premios. ¡Vuelve pronto!
-        </p>
-      </m.div>
-
       {/* Header */}
       <m.div className="flex items-center justify-between" variants={itemVariants}>
         <div>

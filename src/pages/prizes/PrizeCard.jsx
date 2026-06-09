@@ -1,13 +1,13 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Gift, Package, UserPlus, Sparkles, Trophy, Search, Ruler } from 'lucide-react';
+import { Gift, Package, Search, Ruler, UserPlus, Sparkles, PackageX, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function PrizeCard({ prize, user, availablePoints, onRedeem, onPreview, redeemPending }) {
-  const canRedeem = user && availablePoints >= prize.points_cost;
-  const soldOut = prize.units_available <= 0;
   const hasSizes = prize.sizes && typeof prize.sizes === 'object' && Object.keys(prize.sizes).length > 0;
+  const soldOut = prize.units_available <= 0;
+  const canAfford = user && availablePoints >= prize.points_cost;
 
   return (
     <Card className="overflow-hidden h-full flex flex-col">
@@ -82,14 +82,27 @@ export default function PrizeCard({ prize, user, availablePoints, onRedeem, onPr
               Regístrate para canjear
             </Button>
           </Link>
+        ) : soldOut ? (
+          <Button className="w-full gap-1.5" disabled variant="secondary">
+            <PackageX className="w-4 h-4" />
+            Agotado
+          </Button>
+        ) : !canAfford ? (
+          <Button className="w-full gap-1.5" disabled variant="secondary">
+            <Lock className="w-4 h-4" />
+            Te faltan {prize.points_cost - availablePoints} pts
+          </Button>
         ) : (
           <Button
             className="w-full gap-1.5"
-            disabled
-            title="Los canjes están temporalmente desactivados mientras actualizamos los puntos"
+            onClick={() => onRedeem(prize)}
+            disabled={redeemPending}
           >
-            <Package className="w-4 h-4" />
-            Canjeos desactivados
+            {redeemPending ? (
+              <><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Canjeando...</>
+            ) : (
+              <><Sparkles className="w-4 h-4" /> Canjear por {prize.points_cost} pts</>
+            )}
           </Button>
         )}
       </CardContent>

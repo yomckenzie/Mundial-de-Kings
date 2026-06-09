@@ -150,6 +150,10 @@ const client = {
 
   integrations: {
     Core: {
+      ListFiles: async ({ bucket } = {}) => {
+        const { listImages } = await import('@/lib/supabase');
+        return listImages(bucket || 'banners');
+      },
       UploadFile: async ({ file }) => {
       // 1. Comprimir imagen en cliente para reducir tamaño
       const [compressedBlob, { uploadImage }] = await Promise.all([
