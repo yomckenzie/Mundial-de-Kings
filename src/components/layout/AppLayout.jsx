@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { m } from 'framer-motion';
+import { UserPlus } from 'lucide-react';
 import { api } from '@/api/client';
 import Navbar from './Navbar';
 import PanamaClockWidget from '@/components/PanamaClockWidget';
+import { Button } from '@/components/ui/button';
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -39,8 +41,19 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar user={authState.user} />
-      <div className="border-b border-border bg-muted/50 flex justify-center py-1.5">
+      <div className="border-b border-border bg-muted/50 flex flex-col items-center justify-center gap-2 py-2 px-3">
         <PanamaClockWidget />
+        {!authState.user && (
+          <Link to="/register" className="shrink-0">
+            <Button
+              size="sm"
+              className="gap-1.5 h-7 sm:h-8 px-3 text-[11px] sm:text-xs font-semibold bg-yellow-400 text-black hover:bg-yellow-300 border-0"
+            >
+              <UserPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              Crear cuenta
+            </Button>
+          </Link>
+        )}
       </div>
       <main className="max-w-6xl mx-auto px-4 py-6">
         <m.div

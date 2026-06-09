@@ -103,7 +103,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
       <Card className={`card-hover ${isLive ? 'ring-2 ring-red-500/50 glow-sm' : ''}`}>
-        <CardContent className="p-4 md:p-5">
+        <CardContent className="p-3 sm:p-4 md:p-5">
           {/* Date & Status */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -171,7 +171,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, ease: 'easeOut' }}
                     >
-                      <div className="bg-muted/40 border border-border/50 rounded-xl p-3 space-y-2">
+                      <div className="bg-muted/40 border border-border/50 rounded-xl p-2 sm:p-3 space-y-1.5 sm:space-y-2">
                         <div className="flex items-center justify-center gap-2">
                           <span className="text-lg font-black">{existing.pred_team1}</span>
                           <span className="text-base font-bold text-muted-foreground/40">-</span>
@@ -212,7 +212,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                   transition={{ duration: 0.3, ease: 'easeOut' }}
                   className="w-full"
                 >
-                  <div className="bg-muted/40 border border-border/50 rounded-xl p-3 space-y-2">
+                  <div className="bg-muted/40 border border-border/50 rounded-xl p-2 sm:p-3 space-y-1.5 sm:space-y-2">
                     <div className="flex items-center justify-center gap-2">
                       <span className="text-lg font-black">{existing.pred_team1}</span>
                       <span className="text-base font-bold text-muted-foreground/40">-</span>
@@ -271,22 +271,24 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                   transition={{ duration: 0.3, ease: 'easeOut' }}
                   className="w-full"
                 >
-                  <div className="bg-muted/40 border border-border/50 rounded-xl p-3 space-y-2.5">
+                  <div className="bg-muted/40 border border-border/50 rounded-xl p-2 sm:p-3 space-y-2">
                     {/* Score inputs side by side */}
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                       <Input
                         type="number"
+                        inputMode="numeric"
                         min="0"
-                        className="w-14 h-10 text-center text-base font-bold"
+                        className="w-11 sm:w-12 h-10 sm:h-11 text-center text-base font-bold px-1"
                         placeholder="0"
                         value={predictions[match.id]?.team1 ?? ''}
                         onChange={(e) => handlePredict(match.id, 'team1', e.target.value)}
                       />
-                      <span className="text-lg font-bold text-muted-foreground/40">-</span>
+                      <span className="text-base sm:text-lg font-bold text-muted-foreground/40">-</span>
                       <Input
                         type="number"
+                        inputMode="numeric"
                         min="0"
-                        className="w-14 h-10 text-center text-base font-bold"
+                        className="w-11 sm:w-12 h-10 sm:h-11 text-center text-base font-bold px-1"
                         placeholder="0"
                         value={predictions[match.id]?.team2 ?? ''}
                         onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
@@ -303,14 +305,14 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       })}
                       disabled={submitPrediction.isPending}
                       size="sm"
-                      className="w-full gap-1.5 h-9 text-sm font-semibold"
+                      className="w-full gap-1.5 h-9 text-xs sm:text-sm font-semibold"
                     >
                       <Send className="w-3.5 h-3.5" />
                       {submitPrediction.isPending ? 'Enviando...' : 'Enviar Pronóstico'}
                     </Button>
 
                     {/* Info */}
-                    <div className="flex items-center justify-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/20 px-2 py-1.5 rounded-lg">
+                    <div className="flex items-center justify-center gap-1 text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/20 px-1.5 py-1 rounded-md">
                       <Trophy className="w-3 h-3 shrink-0" />
                       <span><strong>100 pts</strong> si aciertas</span>
                     </div>
