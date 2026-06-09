@@ -934,7 +934,7 @@ export const db = {
       _skipBackgroundSync = true;
 
       try {
-        const d = this._init({ skipSync: true });
+        const d = db._init({ skipSync: true });
         const predictions = d.predictions || [];
         const matches = d.matches;
 
