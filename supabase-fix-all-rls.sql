@@ -1,9 +1,12 @@
 -- ============================================================
--- FIX COMPLETO DE RLS - CHESS KING
--- Ejecuta este script en el SQL Editor de Supabase:
--- https://supabase.com/dashboard/project/khrxddafhzvfdyivysay/sql/new
+-- ⚠️  OBSOLETO — USAR supabase-rls-secure.sql EN SU LUGAR
 -- ============================================================
--- Este script es seguro de ejecutar múltiples veces.
+-- Este script deshabilitaba RLS y daba acceso total a la anon key,
+-- lo cual es INSEGURO. Fue la causa del bug "el admin borra algo y
+-- aparece de nuevo" — la anon key podía re-insertar filas.
+--
+-- Ejecuta en su lugar: supabase-rls-secure.sql
+-- Que crea policies reales con auth.uid() y la función is_admin().
 -- ============================================================
 
 -- ─── DESHABILITAR RLS en todas las tablas ───

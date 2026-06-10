@@ -16,7 +16,6 @@ const makeId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const getNow = () => new Date().toISOString();
 
 let _syncInProgress = {};
-let _pollInterval = null;
 let _syncToSupabaseInProgress = false;
 let _syncFromSupabaseInProgress = false;
 let _resyncQueued = false;
@@ -26,6 +25,12 @@ let _skipBackgroundSync = false; // Bloquea sync TO Supabase en _persist() duran
 const _pendingDeletes = []; // { tableName, id }[]
 const CLEAN_AT_KEY = 'chessking_last_clean_at';
 let _lastCleanAt = (() => { try { return localStorage.getItem(CLEAN_AT_KEY) || null; } catch { return null; } })();
+// Watermark por tabla: marca de tiempo de la última sync TO exitosa.
+// Usado por _syncBatchToSupabase para NO re-subir filas que no cambiaron
+// desde la última subida (evita el bug de "el admin borra y la fila
+// reaparece" cuando el cliente hace un syncAllTo indiscriminado).
+const _lastSyncTimestamps = {}; // { [tableName]: ISOString }
+const _uploadedSinceLastDelete = new Set(); // tableName set: subido después de un delete reciente
 
 function sortBy(arr, order) {
   if (!order) return [...arr];
@@ -118,6 +123,7 @@ const getDefaults = () => ({
   referrals: [],
   referralCommissions: [],
   currentUserEmail: null,
+  deletedIds: [],
 });
 
 export const db = {
@@ -138,12 +144,12 @@ export const db = {
       // Limpiar live_started_at para partidos que NO están en vivo (evita timers stale)
       this._cleanStaleLiveTimers();
       this.seedIfEmpty();
-      // Cargar datos desde Supabase en segundo plano (skipSync para operaciones destructivas)
+      // Cargar datos desde Supabase en segundo plano.
+      // IMPORTANTE: NO subimos datos locales de vuelta a Supabase aquí.
+      // El bug histórico era que al hacer `syncFrom` se hacía `syncTo`
+      // inmediatamente, lo cual re-subía filas borradas en el server.
       if (!opts?.skipSync) {
-        this._syncAllFromSupabase().then(() => {
-          // Subir datos locales que aun no esten en la nube (ej: cambios del admin antes del deploy)
-          this._syncAllToSupabase();
-        });
+        this._syncAllFromSupabase();
       }
 
       // Iniciar suscripciones Realtime para detectar cambios al instante
@@ -161,33 +167,37 @@ export const db = {
           }, 500);
         }
       });
-
-      // Sincronizar al volver a la pestaña (visibility change)
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          this._syncAllFromSupabase();
-        }
-      });
-
-      // Polling cada 15s como respaldo (detecta cambios si Realtime no está disponible)
-      if (!_pollInterval) {
-        _pollInterval = setInterval(() => {
-          this._syncAllFromSupabase();
-        }, 15000);
-      }
-
     }
     return this._data;
   },
 
-  _persist() {
+  _persist(changedTable) {
     save(this._data);
     // Limpiar locks para que los cambios se suban a Supabase
     _syncInProgress = {};
     // Durante operaciones admin (dedup, clean), el sync explícito se encarga.
     // Evita race condition donde _persist() lanza un sync que choca con el admin sync.
     if (_skipBackgroundSync) return Promise.resolve();
-    return this._syncAllToSupabase();
+    if (!isSupabaseAvailable()) return Promise.resolve();
+
+    // Debounce de subida: si llegan múltiples _persist() en rápida sucesión
+    // (típico cuando un flujo toca varias tablas), solo subimos una vez al final.
+    // Esto evita el problema clásico: el cliente sube 1 fila, recibe el eco via
+    // Realtime, hace syncFrom, y luego sube de nuevo — duplicando el trabajo.
+    if (this._persistDebounceTimer) clearTimeout(this._persistDebounceTimer);
+    const tablesToSync = changedTable ? [changedTable] : null;
+    this._persistDebounceTimer = setTimeout(() => {
+      this._persistDebounceTimer = null;
+      if (tablesToSync) {
+        // Sync selectivo: solo las tablas que se tocaron en este _persist
+        for (const t of tablesToSync) {
+          this._syncSingleTable(t).catch(() => {});
+        }
+      } else {
+        this._syncAllToSupabase().catch(() => {});
+      }
+    }, 800);
+    return Promise.resolve();
   },
 
   /**
@@ -241,7 +251,11 @@ export const db = {
     const localRecords = this._data[jsKey] || [];
     const remoteRecords = await syncTableFromSupabaseFn(jsKey, localRecords);
     if (remoteRecords && remoteRecords !== localRecords) {
-      this._data[jsKey] = remoteRecords;
+      // Filtrar IDs eliminados permanentemente
+      const filteredRemote = Array.isArray(remoteRecords)
+        ? remoteRecords.filter(r => !this._isDeletedId(jsKey, r.id))
+        : remoteRecords;
+      this._data[jsKey] = filteredRemote;
       save(this._data);
       this._notifyReactComponents();
       return true;
@@ -285,20 +299,30 @@ export const db = {
         })
       );
 
+      // Cargar deletedIds remotos para fusionarlos con los locales
+      // (esto evita que otro dispositivo re-upload items eliminados)
+      await this._syncDeletedIdsFromCloud();
+
       for (const { jsKey, localRecords, remoteRecords } of syncResults) {
         if (remoteRecords && remoteRecords !== localRecords) {
+          // Filtrar IDs eliminados permanentemente de los datos remotos
+          // (esto evita que un sync FROM desde Supabase resucite el item)
+          const filteredRemote = Array.isArray(remoteRecords)
+            ? remoteRecords.filter(r => !this._isDeletedId(jsKey, r.id))
+            : remoteRecords;
+
           // Si se agregaron registros localmente mientras se sincronizaba (ej: una predicción),
           // mezclarlos para no perderlos
           const currentLocal = this._data[jsKey] || [];
           if (currentLocal.length > localRecords.length) {
-            const remoteIds = new Set(remoteRecords.map(r => r.id));
+            const remoteIds = new Set(filteredRemote.map(r => r.id));
             for (const rec of currentLocal) {
               if (!remoteIds.has(rec.id)) {
-                remoteRecords.push(rec);
+                filteredRemote.push(rec);
               }
             }
           }
-          this._data[jsKey] = remoteRecords;
+          this._data[jsKey] = filteredRemote;
           changed = true;
         }
       }
@@ -313,6 +337,61 @@ export const db = {
     } finally {
       _syncFromSupabaseInProgress = false;
     }
+  },
+
+  // Sincronizar deletedIds desde Supabase (app_settings) para propagar
+  // eliminaciones entre dispositivos y evitar que un item borrado reaparezca.
+  async _syncDeletedIdsFromCloud() {
+    if (!supabase) return;
+    try {
+      const { data: settings } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'deleted_ids')
+        .limit(1);
+      if (settings && settings.length > 0 && settings[0].value) {
+        const remoteDeleted = JSON.parse(settings[0].value);
+        if (Array.isArray(remoteDeleted) && remoteDeleted.length > 0) {
+          const d = this._init();
+          let merged = false;
+          for (const entry of remoteDeleted) {
+            if (!d.deletedIds.includes(entry)) {
+              d.deletedIds.push(entry);
+              merged = true;
+            }
+          }
+          if (merged) {
+            save(d);
+          }
+        }
+      }
+    } catch {}
+  },
+
+  // Subir deletedIds a Supabase (app_settings) para que otros dispositivos
+  // sepan qué IDs no deben re-subir.
+  async _syncDeletedIdsToCloud() {
+    if (!supabase) return;
+    const d = this._init();
+    if (d.deletedIds.length === 0) return;
+    try {
+      const value = JSON.stringify(d.deletedIds);
+      const { data: existing } = await supabase
+        .from('app_settings')
+        .select('id')
+        .eq('key', 'deleted_ids')
+        .limit(1);
+      if (existing && existing.length > 0) {
+        await supabase.from('app_settings').update({ value }).eq('id', existing[0].id);
+      } else {
+        await supabase.from('app_settings').insert({
+          id: makeId(),
+          key: 'deleted_ids',
+          value,
+          created_date: getNow(),      });
+
+    }
+    } catch {}
   },
 
   // Procesar eliminaciones pendientes en Supabase
@@ -343,14 +422,62 @@ export const db = {
       const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
       const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
         const records = this._data[jsKey] || [];
-        if (records.length > 0) acc.push({ jsKey, records });
+        if (records.length === 0) return acc;
+        // Filtrar IDs eliminados permanentemente para que no se re-suban a Supabase
+        // (esto evita que un sync TO desde otro tab/device resucite el item)
+        const filtered = records.filter(r => !this._isDeletedId(jsKey, r.id));
+        if (filtered.length === 0) return acc;
+        // ── Watermark: solo subir filas modificadas desde la última sync TO ──
+        // FIX PRINCIPAL: antes subíamos TODA la tabla local a Supabase en
+        // cada syncAllTo. Si el admin borraba una fila en el SQL Editor y
+        // luego hacía CUALQUIER persistencia, el cliente re-subía esa fila
+        // borrada porque seguía en localStorage. Ahora solo subimos filas
+        // cuyo updated_at > _lastSyncTimestamps[tableName] (o que no tengan
+        // updated_at, ej: tablas de catálogo).
+        const tableName = tableNameToSupabase(jsKey);
+        const lastSync = _lastSyncTimestamps[tableName];
+        const toUpload = lastSync
+          ? filtered.filter(r => !r.updated_at || new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
+          : filtered;
+        if (toUpload.length > 0) {
+          acc.push({ jsKey, records: toUpload });
+        }
         return acc;
       }, []);
       await Promise.all(
-        tablesWithData.map(({ jsKey, records }) => syncTableToSupabaseFn(jsKey, records))
+        tablesWithData.map(async ({ jsKey, records }) => {
+          await syncTableToSupabaseFn(jsKey, records);
+          const tableName = tableNameToSupabase(jsKey);
+          _lastSyncTimestamps[tableName] = new Date().toISOString();
+        })
       );
     } finally {
       _syncToSupabaseInProgress = false;
+    }
+  },
+
+  // Sincronizar UNA SOLA tabla a Supabase (para escrituras individuales)
+  async _syncSingleTable(jsKey) {
+    if (!isSupabaseAvailable()) return;
+    await this._processPendingDeletes();
+    const records = this._data[jsKey] || [];
+    const filtered = records.filter(r => !this._isDeletedId(jsKey, r.id));
+    if (filtered.length > 0) {
+      // FIX: respetar watermark también en syncSingleTable para no re-subir
+      // filas no modificadas (causa principal de filas borradas que reaparecen).
+      const tableName = tableNameToSupabase(jsKey);
+      const lastSync = _lastSyncTimestamps[tableName];
+      const toUpload = lastSync
+        ? filtered.filter(r => !r.updated_at || new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
+        : filtered;
+      if (toUpload.length > 0) {
+        await syncTableToSupabaseFn(jsKey, toUpload);
+        _lastSyncTimestamps[tableName] = new Date().toISOString();
+      }
+    }
+    if (_resyncFromQueued) {
+      _resyncFromQueued = false;
+      await this._syncAllFromSupabaseInternal();
     }
   },
 
@@ -439,6 +566,27 @@ export const db = {
   reset() {
     this._data = getDefaults();
     this._persist();
+  },
+
+  /**
+   * Registra un ID como eliminado permanentemente.
+   * Evita que reaparezca vía sync desde otros dispositivos o tabs.
+   */
+  _addDeletedId(tableName, id) {
+    const d = this._init();
+    const entry = `${tableName}:${id}`;
+    if (!d.deletedIds.includes(entry)) {
+      d.deletedIds.push(entry);
+      save(d);
+    }
+  },
+
+  /**
+   * Verifica si un ID está marcado como eliminado permanentemente.
+   */
+  _isDeletedId(tableName, id) {
+    const d = this._init();
+    return d.deletedIds.includes(`${tableName}:${id}`);
   },
 
   /**
@@ -679,7 +827,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.users.push(record);
-      await db._persist();
+      await db._persist('users');
       return record;
     },
     update(id, data) {
@@ -687,7 +835,7 @@ export const db = {
       const idx = d.users.findIndex(u => u.id === id);
       if (idx === -1) throw new Error('User not found');
       d.users[idx] = { ...d.users[idx], ...data, updated_at: getNow() };
-      db._persist();
+      db._persist('users');
       return d.users[idx];
     },
     findById(id) {
@@ -786,7 +934,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.matches.push(record);
-      db._persist();
+      db._persist('matches');
       return record;
     },
     update(id, data) {
@@ -794,7 +942,7 @@ export const db = {
       const idx = d.matches.findIndex(m => m.id === id);
       if (idx === -1) throw new Error('Match not found');
       d.matches[idx] = { ...d.matches[idx], ...data, updated_at: getNow() };
-      db._persist();
+      db._persist('matches');
       return d.matches[idx];
     },
     async clearAll() {
@@ -812,7 +960,7 @@ export const db = {
         await Promise.all(promises);
       }
       d.matches = [];
-      db._persist();
+      db._persist('matches');
     },
 
     /**
@@ -956,7 +1104,7 @@ export const db = {
         ...m
       }));
       d.matches.push(...records);
-      db._persist();
+      db._persist('matches');
       return records;
     },
 
@@ -1199,12 +1347,12 @@ export const db = {
       if (existing) {
         // Actualizar el existente en lugar de crear duplicado
         Object.assign(existing, data, { updated_at: getNow() });
-        db._persist();
+        db._persist('predictions');
         return existing;
       }
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.predictions.push(record);
-      db._persist();
+      db._persist('predictions');
       return record;
     },
     update(id, data) {
@@ -1212,7 +1360,7 @@ export const db = {
       const idx = d.predictions.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prediction not found');
       d.predictions[idx] = { ...d.predictions[idx], ...data, updated_at: getNow() };
-      db._persist();
+      db._persist('predictions');
       return d.predictions[idx];
     },
   },
@@ -1292,34 +1440,48 @@ export const db = {
   prizes: {
     list(order) {
       const d = db._init().prizes;
-      // Migrar premios legacy a dinámico (one-time)
-      for (const p of d.prizes) {
-        db._migratePrizeToDynamic(p);
+      try {
+        // Migrar premios legacy a dinámico (one-time)
+        for (const p of d) {
+          db._migratePrizeToDynamic(p);
+        }
+        return sortBy(d, order).map(p => ({
+          ...p,
+          units_available: db._getAvailableStock(p),
+          sizes: db._getAvailableSizes(p),
+        }));
+      } catch (err) {
+        console.error('[DB] Error en prizes.list():', err);
+        // Fallback: devolver datos sin procesar o array vacío
+        if (Array.isArray(d)) return sortBy(d, order);
+        return [];
       }
-      return sortBy(d, order).map(p => ({
-        ...p,
-        units_available: db._getAvailableStock(p),
-        sizes: db._getAvailableSizes(p),
-      }));
     },
     filter(fields, order) {
-      let d = db._init().prizes.filter(p =>
-        Object.entries(fields).every(([k, v]) => p[k] === v)
-      );
-      // Migrar premios legacy a dinámico
-      for (const p of d) {
-        db._migratePrizeToDynamic(p);
+      const allPrizes = db._init().prizes;
+      try {
+        let d = allPrizes.filter(p =>
+          Object.entries(fields).every(([k, v]) => p[k] === v)
+        );
+        // Migrar premios legacy a dinámico
+        for (const p of d) {
+          db._migratePrizeToDynamic(p);
+        }
+        if (order) {
+          const field = order.startsWith('-') ? order.slice(1) : order;
+          const dir = order.startsWith('-') ? -1 : 1;
+          d.sort((a, b) => ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir);
+        }
+        return d.map(p => ({
+          ...p,
+          units_available: db._getAvailableStock(p),
+          sizes: db._getAvailableSizes(p),
+        }));
+      } catch (err) {
+        console.error('[DB] Error en prizes.filter():', err);
+        if (Array.isArray(allPrizes)) return allPrizes;
+        return [];
       }
-      if (order) {
-        const field = order.startsWith('-') ? order.slice(1) : order;
-        const dir = order.startsWith('-') ? -1 : 1;
-        d.sort((a, b) => ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir);
-      }
-      return d.map(p => ({
-        ...p,
-        units_available: db._getAvailableStock(p),
-        sizes: db._getAvailableSizes(p),
-      }));
     },
     create(data) {
       const d = db._init();
@@ -1341,7 +1503,7 @@ export const db = {
         sizes: originalSizes ? { ...originalSizes } : (data.sizes || null),
       };
       d.prizes.push(record);
-      db._persist();
+      db._persist('prizes');
       return record;
     },
     update(id, data) {
@@ -1354,7 +1516,7 @@ export const db = {
         updateData.original_stock = db._sumSizesStock(data.original_sizes);
       }
       d.prizes[idx] = { ...d.prizes[idx], ...updateData };
-      db._persist();
+      db._persist('prizes');
       // Retornar con valores calculados
       const updated = d.prizes[idx];
       return {
@@ -1374,6 +1536,8 @@ export const db = {
         const idx = d.prizes.findIndex(p => p.id === id);
         if (idx === -1) throw new Error('Prize not found');
         d.prizes.splice(idx, 1);
+        // Marcar como eliminado permanentemente para evitar reaparición
+        db._addDeletedId('prizes', id);
         save(d);
 
         // Eliminar DIRECTAMENTE de Supabase con await (no silencioso) para
@@ -1385,9 +1549,15 @@ export const db = {
           }
         }
 
-        // Subir el resto del estado y descargar fresco desde la nube.
+        // Liberar bloqueos antes del sync para que _syncSingleTableFromSupabase funcione
+        _blockFromSync = false;
         _skipBackgroundSync = false;
-        await db.syncAdminChanges();
+
+        // Subir premios a Supabase (sin el eliminado) y descargar estado fresco
+        await db._syncSingleTable('prizes');
+        await db._syncSingleTableFromSupabase('prizes');
+        // Propagar la lista de IDs eliminados a otros dispositivos
+        await db._syncDeletedIdsToCloud();
         notifyReactComponents();
         return true;
       } finally {
@@ -1418,7 +1588,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.redemptions.push(record);
-      db._persist();
+      db._persist('redemptions');
       return record;
     },
     update(id, data) {
@@ -1426,7 +1596,7 @@ export const db = {
       const idx = d.redemptions.findIndex(r => r.id === id);
       if (idx === -1) throw new Error('Redemption not found');
       d.redemptions[idx] = { ...d.redemptions[idx], ...data, updated_at: getNow() };
-      db._persist();
+      db._persist('redemptions');
       return d.redemptions[idx];
     },
   },
@@ -1498,7 +1668,7 @@ export const db = {
       delete record.message;
       delete record.admin_reply;
       d.supportTickets.push(record);
-      db._persist();
+      db._persist('supportTickets');
       return record;
     },
     update(id, data) {
@@ -1508,7 +1678,7 @@ export const db = {
       // No permitir sobrescribir messages con update directo
       if (data.messages) delete data.messages;
       d.supportTickets[idx] = { ...d.supportTickets[idx], ...data, updated_at: getNow() };
-      db._persist();
+      db._persist('supportTickets');
       return db._migrateTicket(d.supportTickets[idx]);
     },
 
@@ -1531,7 +1701,7 @@ export const db = {
       } else if (sender === 'admin') {
         d.supportTickets[idx].status = 'answered';
       }
-      db._persist();
+      db._persist('supportTickets');
       return d.supportTickets[idx];
     },
 
@@ -1548,7 +1718,7 @@ export const db = {
       } else if (role === 'admin') {
         d.supportTickets[idx].admin_read_at = now;
       }
-      db._persist();
+      db._persist('supportTickets');
     },
 
     /**
@@ -1665,7 +1835,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.pointsBonuses.push(record);
-      db._persist();
+      db._persist('pointsBonuses');
       return record;
     },
   },
@@ -1682,7 +1852,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.appSettings.push(record);
-      db._persist();
+      db._persist('appSettings');
       return record;
     },
     update(id, data) {
@@ -1690,7 +1860,7 @@ export const db = {
       const idx = d.appSettings.findIndex(s => s.id === id);
       if (idx === -1) throw new Error('Setting not found');
       d.appSettings[idx] = { ...d.appSettings[idx], ...data, updated_at: getNow() };
-      db._persist();
+      db._persist('appSettings');
       return d.appSettings[idx];
     },
   },
@@ -1705,7 +1875,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.auditLogs.push(record);
-      db._persist();
+      db._persist('auditLogs');
       return record;
     },
   },
@@ -1808,7 +1978,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.referrals.push(record);
-      db._persist();
+      db._persist('referrals');
       return record;
     },
   },
@@ -1828,7 +1998,7 @@ export const db = {
       const d = db._init();
       const record = { id: makeId(), created_date: getNow(), ...data };
       d.referralCommissions.push(record);
-      db._persist();
+      db._persist('referralCommissions');
       return record;
     },
   },
