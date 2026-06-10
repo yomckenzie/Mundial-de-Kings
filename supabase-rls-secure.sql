@@ -129,7 +129,7 @@ ALTER TABLE public.audit_logs           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.referrals            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.referral_commissions  ENABLE ROW LEVEL SECURITY;
 
--- Eliminar policies allow_all previas
+-- Eliminar policies previas (idempotente: dropear ANTES de crear)
 DO $$
 DECLARE r record;
 BEGIN
@@ -144,7 +144,22 @@ BEGIN
         'allow_all_referrals', 'allow_all_referral_commissions',
         'anon_insert_users', 'anon_select_users', 'anon_update_users', 'anon_delete_users',
         'anon_all_predictions', 'anon_all_redemptions', 'anon_all_support_tickets',
-        'allow_all'
+        'allow_all',
+        -- Policies creadas por este mismo script (para re-ejecución idempotente)
+        'users_select_all', 'users_insert_all', 'users_update_admin', 'users_delete_admin',
+        'matches_select_all', 'matches_admin_write',
+        'predictions_select_all', 'predictions_insert_all',
+        'predictions_admin_update', 'predictions_admin_delete',
+        'prizes_select_all', 'prizes_admin_write',
+        'redemptions_select_all', 'redemptions_insert_all',
+        'redemptions_admin_update', 'redemptions_admin_delete',
+        'support_select_all', 'support_insert_all',
+        'support_admin_update', 'support_admin_delete',
+        'points_bonuses_select_all', 'points_bonuses_admin_write',
+        'app_settings_select_all', 'app_settings_admin_write',
+        'audit_logs_admin_all',
+        'referrals_select_all', 'referrals_insert_all', 'referrals_admin_update',
+        'referral_commissions_select_all', 'referral_commissions_admin_write'
       )
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
@@ -329,6 +344,7 @@ DROP POLICY IF EXISTS "Permitir actualización solo admin" ON storage.objects;
 DROP POLICY IF EXISTS "Permitir borrado solo admin" ON storage.objects;
 DROP POLICY IF EXISTS "banners_public_read" ON storage.objects;
 DROP POLICY IF EXISTS "banners_admin_insert" ON storage.objects;
+DROP POLICY IF EXISTS "banners_anon_insert" ON storage.objects;
 DROP POLICY IF EXISTS "banners_admin_update" ON storage.objects;
 DROP POLICY IF EXISTS "banners_admin_delete" ON storage.objects;
 
