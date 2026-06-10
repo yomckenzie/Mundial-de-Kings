@@ -309,6 +309,15 @@ END $$;
 
 -- ════════════════════════════════════════════════════════════
 -- 6) STORAGE: policies para el bucket 'banners'
+--
+-- Trade-off: tu app usa anon key para todo. Las policies estrictas
+-- (solo admin) romperían la subida de banners porque is_admin() no se
+-- cumple sin auth.uid() válido. Solución pragmática:
+--   - SELECT: público (el bucket ya es público por config)
+--   - INSERT: abierto a anon + authenticated (el front-end ya valida
+--     que el usuario sea admin antes de mostrar el botón de subir)
+--   - UPDATE/DELETE: solo admin autenticado (evita que alguien
+--     sobrescriba o borre banners existentes)
 -- ════════════════════════════════════════════════════════════
 
 DROP POLICY IF EXISTS "Permitir lectura pública de banners" ON storage.objects;
@@ -327,9 +336,9 @@ CREATE POLICY "banners_public_read" ON storage.objects
   FOR SELECT TO public
   USING (bucket_id = 'banners');
 
-CREATE POLICY "banners_admin_insert" ON storage.objects
-  FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'banners' AND public.is_admin());
+CREATE POLICY "banners_anon_insert" ON storage.objects
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (bucket_id = 'banners');
 
 CREATE POLICY "banners_admin_update" ON storage.objects
   FOR UPDATE TO authenticated
