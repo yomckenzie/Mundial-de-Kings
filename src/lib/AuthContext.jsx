@@ -32,6 +32,12 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     let authSubscription = null;
+    let dbSyncListener = null;
+
+    const refreshCurrentUser = () => {
+      const current = db.getCurrentUser();
+      dispatch({ type: 'SET_USER', user: current });
+    };
 
     const initAuth = async () => {
       try {
@@ -40,19 +46,26 @@ export const AuthProvider = ({ children }) => {
           if (session?.user) {
             db.setCurrentUserEmail(session.user.email);
             // Sincronizar desde la nube al cargar para tener datos actualizados
+            // _init() ya inició una sync FROM; forceSyncFromCloud() ahora espera
+            // la promesa de la sync en progreso gracias al fix _syncFromPromise
             await db.forceSyncFromCloud();
-            const current = db.getCurrentUser();
-            dispatch({ type: 'SET_USER', user: current });
+            refreshCurrentUser();
           }
         }
       } catch (err) {
-        console.error("Auth init error:", err);
+        console.warn("Auth init error:", err?.message || err);
       } finally {
         dispatch({ type: 'INIT_DONE' });
       }
     };
 
     initAuth();
+
+    // Escuchar syncs posteriores (Realtime, etc.) para refrescar el usuario
+    dbSyncListener = () => {
+      refreshCurrentUser();
+    };
+    window.addEventListener('db-synced', dbSyncListener);
 
     if (isSupabaseAvailable()) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -70,6 +83,7 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       if (authSubscription) authSubscription.unsubscribe();
+      if (dbSyncListener) window.removeEventListener('db-synced', dbSyncListener);
     };
   }, []);
 

@@ -126,8 +126,8 @@ async function main() {
       console.log('');
       console.log('   UPDATE prizes p');
       console.log('   SET original_stock = COALESCE(p.units_available, 0) + (');
-      console.log('     SELECT COUNT(*) FROM redemptions r');
-      console.log('     WHERE r.prize_id = p.id AND r.status IN (\\'pending\\', \\'approved\\', \\'delivered\\')');
+      console.log("     SELECT COUNT(*) FROM redemptions r");
+      console.log("     WHERE r.prize_id = p.id AND r.status IN ('pending', 'approved', 'delivered')");
       console.log('   )');
       console.log("   WHERE p.original_stock IS NULL OR p.original_stock = 0;");
       console.log('');

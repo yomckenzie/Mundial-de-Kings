@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
+import { db } from '@/lib/db';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, X, Layers } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function AdminPredictions() {
   const [selectedMatch, setSelectedMatch] = useState('all');
+  const [deduping, setDeduping] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: matches = [] } = useQuery({
     queryKey: ['admin-matches-pred'],
@@ -25,19 +30,43 @@ export default function AdminPredictions() {
   const matchMap = {};
   matches.forEach(m => { matchMap[m.id] = m; });
 
+  const handleDedupe = async () => {
+    if (!window.confirm('¿Eliminar pronósticos duplicados (mismo usuario + mismo partido)?\n\nSe conservará la versión con más información (scored + puntos).')) return;
+    setDeduping(true);
+    try {
+      const result = await db.predictions.deduplicate();
+      if (result.deleted === 0) {
+        toast.success('No se encontraron pronósticos duplicados ✅');
+      } else {
+        toast.success(`🧹 ${result.deleted} pronósticos duplicados eliminados (de ${result.scanned} revisados)`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['admin-predictions'] });
+      queryClient.invalidateQueries({ queryKey: ['ranking'] });
+    } catch (e) {
+      toast.error('Error al deduplicar: ' + e.message);
+    } finally {
+      setDeduping(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <Select value={selectedMatch} onValueChange={setSelectedMatch}>
-        <SelectTrigger className="w-full max-w-sm">
-          <SelectValue placeholder="Filtrar por partido" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todos los partidos</SelectItem>
-          {matches.map(m => (
-            <SelectItem key={m.id} value={m.id}>{m.team1} vs {m.team2}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={selectedMatch} onValueChange={setSelectedMatch}>
+          <SelectTrigger className="w-full max-w-sm">
+            <SelectValue placeholder="Filtrar por partido" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los partidos</SelectItem>
+            {matches.map(m => (
+              <SelectItem key={m.id} value={m.id}>{m.team1} vs {m.team2}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="secondary" size="sm" onClick={handleDedupe} disabled={deduping} className="gap-2">
+          <Layers className="w-4 h-4" /> {deduping ? 'Deduplicando...' : 'Deduplicar pronósticos'}
+        </Button>
+      </div>
 
       <p className="text-sm text-muted-foreground">{predictions.length} pronósticos</p>
 

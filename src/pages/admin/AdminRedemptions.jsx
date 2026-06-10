@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { CheckCircle2, Package, Instagram, Music2, User, Phone, Fingerprint, Copy, ExternalLink, CalendarDays, Target, Sparkles, Gift, TrendingUp, Clock, Users, ChevronDown, ChevronUp, X, Ban } from 'lucide-react';
+import { CheckCircle2, Package, User, X, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import UserProfileCard from '@/components/admin/UserProfileCard';
 import { format } from 'date-fns';

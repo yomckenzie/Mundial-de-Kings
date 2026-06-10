@@ -1,5 +1,5 @@
 import { m } from 'framer-motion';
-import { Crown, Medal, Award, TrendingUp, Target, Zap } from 'lucide-react';
+import { Crown, Medal, Award, Target, Zap } from 'lucide-react';
 
 const containerVariants = {
   hidden: { opacity: 0 },

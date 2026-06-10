@@ -18,6 +18,7 @@ const getNow = () => new Date().toISOString();
 let _syncInProgress = {};
 let _syncToSupabaseInProgress = false;
 let _syncFromSupabaseInProgress = false;
+let _syncFromPromise = null; // Promise que resuelve cuando termina la sync FROM actual
 let _resyncQueued = false;
 let _resyncFromQueued = false;
 let _blockFromSync = false; // Bloquea sync FROM Supabase durante operaciones destructivas
@@ -66,6 +67,24 @@ const TABLE_MAP = {
   referralCommissions: TABLES.referral_commissions,
 };
 
+// --- Natural key por tabla (columnas que definen identidad lógica) ---
+// Se usa como `onConflict` en upsert para que multi-device (que genera ids
+// locales distintos) no cree duplicados. Requiere que la tabla tenga un
+// UNIQUE INDEX en Supabase con estas columnas en el mismo orden.
+const NATURAL_KEYS = {
+  predictions: 'user_email,match_id',
+  referrals: 'referrer_email,referred_email',
+  referralCommissions: 'to_email,match_id,level',
+  matches: 'fixture_id',
+  users: 'email',
+  appSettings: 'key',
+  prizes: null,        // sin UNIQUE compuesta; usa id
+  redemptions: null,   // sin UNIQUE compuesta; usa id
+  supportTickets: null,// sin UNIQUE compuesta; usa id
+  pointsBonuses: null, // sin UNIQUE compuesta; usa id
+  auditLogs: null,     // sin UNIQUE compuesta; usa id
+};
+
 // --- Sincronización con Supabase ---
 
 const tableNameToSupabase = (jsKey) => TABLE_MAP[jsKey] || jsKey;
@@ -77,6 +96,8 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
   if (_syncInProgress[key]) return;
   _syncInProgress[key] = true;
   try {
+    // Determinar conflict target: natural key (UNIQUE compuesta) o 'id'
+    const naturalKey = NATURAL_KEYS[jsKey] || 'id';
     if (jsKey === 'appSettings') {
       if (!supabase) return;
       const cleaned = stripLocalFields(records);
@@ -85,6 +106,23 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
       // Más seguro que DELETE+INSERT (no borra datos si el INSERT falla)
       const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: 'key' });
       if (error) throw error;
+    } else if (naturalKey && naturalKey !== 'id') {
+      // Tabla con UNIQUE compuesta (predictions, referrals, etc.) —
+      // usar natural key como conflict target permite que un upsert
+      // con id local NUEVO no choque con un registro existente que
+      // tiene el mismo par (user_email, match_id) u otro.
+      const cleaned = stripLocalFields(records);
+      if (cleaned.length === 0) return;
+      const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: naturalKey });
+      if (error) {
+        // Si la UNIQUE compuesta no existe aún en Supabase (aún no se ejecutó
+        // la migración), fallback a onConflict='id' para no romper.
+        if (error.code === '42P10' || error.message?.includes('ON CONFLICT')) {
+          await syncTableToSupabase(tableName, records);
+        } else {
+          throw error;
+        }
+      }
     } else {
       await syncTableToSupabase(tableName, records);
     }
@@ -265,11 +303,17 @@ export const db = {
 
   // Implementación interna de sincronización desde Supabase
   async _syncAllFromSupabaseInternal() {
-    if (_syncFromSupabaseInProgress || _blockFromSync) return;
+    if (_syncFromSupabaseInProgress || _blockFromSync) {
+      // Si ya hay una sync en progreso, devolver la promesa existente
+      // para que quien llame pueda await-la.
+      return _syncFromPromise || undefined;
+    }
 
     _syncFromSupabaseInProgress = true;
-    try {
-      // 0. Verificar si hay un timestamp de limpieza en Supabase
+    // Crear una promesa que resuelve cuando termine esta sync
+    _syncFromPromise = (async () => {
+      try {
+        // 0. Verificar si hay un timestamp de limpieza en Supabase
       //    más reciente que el local — evita que clientes re-suban datos borrados
       if (supabase) {
         try {
@@ -281,8 +325,7 @@ export const db = {
               if (!_lastCleanAt || new Date(remoteCleanAt).getTime() > new Date(_lastCleanAt).getTime()) {
                 _lastCleanAt = remoteCleanAt;
                 try { localStorage.setItem(CLEAN_AT_KEY, _lastCleanAt); } catch {}
-
-              }
+          }
             }
           }
         } catch {}
@@ -332,11 +375,14 @@ export const db = {
 
         this._notifyReactComponents();
       }
-    } catch {
-      // Error silencioso al sincronizar desde Supabase
-    } finally {
-      _syncFromSupabaseInProgress = false;
-    }
+      } catch {
+        // Error silencioso al sincronizar desde Supabase
+      } finally {
+        _syncFromSupabaseInProgress = false;
+        _syncFromPromise = null; // Limpiar la promesa al terminar
+      }
+    })();
+    return _syncFromPromise;
   },
 
   // Sincronizar deletedIds desde Supabase (app_settings) para propagar
@@ -517,7 +563,12 @@ export const db = {
       return { success: false, error: 'Supabase no está configurado' };
     }
     this._init();
-    await this._syncAllFromSupabaseForce();
+    // Si ya hay una sync en progreso (de _init()), esperarla
+    if (_syncFromPromise) {
+      await _syncFromPromise;
+    } else {
+      await this._syncAllFromSupabaseForce();
+    }
     return { success: true };
   },
 
@@ -1363,6 +1414,126 @@ export const db = {
       db._persist('predictions');
       return d.predictions[idx];
     },
+
+    /**
+     * Deduplicar pronósticos: agrupa por (user_email, match_id), mantiene
+     * la fila con más información (scored=true con puntos > 0, o la más
+     * reciente), y elimina los duplicados.
+     *
+     * Robustez anti-reaparición (mismo patrón que matches.deduplicate):
+     *  1. Bloquea sync FROM Supabase y sync TO en _persist()
+     *  2. Elimina duplicados en Supabase DIRECTAMENTE
+     *  3. Sube el estado limpio a Supabase
+     *  4. Hace sync round-trip final
+     *  5. Libera el bloqueo
+     *
+     * Retorna { deleted, scanned }.
+     */
+    async deduplicate() {
+      _blockFromSync = true;
+      _skipBackgroundSync = true;
+      try {
+        const d = db._init({ skipSync: true });
+        const predictions = d.predictions || [];
+
+        // 1. Agrupar por (user_email, match_id)
+        const groups = {};
+        for (const p of predictions) {
+          if (!p.user_email || !p.match_id) continue;
+          const key = `${p.user_email}|${p.match_id}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(p);
+        }
+
+        const toDelete = [];
+        for (const key of Object.keys(groups)) {
+          const group = groups[key];
+          if (group.length <= 1) continue;
+          // Conservar la fila con scored=true + points_earned más alto,
+          // o la más reciente si empatan
+          const sorted = [...group].sort((a, b) => {
+            const aScore = (a.scored ? 1 : 0) * 1000
+              + (a.points_earned || 0) * 10
+              + new Date(a.updated_at || a.created_date || 0).getTime() / 1e9;
+            const bScore = (b.scored ? 1 : 0) * 1000
+              + (b.points_earned || 0) * 10
+              + new Date(b.updated_at || b.created_date || 0).getTime() / 1e9;
+            return bScore - aScore;
+          });
+          const keep = sorted[0];
+          for (const p of group) {
+            if (p.id !== keep.id) toDelete.push(p.id);
+          }
+        }
+
+        if (toDelete.length === 0) {
+          return { deleted: 0, scanned: predictions.length };
+        }
+
+        // 2. Eliminar DIRECTAMENTE de Supabase
+        if (isSupabaseAvailable() && supabase) {
+          const BATCH = 50;
+          const idBatches = [];
+          for (let i = 0; i < toDelete.length; i += BATCH) {
+            idBatches.push(toDelete.slice(i, i + BATCH));
+          }
+          const deleteErrors = [];
+          await Promise.all(
+            idBatches.map(async (idBatch) => {
+              const { error } = await supabase
+                .from('predictions')
+                .delete()
+                .in('id', idBatch);
+              if (error) deleteErrors.push(error.message || JSON.stringify(error));
+            })
+          );
+          if (deleteErrors.length > 0) {
+            const allFailed = deleteErrors.length === idBatches.length;
+            if (allFailed) {
+              throw new Error(
+                'No se pudieron eliminar predicciones duplicadas en Supabase: ' +
+                deleteErrors.join('; ')
+              );
+            }
+          }
+          // Pase de verificación
+          try {
+            const { data: remaining } = await supabase
+              .from('predictions')
+              .select('id')
+              .in('id', toDelete)
+              .limit(5000);
+            if (remaining && remaining.length > 0) {
+              const remBatches = [];
+              for (let i = 0; i < remaining.length; i += BATCH) {
+                remBatches.push(remaining.slice(i, i + BATCH).map(r => r.id));
+              }
+              await Promise.all(
+                remBatches.map(ids => supabase.from('predictions').delete().in('id', ids))
+              );
+            }
+          } catch {}
+        }
+
+        // 3. Modificar memoria local
+        const deleteSet = new Set(toDelete);
+        d.predictions = d.predictions.filter(p => !deleteSet.has(p.id));
+        save(d);
+
+        // 4. Sync round-trip
+        try {
+          await this.syncAdminChanges();
+        } catch (syncErr) {
+          console.error('[predictions.deduplicate] sync error:', syncErr);
+        }
+
+        notifyReactComponents();
+        return { deleted: toDelete.length, scanned: predictions.length };
+      } finally {
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
+      }
+    },
   },
 
   // --- Helpers para Stock Dinámico ---
@@ -1560,6 +1731,98 @@ export const db = {
         await db._syncDeletedIdsToCloud();
         notifyReactComponents();
         return true;
+      } finally {
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
+      }
+    },
+
+    /**
+     * Deduplicar premios: agrupa por nombre (case-insensitive),
+     * conserva el más antiguo (por created_date, luego por id),
+     * elimina el resto. Útil para limpiar premios demo duplicados
+     * que se generaron con IDs aleatorios antes de usar IDs fijos.
+     */
+    async deduplicate() {
+      _blockFromSync = true;
+      _skipBackgroundSync = true;
+      try {
+        const d = db._init({ skipSync: true });
+        const prizes = d.prizes || [];
+
+        // Agrupar por nombre (case-insensitive)
+        const groups = {};
+        for (const p of prizes) {
+          const key = (p.name || '').toLowerCase().trim();
+          if (!key) continue;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(p);
+        }
+
+        const toDelete = [];
+        for (const key of Object.keys(groups)) {
+          const group = groups[key];
+          if (group.length <= 1) continue;
+          // Conservar el más antiguo (created_date más temprano)
+          // En caso de empate, el de id alfabéticamente menor
+          const sorted = [...group].sort((a, b) => {
+            const aTime = new Date(a.created_date || 0).getTime();
+            const bTime = new Date(b.created_date || 0).getTime();
+            if (aTime !== bTime) return aTime - bTime;
+            return (a.id || '').localeCompare(b.id || '');
+          });
+          const keep = sorted[0];
+          for (const p of group) {
+            if (p.id !== keep.id) toDelete.push(p.id);
+          }
+        }
+
+        if (toDelete.length === 0) {
+          return { deleted: 0, scanned: prizes.length };
+        }
+
+        // Eliminar DIRECTAMENTE de Supabase
+        if (isSupabaseAvailable() && supabase) {
+          const BATCH = 50;
+          const idBatches = [];
+          for (let i = 0; i < toDelete.length; i += BATCH) {
+            idBatches.push(toDelete.slice(i, i + BATCH));
+          }
+          const deleteErrors = [];
+          await Promise.all(
+            idBatches.map(async (idBatch) => {
+              const { error } = await supabase
+                .from('prizes')
+                .delete()
+                .in('id', idBatch);
+              if (error) deleteErrors.push(error.message || JSON.stringify(error));
+            })
+          );
+          if (deleteErrors.length > 0) {
+            const allFailed = deleteErrors.length === idBatches.length;
+            if (allFailed) {
+              throw new Error(
+                'No se pudieron eliminar premios duplicados en Supabase: ' +
+                deleteErrors.join('; ')
+              );
+            }
+          }
+        }
+
+        // Modificar memoria local
+        const deleteSet = new Set(toDelete);
+        d.prizes = d.prizes.filter(p => !deleteSet.has(p.id));
+        save(d);
+
+        // Sync round-trip
+        try {
+          await this.syncAdminChanges();
+        } catch (syncErr) {
+          console.error('[prizes.deduplicate] sync error:', syncErr);
+        }
+
+        notifyReactComponents();
+        return { deleted: toDelete.length, scanned: prizes.length };
       } finally {
         _blockFromSync = false;
         _skipBackgroundSync = false;
@@ -1981,6 +2244,106 @@ export const db = {
       db._persist('referrals');
       return record;
     },
+
+    /**
+     * Deduplicar referidos: agrupa por (referrer_email, referred_email),
+     * conserva el más antiguo (primera vez que se refirieron), elimina el resto.
+     * Mismo patrón anti-reaparición que matches/predictions.
+     */
+    async deduplicate() {
+      _blockFromSync = true;
+      _skipBackgroundSync = true;
+      try {
+        const d = db._init({ skipSync: true });
+        const referrals = d.referrals || [];
+
+        const groups = {};
+        for (const r of referrals) {
+          if (!r.referrer_email || !r.referred_email) continue;
+          const key = `${r.referrer_email}|${r.referred_email}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        }
+
+        const toDelete = [];
+        for (const key of Object.keys(groups)) {
+          const group = groups[key];
+          if (group.length <= 1) continue;
+          // Conservar el más antiguo
+          const sorted = [...group].sort((a, b) =>
+            new Date(a.created_date || 0) - new Date(b.created_date || 0)
+          );
+          const keep = sorted[0];
+          for (const r of group) {
+            if (r.id !== keep.id) toDelete.push(r.id);
+          }
+        }
+
+        if (toDelete.length === 0) {
+          return { deleted: 0, scanned: referrals.length };
+        }
+
+        if (isSupabaseAvailable() && supabase) {
+          const BATCH = 50;
+          const idBatches = [];
+          for (let i = 0; i < toDelete.length; i += BATCH) {
+            idBatches.push(toDelete.slice(i, i + BATCH));
+          }
+          const deleteErrors = [];
+          await Promise.all(
+            idBatches.map(async (idBatch) => {
+              const { error } = await supabase
+                .from('referrals')
+                .delete()
+                .in('id', idBatch);
+              if (error) deleteErrors.push(error.message || JSON.stringify(error));
+            })
+          );
+          if (deleteErrors.length > 0) {
+            const allFailed = deleteErrors.length === idBatches.length;
+            if (allFailed) {
+              throw new Error(
+                'No se pudieron eliminar referidos duplicados en Supabase: ' +
+                deleteErrors.join('; ')
+              );
+            }
+          }
+          // Pase de verificación
+          try {
+            const { data: remaining } = await supabase
+              .from('referrals')
+              .select('id')
+              .in('id', toDelete)
+              .limit(5000);
+            if (remaining && remaining.length > 0) {
+              const remBatches = [];
+              for (let i = 0; i < remaining.length; i += BATCH) {
+                remBatches.push(remaining.slice(i, i + BATCH).map(r => r.id));
+              }
+              await Promise.all(
+                remBatches.map(ids => supabase.from('referrals').delete().in('id', ids))
+              );
+            }
+          } catch {}
+        }
+
+        const deleteSet = new Set(toDelete);
+        d.referrals = d.referrals.filter(r => !deleteSet.has(r.id));
+        save(d);
+
+        try {
+          await this.syncAdminChanges();
+        } catch (syncErr) {
+          console.error('[referrals.deduplicate] sync error:', syncErr);
+        }
+
+        notifyReactComponents();
+        return { deleted: toDelete.length, scanned: referrals.length };
+      } finally {
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
+      }
+    },
   },
 
   // --- Referral Commissions ---
@@ -2000,6 +2363,105 @@ export const db = {
       d.referralCommissions.push(record);
       db._persist('referralCommissions');
       return record;
+    },
+
+    /**
+     * Deduplicar comisiones: agrupa por (to_email, match_id, level),
+     * conserva la de mayor points_earned (cálculo final canónico).
+     */
+    async deduplicate() {
+      _blockFromSync = true;
+      _skipBackgroundSync = true;
+      try {
+        const d = db._init({ skipSync: true });
+        const commissions = d.referralCommissions || [];
+
+        const groups = {};
+        for (const c of commissions) {
+          if (!c.to_email) continue;
+          const key = `${c.to_email}|${c.match_id || 'NULL'}|${c.level || 0}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(c);
+        }
+
+        const toDelete = [];
+        for (const key of Object.keys(groups)) {
+          const group = groups[key];
+          if (group.length <= 1) continue;
+          // Conservar la de mayor points_earned (cálculo más reciente)
+          const sorted = [...group].sort((a, b) =>
+            (b.points_earned || 0) - (a.points_earned || 0)
+          );
+          const keep = sorted[0];
+          for (const c of group) {
+            if (c.id !== keep.id) toDelete.push(c.id);
+          }
+        }
+
+        if (toDelete.length === 0) {
+          return { deleted: 0, scanned: commissions.length };
+        }
+
+        if (isSupabaseAvailable() && supabase) {
+          const BATCH = 50;
+          const idBatches = [];
+          for (let i = 0; i < toDelete.length; i += BATCH) {
+            idBatches.push(toDelete.slice(i, i + BATCH));
+          }
+          const deleteErrors = [];
+          await Promise.all(
+            idBatches.map(async (idBatch) => {
+              const { error } = await supabase
+                .from('referral_commissions')
+                .delete()
+                .in('id', idBatch);
+              if (error) deleteErrors.push(error.message || JSON.stringify(error));
+            })
+          );
+          if (deleteErrors.length > 0) {
+            const allFailed = deleteErrors.length === idBatches.length;
+            if (allFailed) {
+              throw new Error(
+                'No se pudieron eliminar comisiones duplicadas en Supabase: ' +
+                deleteErrors.join('; ')
+              );
+            }
+          }
+          // Pase de verificación
+          try {
+            const { data: remaining } = await supabase
+              .from('referral_commissions')
+              .select('id')
+              .in('id', toDelete)
+              .limit(5000);
+            if (remaining && remaining.length > 0) {
+              const remBatches = [];
+              for (let i = 0; i < remaining.length; i += BATCH) {
+                remBatches.push(remaining.slice(i, i + BATCH).map(r => r.id));
+              }
+              await Promise.all(
+                remBatches.map(ids => supabase.from('referral_commissions').delete().in('id', ids))
+              );
+            }
+          } catch {}
+        }
+
+        const deleteSet = new Set(toDelete);
+        d.referralCommissions = d.referralCommissions.filter(c => !deleteSet.has(c.id));
+        save(d);
+
+        try {
+          await this.syncAdminChanges();
+        } catch (syncErr) {
+          console.error('[referralCommissions.deduplicate] sync error:', syncErr);
+        }
+
+        notifyReactComponents();
+        return { deleted: toDelete.length, scanned: commissions.length };
+      } finally {
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
+      }
     },
   },
 
@@ -2088,11 +2550,12 @@ export const db = {
 
     // NO seedear premios por defecto — el admin los crea desde el panel
     // PERO si el archivo prizes está vacío, seedear ejemplos para preview
+    // Usar IDs fijos para evitar duplicados al sincronizar con Supabase
     if (d.prizes.length === 0) {
       const now = getNow();
       const demoPrizes = [
         {
-          id: makeId(), name: 'Camiseta Oficial', points_cost: 500,
+          id: 'demo-camiseta-oficial', name: 'Camiseta Oficial', points_cost: 500,
           description: 'Camiseta oficial del Mundial de Kings — Edición limitada 2026',
           units_available: 25,
           image_url: 'https://placehold.co/600x400/10b981/ffffff?text=Camiseta',
@@ -2100,7 +2563,7 @@ export const db = {
           created_date: now,
         },
         {
-          id: makeId(), name: 'Gorra Snapback', points_cost: 300,
+          id: 'demo-gorra-snapback', name: 'Gorra Snapback', points_cost: 300,
           description: 'Gorra ajustable con logo bordado',
           units_available: 50,
           image_url: 'https://placehold.co/600x400/f59e0b/ffffff?text=Gorra',
@@ -2108,7 +2571,7 @@ export const db = {
           created_date: now,
         },
         {
-          id: makeId(), name: 'Pulsera Kings', points_cost: 150,
+          id: 'demo-pulsera-kings', name: 'Pulsera Kings', points_cost: 150,
           description: 'Pulsera de silicona con diseño exclusivo',
           units_available: 100,
           image_url: 'https://placehold.co/600x400/8b5cf6/ffffff?text=Pulsera',

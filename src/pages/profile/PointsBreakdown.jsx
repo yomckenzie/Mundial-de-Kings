@@ -1,6 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Award, Target, Star, UserPlus, Gift, TrendingUp, Trophy } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 
 export default function PointsBreakdown({ predictionPoints, bonusPoints, referralPoints, totalSpent, totalPoints, availablePoints, accuracy, correctPreds, scoredPreds }) {
   return (

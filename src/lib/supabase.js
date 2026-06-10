@@ -165,9 +165,30 @@ export function stripLocalFields(records) {
     if (err.code === '23503') {
       return false
     }
-    // Si falla por unique constraint o conflict HTTP, reintentar uno por uno
-    // con onConflict basado en la columna 'id' (funciona para TODAS las tablas)
+    // Si falla por unique constraint o conflict HTTP:
+    //  - Para tablas con UNIQUE en 'id' (la mayoría): reintentar uno por uno
+    //    con onConflict='id' funciona — solo una fila tendrá el id conflictivo.
+    //  - Para tablas con UNIQUE COMPUESTA (predictions, referrals,
+    //    referral_commissions): un INSERT con onConflict='id' NO resuelve
+    //    un conflicto en (user_email, match_id) cuando el id es nuevo.
+    //    En ese caso, las "filas duplicadas" del batch representan el MISMO
+    //    registro lógico que ya está en la BD con otro id local — la app
+    //    cliente las re-sincronizará correctamente en el próximo sync FROM
+    //    (que ahora dedup-ea por natural key). Saltamos la fila y seguimos.
     if (err.code === '23505' || err.status === 409) {
+      const COMPOSITE_KEY_TABLES = new Set([
+        'predictions', 'referrals', 'referral_commissions',
+      ])
+      if (COMPOSITE_KEY_TABLES.has(tableName)) {
+        console.warn(
+          `[Supabase] syncTableToSupabase(${tableName}): 23505 en UNIQUE compuesta. ` +
+          `Las filas con id local nuevo que ya existen en la BD (con otro id) ` +
+          `se consolidarán en el próximo sync FROM. Esto es esperado en escenarios ` +
+          `multi-device y NO es un error.`
+        )
+        // Devolvemos true (éxito parcial) — el sync FROM resolverá la divergencia.
+        return true
+      }
       const results = await Promise.all(cleanedRecords.map(async (record) => {
         try {
           const { error: indError } = await supabase
@@ -355,6 +376,129 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
       const deduped = Array.from(emailMap.values())
       if (deduped.length !== result.length) {
 
+        result.length = 0
+        result.push(...deduped)
+      }
+    }
+
+    // Deduplicar predictions por (user_email, match_id) — evita que un usuario
+    // aparezca con 2-3 pronósticos del mismo partido (multi-device, doble click, etc.)
+    if (changed && tableName === 'predictions') {
+      const umMap = new Map()
+      for (const rec of result) {
+        const key = `${rec.user_email || ''}|${rec.match_id || ''}`
+        if (!key || key === '|') {
+          // Sin claves — conservar tal cual
+          umMap.set(`__nokey_${umMap.size}`, rec)
+          continue
+        }
+        const existing = umMap.get(key)
+        if (!existing) {
+          umMap.set(key, rec)
+        } else {
+          // Preferir la que tenga scored=true con más puntos (la canónica)
+          // o, si empatan, la más reciente por created_date
+          const existingScore = (existing.scored ? 1 : 0) * 1000
+            + (existing.points_earned || 0) * 10
+            + new Date(existing.updated_at || existing.created_date || 0).getTime() / 1e9
+          const recScore = (rec.scored ? 1 : 0) * 1000
+            + (rec.points_earned || 0) * 10
+            + new Date(rec.updated_at || rec.created_date || 0).getTime() / 1e9
+          if (recScore > existingScore) umMap.set(key, rec)
+        }
+      }
+      const deduped = Array.from(umMap.values())
+      if (deduped.length !== result.length) {
+
+        result.length = 0
+        result.push(...deduped)
+      }
+    }
+
+    // Deduplicar referrals por (referrer_email, referred_email) — un usuario solo
+    // cuenta UNA vez como referido por cada referente
+    if (changed && tableName === 'referrals') {
+      const pairMap = new Map()
+      for (const rec of result) {
+        const key = `${rec.referrer_email || ''}|${rec.referred_email || ''}`
+        if (!key || key === '|') {
+          pairMap.set(`__nokey_${pairMap.size}`, rec)
+          continue
+        }
+        if (!pairMap.has(key)) {
+          // Conservar el más antiguo (primera vez que se refirieron)
+          pairMap.set(key, rec)
+        } else {
+          const existing = pairMap.get(key)
+          if (new Date(rec.created_date || 0) < new Date(existing.created_date || 0)) {
+            pairMap.set(key, rec)
+          }
+        }
+      }
+      const deduped = Array.from(pairMap.values())
+      if (deduped.length !== result.length) {
+
+        result.length = 0
+        result.push(...deduped)
+      }
+    }
+
+    // Deduplicar referral_commissions por (to_email, match_id, level)
+    if (changed && tableName === 'referral_commissions') {
+      const cMap = new Map()
+      for (const rec of result) {
+        const key = `${rec.to_email || ''}|${rec.match_id || 'NULL'}|${rec.level || 0}`
+        if (!rec.to_email) {
+          cMap.set(`__nokey_${cMap.size}`, rec)
+          continue
+        }
+        const existing = cMap.get(key)
+        if (!existing) {
+          cMap.set(key, rec)
+        } else {
+          // Preferir el de mayor points_earned (el cálculo final canónico)
+          if ((rec.points_earned || 0) > (existing.points_earned || 0)) {
+            cMap.set(key, rec)
+          }
+        }
+      }
+      const deduped = Array.from(cMap.values())
+      if (deduped.length !== result.length) {
+
+        result.length = 0
+        result.push(...deduped)
+      }
+    }
+
+    // Deduplicar premios por nombre (case-insensitive)
+    // Evita que premios demo con IDs distintos se acumulen al sincronizar
+    // entre múltiples dispositivos. Conserva el más antiguo por created_date.
+    if (changed && tableName === 'prizes') {
+      const nameMap = new Map()
+      for (const rec of result) {
+        const key = (rec.name || '').toLowerCase().trim()
+        if (!key) {
+          // Sin nombre — conservar tal cual
+          nameMap.set(`__noname_${nameMap.size}`, rec)
+          continue
+        }
+        const existing = nameMap.get(key)
+        if (!existing) {
+          nameMap.set(key, rec)
+        } else {
+          // Conservar el más antiguo (created_date más temprano)
+          const existingTime = new Date(existing.created_date || 0).getTime()
+          const recTime = new Date(rec.created_date || 0).getTime()
+          if (recTime < existingTime) {
+            nameMap.set(key, rec)
+          } else if (recTime === existingTime && (rec.id || '') < (existing.id || '')) {
+            // Empate: conservar el de id alfabéticamente menor
+            nameMap.set(key, rec)
+          }
+        }
+      }
+      const deduped = Array.from(nameMap.values())
+      if (deduped.length !== result.length) {
         result.length = 0
         result.push(...deduped)
       }

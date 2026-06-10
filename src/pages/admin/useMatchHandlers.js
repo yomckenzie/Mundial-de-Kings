@@ -1,7 +1,6 @@
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { db } from '@/lib/db';
 import { syncWithBestSource, checkAllSources } from '@/api/dataSources';
 import { seedAllMatches } from '@/api/seedMatches';
 import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';

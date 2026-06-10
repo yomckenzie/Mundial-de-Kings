@@ -1,21 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { useOutletContext, Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useOutletContext } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
 import { m } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Gift, Trophy, Package, UserPlus, Sparkles, TrendingUp, CheckCircle2, ChevronRight, Search } from 'lucide-react';
+import { Gift, Trophy, TrendingUp } from 'lucide-react';
 import PrizeCard from './prizes/PrizeCard';
-import ConfirmRedeemDialog from './prizes/ConfirmRedeemDialog';
 import PreviewImageDialog from './prizes/PreviewImageDialog';
-import SuccessDialog from './prizes/SuccessDialog';
-import { toast } from 'sonner';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -49,26 +42,19 @@ function PrizeSkeleton() {
 }
 
 export default function Prizes() {
-  const { user, setUser } = useOutletContext();
-  const queryClient = useQueryClient();
+  const { user } = useOutletContext();
 
   const userEmail = user?.email || '';
 
-  const [modal, setModal] = useState({ confirmPrize: null, cedulaInput: '', cedulaError: '', showSuccess: null, previewImage: null });
-  const [selectedSize, setSelectedSize] = useState('');
+  const [modal, setModal] = useState({ previewImage: null });
 
   const { data: prizes = [], isLoading } = useQuery({
     queryKey: ['prizes'],
     queryFn: async () => {
-      // ✅ Usar api.entities.Prize.list() que aplica el stock dinámico:
-      //    stock_actual = original_stock - canjes_activos
-      //    tallas_actuales = original_sizes - canjes_por_talla
       const allPrizes = await api.entities.Prize.list();
       const active = allPrizes.filter(p => p.status === 'active');
       if (active.length > 0) return active;
-      // Fallback: si no hay activos, mostrar todos
       if (allPrizes.length > 0) return allPrizes;
-      // Seedear datos por defecto
       db.seedIfEmpty();
       const seeded = await api.entities.Prize.list();
       const seededActive = seeded.filter(p => p.status === 'active');
@@ -90,71 +76,6 @@ export default function Prizes() {
   );
   const totalPoints = user?.total_points || 0;
   const availablePoints = Math.max(0, totalPoints - totalSpent);
-
-  const redeemMutation = useMutation({
-    mutationFn: async (prize) => {
-      if (availablePoints < prize.points_cost) {
-        throw new Error('No tienes suficientes puntos disponibles');
-      }
-      if (prize.units_available <= 0) {
-        throw new Error('Este premio está agotado');
-      }
-
-      // ✅ STOCK DINÁMICO: Ya NO modificamos el premio al canjear.
-      // El stock disponible se calcula automáticamente como:
-      //   stock_actual = original_stock - canjes_activos
-      // Solo creamos la redención — el stock se descuenta solo.
-
-      const sizeToRedeem = selectedSize || null;
-
-      await api.entities.Redemption.create({
-        user_email: user.email,
-        prize_id: prize.id,
-        prize_name: prize.name,
-        points_spent: prize.points_cost,
-        status: 'pending',
-        selected_size: sizeToRedeem,
-      });
-
-      // NOTA: ya NO descontamos de total_points. total_points representa
-      // todos los puntos ganados (nunca disminuye). Los disponibles se
-      // calculan como total_points - puntos_gastados_en_canjes.
-
-      return { prize };
-    },
-    onSuccess: ({ prize }) => {
-      queryClient.invalidateQueries({ queryKey: ['prizes'] });
-      queryClient.invalidateQueries({ queryKey: ['my-redemptions'] });
-      queryClient.invalidateQueries({ queryKey: ['my-bonuses'] });
-      setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '', showSuccess: prize }));
-      setSelectedSize('');
-    },
-    onError: (err) => {
-      toast.error(err.message);
-    },
-  });
-
-  const openConfirmDialog = (prize) => {
-    setModal(m => ({ ...m, cedulaInput: '', cedulaError: '', confirmPrize: prize }));
-    setSelectedSize('');
-  };
-
-  const handleConfirmRedeem = () => {
-    const cedula = modal.cedulaInput.trim();
-    if (!cedula) {
-      setModal(m => ({ ...m, cedulaError: 'Debes ingresar tu cédula' }));
-      return;
-    }
-    if (cedula.length < 3) {
-      setModal(m => ({ ...m, cedulaError: 'Ingresa una cédula válida' }));
-      return;
-    }
-    if (cedula !== user?.cedula) {
-      setModal(m => ({ ...m, cedulaError: 'La cédula no coincide con la registrada. Debe ser la misma que usaste al registrarte.' }));
-      return;
-    }
-    redeemMutation.mutate(modal.confirmPrize);
-  };
 
   if (isLoading) {
     return (
@@ -261,42 +182,16 @@ export default function Prizes() {
           >
             <PrizeCard
               prize={prize}
-              user={user}
-              availablePoints={availablePoints}
-              onRedeem={openConfirmDialog}
               onPreview={(p) => setModal(m => ({ ...m, previewImage: p }))}
-              redeemPending={redeemMutation.isPending}
             />
           </m.div>
         ))}
       </m.div>
 
-      <ConfirmRedeemDialog
-        prize={modal.confirmPrize}
-        open={!!modal.confirmPrize}
-        cedulaInput={modal.cedulaInput}
-        cedulaError={modal.cedulaError}
-        selectedSize={selectedSize}
-        setSelectedSize={setSelectedSize}
-        pending={redeemMutation.isPending}
-        onCedulaChange={(v) => setModal(m => ({ ...m, cedulaInput: v, cedulaError: '' }))}
-        onConfirm={handleConfirmRedeem}
-        onClose={() => {
-          setModal(m => ({ ...m, confirmPrize: null, cedulaInput: '', cedulaError: '' }));
-          setSelectedSize('');
-        }}
-      />
-
       <PreviewImageDialog
         prize={modal.previewImage}
         open={!!modal.previewImage}
         onClose={() => setModal(m => ({ ...m, previewImage: null }))}
-      />
-
-      <SuccessDialog
-        prize={modal.showSuccess}
-        open={!!modal.showSuccess}
-        onClose={() => setModal(m => ({ ...m, showSuccess: null }))}
       />
     </m.div>
   );

@@ -164,7 +164,7 @@ const client = {
       // 2. Subir a Supabase Storage (fallback DataURL eliminado — causaba problemas de sync)
       const publicUrl = await uploadImage(compressedBlob, file.name, 'banners');
         if (!publicUrl) {
-          throw new Error('No se pudo subir la imagen a Supabase Storage. Verifica que el bucket "banners" exista y tenga políticas INSERT + SELECT para anon.');
+          throw new Error('No se pudo subir la imagen. Solo el administrador puede subir archivos. Verifica que hayas iniciado sesión como admin@chessking.com y que el bucket "banners" exista en Supabase.');
         }
         return { file_url: publicUrl, storage: 'supabase' };
       },

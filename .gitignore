@@ -57,3 +57,7 @@ k6-tests/env.js
 # k6 output files (correr con --out json=result.json)
 k6-results/
 *.k6-results.json
+
+# Codebuff
+.agents/
+skills-lock.json

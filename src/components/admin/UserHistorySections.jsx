@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import { Clock, Sparkles, Gift, Users } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 

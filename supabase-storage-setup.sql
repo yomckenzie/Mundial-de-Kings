@@ -35,21 +35,21 @@ ON storage.objects FOR SELECT
 TO public
 USING (bucket_id = 'banners');
 
--- Permitir que CUALQUIERA (público/anon) pueda subir imágenes (INSERT)
-CREATE POLICY "Permitir subida pública de banners"
+-- Solo el ADMIN autenticado puede subir imágenes (INSERT)
+CREATE POLICY "Permitir subida solo admin"
 ON storage.objects FOR INSERT
-TO public
-WITH CHECK (bucket_id = 'banners');
+TO authenticated
+WITH CHECK (bucket_id = 'banners' AND public.is_admin());
 
--- Permitir que CUALQUIERA pueda actualizar imágenes (UPDATE)
-CREATE POLICY "Permitir actualización de banners"
+-- Solo el ADMIN autenticado puede actualizar imágenes (UPDATE)
+CREATE POLICY "Permitir actualización solo admin"
 ON storage.objects FOR UPDATE
-TO public
-USING (bucket_id = 'banners')
-WITH CHECK (bucket_id = 'banners');
+TO authenticated
+USING (bucket_id = 'banners' AND public.is_admin())
+WITH CHECK (bucket_id = 'banners' AND public.is_admin());
 
--- Permitir que CUALQUIERA pueda borrar imágenes (DELETE)
-CREATE POLICY "Permitir borrado de banners"
+-- Solo el ADMIN autenticado puede borrar imágenes (DELETE)
+CREATE POLICY "Permitir borrado solo admin"
 ON storage.objects FOR DELETE
-TO public
-USING (bucket_id = 'banners');
+TO authenticated
+USING (bucket_id = 'banners' AND public.is_admin());

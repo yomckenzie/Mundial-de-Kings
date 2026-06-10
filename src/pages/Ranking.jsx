@@ -7,9 +7,8 @@ import { m, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Trophy, Medal, Award, ChevronLeft, ChevronRight, Download,
-  Crown, TrendingUp, Target, Zap, ArrowUp, Users, RefreshCw
+import { Medal, Award, ChevronLeft, ChevronRight, Download,
+  Crown, TrendingUp, Users, RefreshCw
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';

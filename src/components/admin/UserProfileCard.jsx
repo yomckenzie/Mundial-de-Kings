@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Instagram, Music2, Phone, Fingerprint, CalendarDays, Copy, ExternalLink, Target, Sparkles, Gift, TrendingUp, Clock, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Instagram, Music2, Phone, Fingerprint, CalendarDays, Copy, ExternalLink, Target, Sparkles, Gift, TrendingUp, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';

@@ -20,12 +20,18 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.referrals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.referral_commissions ENABLE ROW LEVEL SECURITY;
 
--- 3. Crear una función auxiliar para identificar al Admin de forma segura e instantánea
+-- 3. Crear una función auxiliar para identificar al Admin de forma segura
+-- Verifica que el usuario autenticado tenga role='admin' en la tabla public.users.
+-- Así funciona con cualquier admin, sin depender de un email hardcodeado.
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean AS $$
 BEGIN
-  RETURN (auth.jwt() ->> 'email' = 'admin@chessking.com'); 
-  -- Nota: Para máxima seguridad post-lanzamiento, cámbialo a: RETURN (auth.uid()::text = 'UUID_DE_TU_ADMIN');
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.users
+    WHERE email = auth.jwt() ->> 'email'
+      AND role = 'admin'
+  );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
