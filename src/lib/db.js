@@ -136,6 +136,13 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
 const syncTableFromSupabaseFn = async (jsKey, localRecords) => {
   const tableName = tableNameToSupabase(jsKey);
   if (!tableName || !isSupabaseAvailable()) return localRecords;
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║ TEMPORAL: No sincronizar premios desde Supabase             ║
+  // ║ Los 400+ premios duplicados en la BD solo se suben (TO),    ║
+  // ║ nunca se bajan (FROM). Hasta limpiar la BD manualmente.     ║
+  // ║ QUITAR esta línea cuando la BD esté limpia.                ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+  if (jsKey === 'prizes') return localRecords;
   try {
     const result = await syncTableFromSupabase(tableName, localRecords, { lastCleanAt: _lastCleanAt });
     if (result) return result;
@@ -2581,6 +2588,34 @@ export const db = {
       ];
       d.prizes.push(...demoPrizes);
       save(d);
+    }
+
+    // ╔═══════════════════════════════════════════════════════════════╗
+    // ║ TEMPORAL: Limpiar duplicados locales si hay más de 10       ║
+    // ║ (producto de los 400+ duplicados que bajaron de Supabase    ║
+    // ║ antes de desactivar el sync FROM).                          ║
+    // ║ QUITAR cuando la BD esté limpia y se reactive sync FROM.    ║
+    // ╚═══════════════════════════════════════════════════════════════╝
+    if (d.prizes.length > 10) {
+      const nameMap = new Map();
+      for (const p of d.prizes) {
+        const key = (p.name || '').toLowerCase().trim();
+        if (!key) continue;
+        if (!nameMap.has(key)) {
+          nameMap.set(key, p);
+        } else {
+          // Conservar el más antiguo
+          const existing = nameMap.get(key);
+          const existingTime = new Date(existing.created_date || 0).getTime();
+          const recTime = new Date(p.created_date || 0).getTime();
+          if (recTime < existingTime || (recTime === existingTime && (p.id || '') < (existing.id || ''))) {
+            nameMap.set(key, p);
+          }
+        }
+      }
+      d.prizes = Array.from(nameMap.values());
+      save(d);
+      console.warn(`[DB] seedIfEmpty: limpiados duplicados locales, quedan ${d.prizes.length} premios`);
     }
   },
 };
