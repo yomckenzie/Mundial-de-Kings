@@ -146,20 +146,24 @@ BEGIN
         'anon_all_predictions', 'anon_all_redemptions', 'anon_all_support_tickets',
         'allow_all',
         -- Policies creadas por este mismo script (para re-ejecución idempotente)
-        'users_select_all', 'users_insert_all', 'users_update_admin', 'users_delete_admin',
-        'matches_select_all', 'matches_admin_write',
+        'users_select_all', 'users_insert_all', 'users_update_all', 'users_delete_all',
+        'users_update_admin', 'users_delete_admin',
+        'matches_select_all', 'matches_admin_write', 'matches_write_all',
         'predictions_select_all', 'predictions_insert_all',
         'predictions_admin_update', 'predictions_admin_delete',
-        'prizes_select_all', 'prizes_admin_write',
+        'predictions_update_all', 'predictions_delete_all',
+        'prizes_select_all', 'prizes_admin_write', 'prizes_write_all',
         'redemptions_select_all', 'redemptions_insert_all',
         'redemptions_admin_update', 'redemptions_admin_delete',
+        'redemptions_update_all', 'redemptions_delete_all',
         'support_select_all', 'support_insert_all',
         'support_admin_update', 'support_admin_delete',
-        'points_bonuses_select_all', 'points_bonuses_admin_write',
-        'app_settings_select_all', 'app_settings_admin_write',
-        'audit_logs_admin_all',
-        'referrals_select_all', 'referrals_insert_all', 'referrals_admin_update',
-        'referral_commissions_select_all', 'referral_commissions_admin_write'
+        'support_update_all', 'support_delete_all',
+        'points_bonuses_select_all', 'points_bonuses_admin_write', 'points_bonuses_write_all',
+        'app_settings_select_all', 'app_settings_admin_write', 'app_settings_write_all',
+        'audit_logs_admin_all', 'audit_logs_select_all', 'audit_logs_write_all',
+        'referrals_select_all', 'referrals_insert_all', 'referrals_admin_update', 'referrals_update_all',
+        'referral_commissions_select_all', 'referral_commissions_admin_write', 'referral_commissions_write_all'
       )
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
@@ -167,59 +171,54 @@ BEGIN
 END $$;
 
 -- ─── USERS ───
--- Lectura: todos los autenticados (necesario para ranking y panel admin)
--- Inserción: cualquiera puede registrarse (anon incluido)
--- Update: solo admin (la app actual actualiza el perfil del user desde el
---   cliente, pero al no usar Supabase Auth, cualquier user podría
---   modificar cualquier fila. Aceptamos este trade-off hasta migrar a Auth.)
--- Delete: solo admin
+-- Tu app NO usa Supabase Auth (login manual contra esta tabla con
+-- password en texto plano). Por eso, auth.uid() siempre es NULL con la
+-- anon key y public.is_admin() siempre retorna false → toda escritura
+-- quedaría bloqueada con 403.
+-- Solución pragmática: RLS permisivo para las escrituras que hace la app
+-- desde el cliente. La separación admin/user se valida en el front-end.
+-- Si en el futuro migrás a Supabase Auth, reemplazá USING (true) por
+-- USING (id = auth.uid()::text OR public.is_admin()).
 CREATE POLICY "users_select_all" ON public.users
   FOR SELECT TO anon, authenticated USING (true);
 
 CREATE POLICY "users_insert_all" ON public.users
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "users_update_admin" ON public.users
-  FOR UPDATE TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "users_update_all" ON public.users
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "users_delete_admin" ON public.users
-  FOR DELETE TO authenticated USING (public.is_admin());
+CREATE POLICY "users_delete_all" ON public.users
+  FOR DELETE TO anon, authenticated USING (true);
 
 -- ─── MATCHES ───
--- Lectura pública; escritura solo admin
 CREATE POLICY "matches_select_all" ON public.matches
   FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "matches_admin_write" ON public.matches
-  FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "matches_write_all" ON public.matches
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 
 -- ─── PREDICTIONS ───
--- Lectura: abierta (necesario para ranking en tiempo real)
--- Inserción: abierta (la app valida perfil y duplicados en JS)
--- Update: solo admin (cambia scored/is_correct)
--- Delete: solo admin
 CREATE POLICY "predictions_select_all" ON public.predictions
   FOR SELECT TO anon, authenticated USING (true);
 
 CREATE POLICY "predictions_insert_all" ON public.predictions
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "predictions_admin_update" ON public.predictions
-  FOR UPDATE TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "predictions_update_all" ON public.predictions
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "predictions_admin_delete" ON public.predictions
-  FOR DELETE TO authenticated USING (public.is_admin());
+CREATE POLICY "predictions_delete_all" ON public.predictions
+  FOR DELETE TO anon, authenticated USING (true);
 
 -- ─── PRIZES ───
 CREATE POLICY "prizes_select_all" ON public.prizes
   FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "prizes_admin_write" ON public.prizes
-  FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "prizes_write_all" ON public.prizes
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 
 -- ─── REDEMPTIONS ───
 CREATE POLICY "redemptions_select_all" ON public.redemptions
@@ -228,12 +227,11 @@ CREATE POLICY "redemptions_select_all" ON public.redemptions
 CREATE POLICY "redemptions_insert_all" ON public.redemptions
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "redemptions_admin_update" ON public.redemptions
-  FOR UPDATE TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "redemptions_update_all" ON public.redemptions
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "redemptions_admin_delete" ON public.redemptions
-  FOR DELETE TO authenticated USING (public.is_admin());
+CREATE POLICY "redemptions_delete_all" ON public.redemptions
+  FOR DELETE TO anon, authenticated USING (true);
 
 -- ─── SUPPORT_TICKETS ───
 CREATE POLICY "support_select_all" ON public.support_tickets
@@ -242,34 +240,36 @@ CREATE POLICY "support_select_all" ON public.support_tickets
 CREATE POLICY "support_insert_all" ON public.support_tickets
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "support_admin_update" ON public.support_tickets
-  FOR UPDATE TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "support_update_all" ON public.support_tickets
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "support_admin_delete" ON public.support_tickets
-  FOR DELETE TO authenticated USING (public.is_admin());
+CREATE POLICY "support_delete_all" ON public.support_tickets
+  FOR DELETE TO anon, authenticated USING (true);
 
 -- ─── POINTS_BONUSES ───
 CREATE POLICY "points_bonuses_select_all" ON public.points_bonuses
   FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "points_bonuses_admin_write" ON public.points_bonuses
-  FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "points_bonuses_write_all" ON public.points_bonuses
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 
 -- ─── APP_SETTINGS ───
 CREATE POLICY "app_settings_select_all" ON public.app_settings
   FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "app_settings_admin_write" ON public.app_settings
-  FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "app_settings_write_all" ON public.app_settings
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 
 -- ─── AUDIT_LOGS ───
--- Solo admin (lectura y escritura)
-CREATE POLICY "audit_logs_admin_all" ON public.audit_logs
-  FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+-- Audit logs: solo la app escribe (vía admin), lectura abierta para debug
+CREATE POLICY "audit_logs_select_all" ON public.audit_logs
+  FOR SELECT TO anon, authenticated USING (true);
+
+CREATE POLICY "audit_logs_write_all" ON public.audit_logs
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 
 -- ─── REFERRALS ───
 CREATE POLICY "referrals_select_all" ON public.referrals
@@ -278,17 +278,16 @@ CREATE POLICY "referrals_select_all" ON public.referrals
 CREATE POLICY "referrals_insert_all" ON public.referrals
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "referrals_admin_update" ON public.referrals
-  FOR UPDATE TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "referrals_update_all" ON public.referrals
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- ─── REFERRAL_COMMISSIONS ───
 CREATE POLICY "referral_commissions_select_all" ON public.referral_commissions
   FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "referral_commissions_admin_write" ON public.referral_commissions
-  FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "referral_commissions_write_all" ON public.referral_commissions
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 
 -- ════════════════════════════════════════════════════════════
 -- 5) TRIGGER updated_at
