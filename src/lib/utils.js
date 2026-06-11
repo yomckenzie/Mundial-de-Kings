@@ -21,3 +21,15 @@ export function formatTime12h(time24) {
   const hour12 = ((h + 11) % 12) + 1; // 0→12, 13→1
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
+
+/**
+ * Sanea un destino de redirección leído de la URL.
+ * Solo acepta rutas internas relativas ("/algo"). Rechaza URLs absolutas
+ * (https://...), protocol-relative (//evil.com), javascript:, y backslashes
+ * (\/ que algunos navegadores normalizan a //).
+ */
+export function sanitizeRedirect(value) {
+  if (typeof value !== 'string' || !value.startsWith('/')) return '/';
+  if (value.startsWith('//') || value.includes('\\')) return '/';
+  return value;
+}
