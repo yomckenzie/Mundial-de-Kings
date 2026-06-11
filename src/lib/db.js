@@ -505,7 +505,7 @@ export const db = {
         const tableName = tableNameToSupabase(jsKey);
         const lastSync = _lastSyncTimestamps[tableName];
         const toUpload = lastSync
-          ? filtered.filter(r => !r.updated_at || new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
+          ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
           : filtered;
         if (toUpload.length > 0) {
           acc.push({ jsKey, records: toUpload });
@@ -545,7 +545,7 @@ export const db = {
       const tableName = tableNameToSupabase(jsKey);
       const lastSync = _lastSyncTimestamps[tableName];
       const toUpload = lastSync
-        ? filtered.filter(r => !r.updated_at || new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
+        ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
         : filtered;
       if (toUpload.length > 0) {
         await syncTableToSupabaseFn(jsKey, toUpload);

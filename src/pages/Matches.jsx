@@ -399,6 +399,9 @@ export default function Matches() {
   useEffect(() => {
     const interval = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({
+        predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0]?.startsWith('my-predictions')
+      });
     }, 30000);
     return () => clearInterval(interval);
   }, [queryClient]);

@@ -82,7 +82,9 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
           toast.info(`📊 ${evalResult.evaluated} pronóstico${evalResult.evaluated > 1 ? 's' : ''} evaluado${evalResult.evaluated > 1 ? 's' : ''} — sin aciertos`);
         }
         queryClient.invalidateQueries({ queryKey: ['ranking'] });
-        queryClient.invalidateQueries({ queryKey: ['my-predictions'] });
+        queryClient.invalidateQueries({
+          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0]?.startsWith('my-predictions')
+        });
       }
     } catch (e) {
       toast.error('Error al actualizar: ' + e.message);
@@ -123,7 +125,9 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     });
     queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
     queryClient.invalidateQueries({ queryKey: ['ranking'] });
-    queryClient.invalidateQueries({ queryKey: ['my-predictions'] });
+    queryClient.invalidateQueries({
+      predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0]?.startsWith('my-predictions')
+    });
     toast.success(
       evalResult.correct > 0
         ? `✅ ${evalResult.correct} pronóstico${evalResult.correct > 1 ? 's' : ''} acertado${evalResult.correct > 1 ? 's' : ''} de ${evalResult.evaluated} evaluado${evalResult.evaluated > 1 ? 's' : ''}`
@@ -157,7 +161,9 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     published = publishResults.filter(r => r.status === 'fulfilled' && r.value).length;
     queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
     queryClient.invalidateQueries({ queryKey: ['ranking'] });
-    queryClient.invalidateQueries({ queryKey: ['my-predictions'] });
+    queryClient.invalidateQueries({
+      predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0]?.startsWith('my-predictions')
+    });
     setResults(prev => ({ ...prev, bulk: {} }));
     if (totalCorrect > 0) {
       toast.success(`✅ ${published} partidos finalizados — ${totalCorrect} pronóstico${totalCorrect > 1 ? 's' : ''} acertado${totalCorrect > 1 ? 's' : ''}`);
