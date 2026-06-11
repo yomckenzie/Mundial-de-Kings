@@ -495,42 +495,40 @@ function ImagePickerDialog({ onSelect }) {
           </div>
         ) : (
           <>
-            <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto p-1 pr-2">
+            <div className="flex flex-col gap-4 max-h-[65vh] overflow-y-auto p-2 pr-3">
               {pageItems.map((img) => (
                 <button
                   key={img.id || img.name}
                   type="button"
                   onClick={() => handleSelect(img.publicUrl, img.name)}
-                  className="group relative w-full rounded-lg overflow-hidden border-2 border-border bg-muted hover:border-foreground transition-all cursor-pointer p-0"
+                  className="group relative w-full rounded-xl overflow-hidden border-2 border-border bg-card hover:border-foreground hover:shadow-xl transition-all cursor-pointer p-0 text-left"
                   title={img.name}
                 >
-                  <div className="flex items-center gap-3 p-2">
-                    {/* Miniatura grande (a la izquierda) */}
-                    <div className="relative w-32 h-24 sm:w-40 sm:h-28 shrink-0 rounded-md overflow-hidden bg-muted">
-                      <img
-                        src={img.publicUrl}
-                        alt={img.name}
-                        loading="lazy"
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200"
-                      />
-                    </div>
-                    {/* Info a la derecha */}
-                    <div className="flex-1 min-w-0 text-left">
-                      <p className="text-sm font-medium truncate">{img.name}</p>
-                      {img.metadata?.size && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {(img.metadata.size / 1024).toFixed(0)} KB
-                        </p>
-                      )}
-                      <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                        {img.created_at ? new Date(img.created_at).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
-                      </p>
-                    </div>
-                    {/* Check a la derecha (aparece en hover) */}
-                    <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pr-2">
-                      <div className="w-9 h-9 rounded-full bg-foreground text-background flex items-center justify-center shadow-lg">
+                  {/* Imagen grande full-width, altura fija para que se aprecie */}
+                  <div className="relative w-full h-56 sm:h-64 bg-muted overflow-hidden">
+                    <img
+                      src={img.publicUrl}
+                      alt={img.name}
+                      loading="lazy"
+                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                    />
+                    {/* Check flotante en hover */}
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center shadow-2xl">
                         <Check className="w-5 h-5" />
                       </div>
+                    </div>
+                  </div>
+                  {/* Metadata debajo de la imagen */}
+                  <div className="p-3 space-y-1">
+                    <p className="text-sm font-semibold truncate">{img.name}</p>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      {img.metadata?.size && (
+                        <span>{(img.metadata.size / 1024).toFixed(0)} KB</span>
+                      )}
+                      {img.created_at && (
+                        <span>{new Date(img.created_at).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                      )}
                     </div>
                   </div>
                 </button>
