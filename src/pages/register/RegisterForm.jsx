@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import CountryCodeSelect from '@/components/CountryCodeSelect';
-import { UserPlus, ArrowLeft, Shield, IdCard, Globe } from 'lucide-react';
+import { UserPlus, ArrowLeft, Shield, IdCard, Globe, Eye, EyeOff } from 'lucide-react';
 
 export default function RegisterForm({ form, fieldErrors, isLoading, handleChange, handleChangeField, handleSubmit, redirect }) {
+  const [showPassword, setShowPassword] = useState(false);
   return (
     <m.div
       initial={{ opacity: 0, y: 20 }}
@@ -167,15 +168,27 @@ export default function RegisterForm({ form, fieldErrors, isLoading, handleChang
 
             <div className="space-y-1.5">
               <Label htmlFor="password">Contraseña *</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                placeholder="Mínimo 6 caracteres"
-                value={form.password}
-                onChange={handleChange}
-                className={`transition-all duration-200 focus:ring-2 focus:ring-secondary/30 ${fieldErrors.password ? 'border-destructive' : ''}`}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Mínimo 6 caracteres"
+                  value={form.password}
+                  onChange={handleChange}
+                  className={`pr-10 transition-all duration-200 focus:ring-2 focus:ring-secondary/30 ${fieldErrors.password ? 'border-destructive' : ''}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={showPassword}
+                  title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  className="absolute inset-y-0 right-0 flex items-center justify-center w-10 text-muted-foreground hover:text-foreground transition-colors rounded-r-md focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/40"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
               {fieldErrors.password && <p className="text-[11px] text-destructive">{fieldErrors.password}</p>}
             </div>
 
