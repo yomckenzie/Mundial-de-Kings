@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import RegisterHeader from './register/RegisterHeader';
 import RegisterForm from './register/RegisterForm';
 import { DEFAULT_DIAL_CODE, PHONE_DIGITS } from '@/lib/countryCodes';
+import { sanitizeRedirect } from '@/lib/utils';
 
 const normalizeCedula = (v) => (v || '').replace(/[\s-]/g, '').trim().toLowerCase();
 
@@ -23,7 +24,7 @@ const stripDialCode = (raw, dialCode) => {
 
 export default function Register() {
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
+  const redirect = sanitizeRedirect(searchParams.get('redirect'));
 
   const [isLoading, setIsLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});

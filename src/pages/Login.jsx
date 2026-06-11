@@ -9,11 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { LogIn, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { sanitizeRedirect } from '@/lib/utils';
 
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
+  const redirect = sanitizeRedirect(searchParams.get('redirect'));
 
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
