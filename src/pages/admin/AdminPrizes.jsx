@@ -438,7 +438,7 @@ function ImagePickerDialog({ onSelect }) {
           Sistema
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ImageIcon className="w-5 h-5" />
@@ -495,28 +495,43 @@ function ImagePickerDialog({ onSelect }) {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[55vh] overflow-y-auto p-1">
+            <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto p-1 pr-2">
               {pageItems.map((img) => (
                 <button
                   key={img.id || img.name}
                   type="button"
                   onClick={() => handleSelect(img.publicUrl, img.name)}
-                  className="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-border bg-muted hover:border-foreground transition-all cursor-pointer p-0"
+                  className="group relative w-full rounded-lg overflow-hidden border-2 border-border bg-muted hover:border-foreground transition-all cursor-pointer p-0"
                   title={img.name}
                 >
-                  <img
-                    src={img.publicUrl}
-                    alt={img.name}
-                    loading="lazy"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                    <div className="w-9 h-9 rounded-full bg-white/95 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                      <Check className="w-5 h-5 text-foreground" />
+                  <div className="flex items-center gap-3 p-2">
+                    {/* Miniatura grande (a la izquierda) */}
+                    <div className="relative w-32 h-24 sm:w-40 sm:h-28 shrink-0 rounded-md overflow-hidden bg-muted">
+                      <img
+                        src={img.publicUrl}
+                        alt={img.name}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200"
+                      />
                     </div>
-                  </div>
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-2 pt-6">
-                    <p className="text-[11px] text-white truncate font-medium leading-tight">{img.name}</p>
+                    {/* Info a la derecha */}
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-sm font-medium truncate">{img.name}</p>
+                      {img.metadata?.size && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {(img.metadata.size / 1024).toFixed(0)} KB
+                        </p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                        {img.created_at ? new Date(img.created_at).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                      </p>
+                    </div>
+                    {/* Check a la derecha (aparece en hover) */}
+                    <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pr-2">
+                      <div className="w-9 h-9 rounded-full bg-foreground text-background flex items-center justify-center shadow-lg">
+                        <Check className="w-5 h-5" />
+                      </div>
+                    </div>
                   </div>
                 </button>
               ))}
