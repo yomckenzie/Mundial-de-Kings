@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Gift, X, Ruler, Image as ImageIcon, Check, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Gift, X, Ruler, Image as ImageIcon, Check, Loader2, RefreshCw, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 const INITIAL = { name: '', description: '', image_url: '', points_cost: '', status: 'active', original_stock: '' };
@@ -384,12 +384,22 @@ function ImagePickerDialog({ onSelect }) {
   const [open, setOpen] = useState(false);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 24;
 
   const loadImages = async () => {
     setLoading(true);
     try {
       const list = await api.integrations.Core.ListFiles({ bucket: 'banners' });
-      setImages(list);
+      // Ordenar por nombre (estable) o por fecha si está disponible
+      const sorted = [...(list || [])].sort((a, b) => {
+        const da = new Date(a.created_at || 0).getTime();
+        const db = new Date(b.created_at || 0).getTime();
+        return db - da; // más recientes primero
+      });
+      setImages(sorted);
+      setPage(1);
     } catch {
       toast.error('Error al cargar las imágenes del sistema');
     } finally {
@@ -397,21 +407,38 @@ function ImagePickerDialog({ onSelect }) {
     }
   };
 
-  const handleSelect = (url) => {
-    onSelect(url);
-    setOpen(false);
-    toast.success('Imagen seleccionada');
+  const handleOpenChange = (o) => {
+    setOpen(o);
+    if (o) loadImages();
+    if (!o) { setSearch(''); setPage(1); }
   };
 
+  const handleSelect = (url, name) => {
+    onSelect(url);
+    setOpen(false);
+    toast.success(`Imagen "${name}" seleccionada`);
+  };
+
+  // Filtrar por búsqueda
+  const filtered = search.trim()
+    ? images.filter(img => (img.name || '').toLowerCase().includes(search.toLowerCase()))
+    : images;
+
+  // Paginación
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const startIdx = (safePage - 1) * PAGE_SIZE;
+  const pageItems = filtered.slice(startIdx, startIdx + PAGE_SIZE);
+
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) loadImages(); }}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm" className="gap-1.5 shrink-0">
           <ImageIcon className="w-4 h-4" />
           Sistema
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ImageIcon className="w-5 h-5" />
@@ -422,19 +449,37 @@ function ImagePickerDialog({ onSelect }) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs text-muted-foreground">
-            {images.length > 0 ? `${images.length} imagen(es) disponible(s)` : ''}
-          </p>
-          <Button type="button" variant="ghost" size="sm" onClick={loadImages} disabled={loading} className="gap-1.5 h-7 text-xs">
+        {/* Barra de búsqueda + acciones */}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Buscar por nombre..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="pl-8 h-9 text-sm"
+            />
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={loadImages} disabled={loading} className="gap-1.5 h-9 text-xs shrink-0">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refrescar
           </Button>
         </div>
 
+        {/* Contador */}
+        {!loading && (
+          <p className="text-xs text-muted-foreground mb-2">
+            {filtered.length === images.length
+              ? `${images.length} imagen${images.length === 1 ? '' : 'es'} en total`
+              : `${filtered.length} de ${images.length} imagen${images.length === 1 ? '' : 'es'}`}
+          </p>
+        )}
+
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[55vh] overflow-y-auto p-1">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="aspect-[4/3] rounded-lg bg-muted animate-pulse" />
+            ))}
           </div>
         ) : images.length === 0 ? (
           <div className="text-center py-16 space-y-2">
@@ -442,32 +487,75 @@ function ImagePickerDialog({ onSelect }) {
             <p className="text-sm text-muted-foreground">No hay imágenes en el sistema.</p>
             <p className="text-xs text-muted-foreground/60">Sube una imagen usando el botón "Subir archivo" del formulario.</p>
           </div>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[50vh] overflow-y-auto p-1">
-            {images.map((img) => (
-              <button
-                key={img.id || img.name}
-                type="button"
-                onClick={() => handleSelect(img.publicUrl)}
-                className="group relative aspect-square rounded-lg overflow-hidden border border-border bg-muted/30 hover:border-foreground/50 transition-all cursor-pointer p-0"
-              >
-                <img
-                  src={img.publicUrl}
-                  alt={img.name}
-                  loading="lazy"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                  <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Check className="w-[18px] h-[18px]" />
-                  </div>
-                </div>
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1.5">
-                  <p className="text-[10px] text-white truncate text-center leading-tight">{img.name}</p>
-                </div>
-              </button>
-            ))}
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 space-y-2">
+            <Search className="w-10 h-10 text-muted-foreground/30 mx-auto" />
+            <p className="text-sm text-muted-foreground">Sin resultados para "{search}"</p>
+            <Button variant="ghost" size="sm" onClick={() => setSearch('')}>Limpiar búsqueda</Button>
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[55vh] overflow-y-auto p-1">
+              {pageItems.map((img) => (
+                <button
+                  key={img.id || img.name}
+                  type="button"
+                  onClick={() => handleSelect(img.publicUrl, img.name)}
+                  className="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-border bg-muted hover:border-foreground transition-all cursor-pointer p-0"
+                  title={img.name}
+                >
+                  <img
+                    src={img.publicUrl}
+                    alt={img.name}
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                    <div className="w-9 h-9 rounded-full bg-white/95 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                      <Check className="w-5 h-5 text-foreground" />
+                    </div>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-2 pt-6">
+                    <p className="text-[11px] text-white truncate font-medium leading-tight">{img.name}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Paginación */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
+                <p className="text-xs text-muted-foreground">
+                  Página {safePage} de {totalPages}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                    className="h-8 text-xs"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground px-2">
+                    {safePage} / {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safePage === totalPages}
+                    className="h-8 text-xs"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>
