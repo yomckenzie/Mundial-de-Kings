@@ -381,6 +381,9 @@ export default function AdminPrizes() {
  * Permite elegir una existente sin tener que volver a subir el archivo.
  */
 function ImagePickerDialog({ onSelect }) {
+  // Build: 2026-06-11-v3-fullwidth-images
+  if (typeof window !== 'undefined') console.log('[ImagePickerDialog] mounted v3 fullwidth');
+
   const [open, setOpen] = useState(false);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -501,11 +504,11 @@ function ImagePickerDialog({ onSelect }) {
                   key={img.id || img.name}
                   type="button"
                   onClick={() => handleSelect(img.publicUrl, img.name)}
-                  className="group relative w-full rounded-xl overflow-hidden border-2 border-border bg-card hover:border-foreground hover:shadow-xl transition-all cursor-pointer p-0 text-left"
+                  className="group relative w-full rounded-xl overflow-hidden border-2 border-red-500 bg-card hover:border-foreground hover:shadow-xl transition-all cursor-pointer p-0 text-left"
                   title={img.name}
                 >
                   {/* Imagen grande full-width, altura fija para que se aprecie */}
-                  <div className="relative w-full h-56 sm:h-64 bg-muted overflow-hidden">
+                  <div className="relative w-full h-72 sm:h-80 md:h-96 bg-white dark:bg-gray-900 overflow-hidden">
                     <img
                       src={img.publicUrl}
                       alt={img.name}
