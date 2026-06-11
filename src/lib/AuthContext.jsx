@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useCallback, useMemo, useReducer } from 'react';
+import { createContext, useContext, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { db } from '@/lib/db';
 import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 

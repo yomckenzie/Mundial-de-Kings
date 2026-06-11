@@ -6,7 +6,6 @@ import {
   stripLocalFields,
   TABLES,
   setupRealtimeSubscriptions,
-  cleanupRealtimeSubscriptions
 } from './supabase.js';
 
 const STORAGE_KEY = 'chessking_db';

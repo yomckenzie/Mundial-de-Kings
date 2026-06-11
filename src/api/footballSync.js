@@ -145,18 +145,6 @@ async function fetchFixtures(dateStr) {
   return data?.response || [];
 }
 
-// ─── Interpretar estado del fixture ───
-function parseStatus(apiStatus) {
-  if (!apiStatus) return 'pending';
-  const short = apiStatus.short || '';
-  // Estados de API-Football:
-  // TBD (por definir), NS (no iniciado), 1H, HT, 2H, ET, BT, P, INT (tiempo extra, etc.)
-  // FT (finalizado), AET (final extra), PEN (penales), CANC (cancelado)
-  if (['FT', 'AET', 'PEN'].includes(short)) return 'finished';
-  if (['1H', '2H', 'ET', 'BT', 'P', 'HT', 'INT'].includes(short)) return 'live';
-  if (['CANC', 'ABD', 'POST'].includes(short)) return 'closed';
-  return 'pending';
-}
 
 // ─── Sincronizar con API-Football ───
 export async function syncWithApi() {
@@ -291,23 +279,6 @@ async function _doSync() {
     totalUpdated += r.updated;
     errors.push(...r.errs);
   }
-        if (goals.away !== null && goals.away !== undefined) {
-          const newScore = Number(goals.away);
-          if (newScore !== localMatch.result_team2) updates.result_team2 = newScore;
-        }
-
-        // Estado
-        const newStatus = parseStatus(apiStatus);
-        if (newStatus !== localMatch.status) updates.status = newStatus;
-
-        // Minuto transcurrido
-        const elapsed = apiStatus.elapsed || null;
-        if (elapsed !== localMatch.elapsed) updates.elapsed = elapsed;
-
-        // Fixture ID de API-Football para referencia
-        if (fixture.fixture?.id && !localMatch.fixture_api_id) {
-          updates.fixture_api_id = fixture.fixture.id;
-        }
 
   _connected = true;
   _lastSync = {

@@ -57,4 +57,23 @@ export default [
       "react-hooks/rules-of-hooks": "error",
     },
   },
+  {
+    files: ["src/api/**/*.{js,mjs,cjs,jsx}", "src/lib/**/*.{js,mjs,cjs,jsx}", "src/hooks/**/*.{js,mjs,cjs,jsx}"],
+    ...pluginJs.configs.recommended,
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: "module",
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    plugins: { "unused-imports": pluginUnusedImports },
+    rules: {
+      "no-unused-vars": "off",
+      "unused-imports/no-unused-imports": "error",
+      "unused-imports/no-unused-vars": ["warn", { vars: "all", varsIgnorePattern: "^_", args: "after-used", argsIgnorePattern: "^_" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
+    },
+  },
 ];
