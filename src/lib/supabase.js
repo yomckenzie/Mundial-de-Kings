@@ -632,7 +632,7 @@ export function setupRealtimeSubscriptions() {
         window.dispatchEvent(new CustomEvent('db-cloud-change', {
           detail: {
             tableName: table,
-            eventType: payload.event_type, // INSERT | UPDATE | DELETE
+            eventType: payload.eventType, // INSERT | UPDATE | DELETE
             newRecord: payload.new,
             oldRecord: payload.old,
           },

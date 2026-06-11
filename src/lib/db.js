@@ -205,9 +205,14 @@ export const db = {
         const { tableName } = e.detail;
         const jsKey = Object.entries(TABLE_MAP).find(([, v]) => v === tableName)?.[0];
         if (jsKey) {
-          // Debounce: si llegan varios cambios juntos, solo un sync
-          if (this._cloudChangeTimer) clearTimeout(this._cloudChangeTimer);
-          this._cloudChangeTimer = setTimeout(() => {
+          // Debounce POR TABLA: un timer compartido cancelaba el sync de una
+          // tabla cuando llegaba un evento de OTRA tabla dentro de la ventana
+          // (ej: el scoring dispara predictions y users seguidos — el refresh
+          // de predictions se perdía siempre).
+          if (!this._cloudChangeTimers) this._cloudChangeTimers = {};
+          if (this._cloudChangeTimers[jsKey]) clearTimeout(this._cloudChangeTimers[jsKey]);
+          this._cloudChangeTimers[jsKey] = setTimeout(() => {
+            delete this._cloudChangeTimers[jsKey];
             this._syncSingleTableFromSupabase(jsKey);
           }, 500);
         }
