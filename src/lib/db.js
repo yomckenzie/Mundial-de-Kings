@@ -500,13 +500,25 @@ export const db = {
         // cada syncAllTo. Si el admin borraba una fila en el SQL Editor y
         // luego hacía CUALQUIER persistencia, el cliente re-subía esa fila
         // borrada porque seguía en localStorage. Ahora solo subimos filas
-        // cuyo updated_at > _lastSyncTimestamps[tableName] (o que no tengan
-        // updated_at, ej: tablas de catálogo).
+        // cuyo updated_at > _lastSyncTimestamps[tableName].
+        // CRÍTICO: predicciones NUNCA deben re-subirse desde el admin
+        // (el scoring las escribe directo en Supabase y no debe ser
+        // sobrescrito por localStorage stale del admin browser).
         const tableName = tableNameToSupabase(jsKey);
         const lastSync = _lastSyncTimestamps[tableName];
-        const toUpload = lastSync
-          ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
-          : filtered;
+        let toUpload;
+        if (jsKey === 'predictions') {
+          // Predicciones: solo subir filas recién creadas en este browser
+          // (updated_at > lastSync). Filas con scored=true/is_correct=true
+          // ya están en Supabase y no deben re-subirse.
+          toUpload = lastSync
+            ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
+            : [];
+        } else {
+          toUpload = lastSync
+            ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
+            : filtered;
+        }
         if (toUpload.length > 0) {
           acc.push({ jsKey, records: toUpload });
         }
@@ -542,11 +554,13 @@ export const db = {
     if (filtered.length > 0) {
       // FIX: respetar watermark también en syncSingleTable para no re-subir
       // filas no modificadas (causa principal de filas borradas que reaparecen).
+      // CRÍTICO: predicciones NUNCA se re-suben desde syncSingleTable porque
+      // el scoring las escribe directo en Supabase y no debe sobrescribirse.
       const tableName = tableNameToSupabase(jsKey);
       const lastSync = _lastSyncTimestamps[tableName];
-      const toUpload = lastSync
-        ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
-        : filtered;
+      const toUpload = (jsKey === 'predictions')
+        ? (lastSync ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime()) : [])
+        : (lastSync ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime()) : filtered);
       if (toUpload.length > 0) {
         await syncTableToSupabaseFn(jsKey, toUpload);
         _lastSyncTimestamps[tableName] = new Date().toISOString();
