@@ -1,16 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { m, AnimatePresence } from 'framer-motion';
 import { api } from '@/api/client';
-import { getSourceStatus, syncWithBestSource } from '@/api/dataSources';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Wifi, WifiOff, RefreshCw, Trophy } from 'lucide-react';
+import { Calendar, Clock, Lock, CheckCircle2, X, UserPlus, Send, Trophy } from 'lucide-react';
 import TeamFlag from '@/components/TeamFlag';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -177,7 +176,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                           <span className="text-base font-bold text-muted-foreground/40">-</span>
                           <span className="text-lg font-black">{existing.pred_team2}</span>
                         </div>
-                        {existing.scored ? (
+                        {existing.scored && match.status === 'finished' && match.result_team1 != null && match.result_team2 != null && user?.role !== 'admin' ? (
                           <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
                             existing.is_correct
                               ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
@@ -188,6 +187,11 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                             ) : (
                               <><X className="w-4 h-4" /><span className="font-semibold text-xs">No acertaste</span></>
                             )}
+                          </div>
+                        ) : user?.role === 'admin' ? (
+                          <div className="text-center text-[11px] text-muted-foreground font-medium py-1.5 px-2 rounded-lg bg-muted/30">
+                            <p>Tu pronóstico: {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}</p>
+                            <p className="text-[10px] mt-0.5">Los admins no acumulan puntos</p>
                           </div>
                         ) : (
                           <div className="space-y-1">
@@ -218,7 +222,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       <span className="text-base font-bold text-muted-foreground/40">-</span>
                       <span className="text-lg font-black">{existing.pred_team2}</span>
                     </div>
-                    {existing.scored ? (
+                    {existing.scored && match.status === 'finished' && match.result_team1 != null && match.result_team2 != null && user?.role !== 'admin' ? (
                       <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
                         existing.is_correct
                           ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
@@ -229,6 +233,11 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                         ) : (
                           <><X className="w-4 h-4" /><span className="font-semibold text-xs">No acertaste</span></>
                         )}
+                      </div>
+                    ) : user?.role === 'admin' ? (
+                      <div className="text-center text-[11px] text-muted-foreground font-medium py-1.5 px-2 rounded-lg bg-muted/30">
+                        <p>Tu pronóstico: {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}</p>
+                        <p className="text-[10px] mt-0.5">Los admins no acumulan puntos</p>
                       </div>
                     ) : (
                       <div className="space-y-1">
@@ -386,40 +395,6 @@ export default function Matches() {
     enabled: !!user,
   });
 
-  // ─── Estado de fuentes de datos ───
-  const [sourceInfo, setSourceInfo] = useState({ status: null, checked: false, syncing: false });
-
-  // Verificar fuentes al montar
-  useEffect(() => {
-    getSourceStatus().then(status => {
-      setSourceInfo({ status, checked: true, syncing: false });
-    });
-  }, []);
-
-  // Auto-sync cada 20 minutos
-  const doSync = useCallback(async () => {
-    setSourceInfo(prev => ({ ...prev, syncing: true }));
-    try {
-      const result = await syncWithBestSource();
-      // Actualizar status de fuentes
-      const status = await getSourceStatus();
-      setSourceInfo(prev => ({ ...prev, status, syncing: false }));
-      if (result.synced > 0 || result.updated > 0) {
-        queryClient.invalidateQueries({ queryKey: ['matches'] });
-      }
-    } finally {
-      setSourceInfo(prev => ({ ...prev, syncing: false }));
-    }
-  }, [queryClient]);
-
-  // Auto-sync cada 20 minutos (solo si hay fuente automática)
-  useEffect(() => {
-    if (!sourceInfo.status?.hasAutoSync) return;
-    doSync();
-    const interval = setInterval(doSync, 20 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [sourceInfo.status?.hasAutoSync, doSync]);
-
   // Refresh local cada 30s para ver cambios en DB
   useEffect(() => {
     const interval = setInterval(() => {
@@ -496,37 +471,7 @@ export default function Matches() {
     >
       <div className="flex items-center justify-between">
         <h1 className="font-display text-4xl tracking-wide">PARTIDOS</h1>
-        {sourceInfo.checked && (
-          <div className="flex items-center gap-3">
-            {sourceInfo.syncing && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <RefreshCw className="w-3 h-3 animate-spin" />
-                Sincronizando...
-              </span>
-            )}
-            <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full ${
-              sourceInfo.status?.hasAutoSync && sourceInfo.status?.connected
-                ? 'bg-muted text-foreground'
-                : sourceInfo.status?.hasAutoSync
-                  ? 'bg-muted text-muted-foreground'
-                  : 'bg-muted text-muted-foreground'
-            }`}>
-              {sourceInfo.status?.hasAutoSync && sourceInfo.status?.connected ? (
-                <><Wifi className="w-3 h-3" /> {sourceInfo.status.bestSourceName}</>
-              ) : sourceInfo.status?.hasAutoSync ? (
-                <><WifiOff className="w-3 h-3" /> Sin conexión</>
-              ) : null}
-            </div>
-          </div>
-        )}
       </div>
-
-      {sourceInfo.status?.lastSync && sourceInfo.status?.connected && (
-        <p className="text-xs text-muted-foreground/60 text-right -mt-4">
-          Última sincronización: {(() => { if (!sourceInfo.status?.lastSync?.time) return '—'; const d = new Date(sourceInfo.status.lastSync.time); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}
-          {sourceInfo.status.lastSync.updated > 0 && ` · ${sourceInfo.status.lastSync.updated} actualizados`}
-        </p>
-      )}
 
       {matches.length === 0 && (
         <m.div

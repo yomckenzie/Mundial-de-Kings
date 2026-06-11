@@ -92,6 +92,8 @@ const TEAM_FLAGS = {
   'DRC': { flag: '🇨🇩', iso: 'cd' },
 };
 
+export { TEAM_FLAGS };
+
 /**
  * Obtiene la bandera emoji para un nombre de equipo.
  * @param {string} teamName - Nombre del equipo

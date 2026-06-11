@@ -1,7 +1,6 @@
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { syncWithBestSource, checkAllSources } from '@/api/dataSources';
 import { seedAllMatches } from '@/api/seedMatches';
 import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';
 import { toast } from 'sonner';
@@ -22,36 +21,6 @@ function canPublishResult(match) {
 
 export default function useMatchHandlers(matches, results, setResults, sourceState, setSourceState, liveNow) {
   const queryClient = useQueryClient();
-
-  const refreshSources = React.useCallback(async () => {
-    setSourceState(prev => ({ ...prev, sources: [] }));
-    const sources = await checkAllSources();
-    setSourceState(prev => ({ ...prev, sources }));
-  }, [setSourceState]);
-
-  const handleSyncNow = async () => {
-    setSourceState(prev => ({ ...prev, syncing: true }));
-    try {
-      const result = await syncWithBestSource();
-      await refreshSources();
-      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
-      if (result.source === 'manual' && (!result.errors || result.errors.length === 0)) {
-        toast.info('Sin fuente automática. Ingresa resultados manualmente abajo.');
-      } else if (result.updated > 0) {
-        toast.success(`✅ ${result.updated} resultados actualizados vía ${result.source}`);
-      } else if (result.synced > 0) {
-        toast.success(`✓ ${result.synced} revisados — sin cambios`);
-      } else if (result.error) {
-        toast.error(result.error);
-      } else {
-        toast('Sin novedades');
-      }
-    } catch (e) {
-      toast.error('Error de sincronización: ' + e.message);
-    } finally {
-      setSourceState(prev => ({ ...prev, syncing: false }));
-    }
-  };
 
   const lockedMatches = matches.filter(m => isMatchLocked(m, liveNow));
   const hasLockedMatches = lockedMatches.length > 0;
@@ -195,8 +164,6 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
   };
 
   return {
-    handleSyncNow,
-    refreshSources,
     hasLockedMatches,
     resetAllMatches,
     seedMutation,

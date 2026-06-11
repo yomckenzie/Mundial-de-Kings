@@ -43,7 +43,7 @@ export default function Home() {
     enabled: !!userEmail,
   });
 
-  const correctPreds = predictions.filter(p => p.is_correct);
+  const correctPreds = user?.role === 'admin' ? [] : predictions.filter(p => p.is_correct);
 
   const cards = [
     { icon: Target, title: 'Partidos', desc: 'Haz tus pronósticos', to: '/matches' },

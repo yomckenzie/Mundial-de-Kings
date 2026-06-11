@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
 import { toast } from 'sonner';
-import DataSourcePanel from './DataSourcePanel';
 import BatchPublishCard from './BatchPublishCard';
 import QuickActions from './QuickActions';
 import StatusLegend from './StatusLegend';
@@ -16,8 +15,7 @@ export default function AdminMatches() {
   const queryClient = useQueryClient();
   const [results, setResults] = useState({ form: {}, bulk: {} });
   const [liveNow, setLiveNow] = useState(() => Date.now());
-  const [sourceState, setSourceState] = useState({ syncing: false, sources: [], show: true, deduping: false });
-  const sourcesLoading = sourceState.sources.length === 0;
+  const [sourceState, setSourceState] = useState({ syncing: false, show: true, deduping: false });
 
   // Timer en tiempo real para calcular elapsed desde live_started_at
   useEffect(() => {
@@ -58,15 +56,10 @@ export default function AdminMatches() {
   }, [matches]);
 
   const {
-    handleSyncNow, refreshSources, hasLockedMatches,
+    hasLockedMatches,
     resetAllMatches, seedMutation, handleClearAll, createMatch,
     handleStatusChange, handlePublishResult, handleBatchPublish,
   } = useMatchHandlers(matches, results, setResults, sourceState, setSourceState, liveNow);
-
-  // Cargar fuentes al montar
-  useEffect(() => {
-    refreshSources();
-  }, [refreshSources]);
 
   // Agrupar partidos por fecha
   const groupedMatches = React.useMemo(() => matches.reduce((acc, m) => {
@@ -82,16 +75,6 @@ export default function AdminMatches() {
 
   return (
     <div className="space-y-4">
-      <DataSourcePanel
-        sources={sourceState.sources}
-        sourcesLoading={sourcesLoading}
-        syncing={sourceState.syncing}
-        show={sourceState.show}
-        onToggle={() => setSourceState(prev => ({ ...prev, show: !prev.show }))}
-        onSync={handleSyncNow}
-        onRefresh={refreshSources}
-      />
-
       <QuickActions
         onSeed={() => seedMutation.mutate()}
         seeding={seedMutation.isPending}

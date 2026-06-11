@@ -2,15 +2,36 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Database, Layers, RefreshCw, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { TEAM_FLAGS } from '@/lib/teamFlags';
+
+const ENGLISH_ALIASES = new Set([
+  'Mexico', 'South Korea', 'Korea Republic', 'Czech Republic', 'Czechia',
+  'Bosnia and Herzegovina', 'USA', 'Netherlands', 'Ivory Coast', "Côte d'Ivoire",
+  'Saudi Arabia', 'New Zealand', 'Cape Verde', 'DR Congo', 'DRC',
+]);
+
+const SORTED_TEAMS = Object.entries(TEAM_FLAGS)
+  .filter(([name]) => !ENGLISH_ALIASES.has(name))
+  .sort((a, b) => a[0].localeCompare(b[0], 'es'))
+  .map(([name, info]) => ({ name, ...info }));
 
 export default function QuickActions({ onSeed, seeding, hasLocked, onDedupe, deduping, matchCount, onClear, clearing, onCreateMatch, creating }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ team1: '', team2: '', match_date: '', match_time: '', group_stage: '' });
 
   const handleCreate = () => {
+    if (!form.team1 || !form.team2) {
+      toast.error('Selecciona ambos equipos.');
+      return;
+    }
+    if (form.team1 === form.team2) {
+      toast.error('Los equipos deben ser diferentes.');
+      return;
+    }
     if (form.match_date && !isFutureDate(form.match_date, form.match_time)) {
       toast.error('No puedes crear partidos en el pasado. La fecha/hora debe ser futura.');
       return;
@@ -38,12 +59,36 @@ export default function QuickActions({ onSeed, seeding, hasLocked, onDedupe, ded
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevo Partido</DialogTitle>
-            <DialogDescription className="sr-only">Crear un nuevo partido manual ingresando los equipos, fecha, hora y fase.</DialogDescription>
+            <DialogDescription className="sr-only">Crear un nuevo partido manual seleccionando los equipos, fecha, hora y fase.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label htmlFor="new-team1">Equipo 1</Label><Input id="new-team1" value={form.team1} onChange={e => setForm({...form, team1: e.target.value})} /></div>
-              <div><Label htmlFor="new-team2">Equipo 2</Label><Input id="new-team2" value={form.team2} onChange={e => setForm({...form, team2: e.target.value})} /></div>
+              <div>
+                <Label htmlFor="new-team1">Equipo 1</Label>
+                <Select value={form.team1} onValueChange={v => setForm({...form, team1: v})}>
+                  <SelectTrigger id="new-team1"><SelectValue placeholder="Selecciona equipo" /></SelectTrigger>
+                  <SelectContent>
+                    {SORTED_TEAMS.map(t => (
+                      <SelectItem key={t.name} value={t.name} disabled={t.name === form.team2}>
+                        <span className="mr-2">{t.flag}</span>{t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="new-team2">Equipo 2</Label>
+                <Select value={form.team2} onValueChange={v => setForm({...form, team2: v})}>
+                  <SelectTrigger id="new-team2"><SelectValue placeholder="Selecciona equipo" /></SelectTrigger>
+                  <SelectContent>
+                    {SORTED_TEAMS.map(t => (
+                      <SelectItem key={t.name} value={t.name} disabled={t.name === form.team1}>
+                        <span className="mr-2">{t.flag}</span>{t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label htmlFor="new-date">Fecha</Label><Input id="new-date" type="date" value={form.match_date} onChange={e => setForm({...form, match_date: e.target.value})} /></div>

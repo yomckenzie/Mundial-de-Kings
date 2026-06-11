@@ -200,8 +200,9 @@ export default function Profile() {
     );
   }
 
-  const scoredPreds = predictions.filter(p => p.scored);
-  const correctPreds = predictions.filter(p => p.is_correct);
+  const isAdmin = user?.role === 'admin';
+  const scoredPreds = isAdmin ? [] : predictions.filter(p => p.scored);
+  const correctPreds = isAdmin ? [] : predictions.filter(p => p.is_correct);
   const predictionPoints = user?.prediction_points || 0;
   const bonusPoints = user?.bonus_points || 0;
   const totalPoints = user?.total_points || 0;

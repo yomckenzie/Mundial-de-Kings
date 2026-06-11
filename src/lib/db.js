@@ -482,7 +482,18 @@ export const db = {
         if (records.length === 0) return acc;
         // Filtrar IDs eliminados permanentemente para que no se re-suban a Supabase
         // (esto evita que un sync TO desde otro tab/device resucite el item)
-        const filtered = records.filter(r => !this._isDeletedId(jsKey, r.id));
+        let filtered = records.filter(r => !this._isDeletedId(jsKey, r.id));
+        // FIX: admins no deben tener predicciones en BD. Si un admin tiene
+        // predicciones residuales en localStorage (de antes del fix de guard),
+        // las descartamos del sync TO para que no se re-suban a Supabase.
+        // Hardcodeamos el email admin por si el rol aún no se cargó en users.
+        if (jsKey === 'predictions') {
+          const adminEmails = new Set(['admin@chessking.com']);
+          for (const u of (this._data.users || [])) {
+            if (u.role === 'admin') adminEmails.add(u.email);
+          }
+          filtered = filtered.filter(p => !adminEmails.has(p.user_email));
+        }
         if (filtered.length === 0) return acc;
         // ── Watermark: solo subir filas modificadas desde la última sync TO ──
         // FIX PRINCIPAL: antes subíamos TODA la tabla local a Supabase en
@@ -518,7 +529,16 @@ export const db = {
     if (!isSupabaseAvailable()) return;
     await this._processPendingDeletes();
     const records = this._data[jsKey] || [];
-    const filtered = records.filter(r => !this._isDeletedId(jsKey, r.id));
+    let filtered = records.filter(r => !this._isDeletedId(jsKey, r.id));
+    // FIX: filtrar predicciones de admin para que no se re-suban.
+    // Hardcodeamos el email admin por si el rol aún no se cargó en users.
+    if (jsKey === 'predictions') {
+      const adminEmails = new Set(['admin@chessking.com']);
+      for (const u of (this._data.users || [])) {
+        if (u.role === 'admin') adminEmails.add(u.email);
+      }
+      filtered = filtered.filter(p => !adminEmails.has(p.user_email));
+    }
     if (filtered.length > 0) {
       // FIX: respetar watermark también en syncSingleTable para no re-subir
       // filas no modificadas (causa principal de filas borradas que reaparecen).
@@ -1404,6 +1424,13 @@ export const db = {
     },
     create(data) {
       const d = db._init();
+      // Admins no deben crear pronósticos que se persistan/sincronicen —
+      // la regla de negocio es que admins no acumulan puntos.
+      const currentUser = db.getCurrentUser();
+      if (currentUser?.role === 'admin') {
+        // Simular éxito sin persistir (no-op silencioso).
+        return { id: 'noop-admin', ...data, created_date: getNow() };
+      }
       // Evitar duplicados: un solo pronóstico por usuario por partido
       const existing = d.predictions.find(p => p.user_email === data.user_email && p.match_id === data.match_id);
       if (existing) {
@@ -1412,13 +1439,24 @@ export const db = {
         db._persist('predictions');
         return existing;
       }
-      const record = { id: makeId(), created_date: getNow(), ...data };
+      const record = {
+        id: makeId(),
+        created_date: getNow(),
+        scored: false,
+        is_correct: false,
+        points_earned: 0,
+        ...data,
+      };
       d.predictions.push(record);
       db._persist('predictions');
       return record;
     },
     update(id, data) {
       const d = db._init();
+      const currentUser = db.getCurrentUser();
+      if (currentUser?.role === 'admin') {
+        return { id, ...data };
+      }
       const idx = d.predictions.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prediction not found');
       d.predictions[idx] = { ...d.predictions[idx], ...data, updated_at: getNow() };
