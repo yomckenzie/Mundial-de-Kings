@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { group, sleep } from 'k6';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_URL, THRESHOLDS } from './env.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_URL, THRESHOLDS, ADMIN_EMAIL, ADMIN_PASSWORD, requireAdminCreds } from './env.js';
 import {
   visitPage, supabaseQuery, supabaseLogin,
   humanPause
@@ -66,7 +66,8 @@ export default function () {
   // ─── 3. Login como admin ───
   group('Login Admin', () => {
     if (SUPABASE_ANON_KEY) {
-      const token = supabaseLogin('admin@chessking.com', 'admin123');
+      requireAdminCreds();
+      const token = supabaseLogin(ADMIN_EMAIL, ADMIN_PASSWORD);
       if (token) {
         // Login exitoso — navegar páginas protegidas
         visitPage(APP_URL + '/admin', 'admin_dashboard');

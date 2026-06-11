@@ -6,7 +6,30 @@ Scripts de prueba de carga para la aplicación **Mundial de Kings**.
 
 - k6 v2.0.0+ instalado (incluido en `C:/Users/yomck/AppData/Local/k6/`)
 - La **Supabase anon key** del proyecto (Settings → API en el dashboard de Supabase)
+- Para los escenarios admin: `ADMIN_EMAIL` y `ADMIN_PASSWORD` de la cuenta admin (ver abajo)
 - (Opcional) URL de Railway si se prueba contra producción
+
+## ⚠️  IMPORTANTE: Variables de entorno requeridas
+
+### Credenciales admin (ADMIN_EMAIL / ADMIN_PASSWORD)
+
+Los tests `smoke-test.js`, `load-test.js`, `soak-test.js` y `stress-test.js` incluyen un
+escenario de login admin. Si no se pasan estas variables, el test lanza un error inmediato
+con un mensaje claro (esto es intencional: evita que el escenario se salte silenciosamente).
+
+```bash
+# Pasar credenciales admin al ejecutar cualquier test con escenario admin
+k6 run \
+  -e SUPABASE_ANON_KEY='eyJ...' \
+  -e ADMIN_EMAIL='tu-email-admin' \
+  -e ADMIN_PASSWORD='tu-password-admin' \
+  k6-tests/smoke-test.js
+```
+
+> **Seguridad**: nunca pegues credenciales reales en este archivo ni en código fuente.
+> Pásalas siempre por `-e VAR=valor` o desde un archivo `.env` local (no trackeado en git).
+
+### Anon key de Supabase (SUPABASE_ANON_KEY)
 
 ## ⚠️  IMPORTANTE: Pasar la anon key
 

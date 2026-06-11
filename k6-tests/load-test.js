@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { group } from 'k6';
-import { SUPABASE_ANON_KEY, APP_URL, THRESHOLDS } from './env.js';
+import { SUPABASE_ANON_KEY, APP_URL, THRESHOLDS, ADMIN_EMAIL, ADMIN_PASSWORD, requireAdminCreds } from './env.js';
 import {
   visitPage, supabaseQuery, supabaseLogin,
   humanPause
@@ -81,7 +81,8 @@ export default function () {
   // ─── 5. Login y páginas protegidas ───
   group('Login + perfil', () => {
     if (hasSupabase) {
-      token = supabaseLogin('admin@chessking.com', 'admin123');
+      requireAdminCreds();
+      token = supabaseLogin(ADMIN_EMAIL, ADMIN_PASSWORD);
       if (token) {
         visitPage(APP_URL + '/profile', 'profile');
         humanPause();

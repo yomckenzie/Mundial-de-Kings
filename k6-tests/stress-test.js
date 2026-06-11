@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { group } from 'k6';
-import { SUPABASE_ANON_KEY, APP_URL } from './env.js';
+import { SUPABASE_ANON_KEY, APP_URL, ADMIN_EMAIL, ADMIN_PASSWORD, requireAdminCreds } from './env.js';
 import {
   visitPage, supabaseQuery, supabaseLogin,
   humanPause
@@ -65,7 +65,8 @@ export default function () {
     case 2:
       group('Admin', () => {
         if (hasSupabase) {
-          const token = supabaseLogin('admin@chessking.com', 'admin123');
+          requireAdminCreds();
+          const token = supabaseLogin(ADMIN_EMAIL, ADMIN_PASSWORD);
           if (token) {
             visitPage(APP_URL + '/admin', 'admin_dashboard');
             humanPause();
