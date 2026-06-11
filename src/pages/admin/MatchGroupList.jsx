@@ -17,7 +17,7 @@ function formatDate(dateStr) {
   }
 }
 
-export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedMatches, liveNow, results, setResults, handleStatusChange, handlePublishResult }) {
+export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, predictionCountByMatchId }) {
   if (sortedDates.length === 0) {
     return (
       <div className="text-center py-12 space-y-3">
@@ -35,18 +35,23 @@ export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedM
           ({groupedMatches[dateStr].length} partidos)
         </span>
       </h3>
-      {groupedMatches[dateStr].map(match => (
-        <MatchCardItem
-          key={match.id}
-          match={match}
-          hasLockedMatches={hasLockedMatches}
-          liveNow={liveNow}
-          results={results}
-          setResults={setResults}
-          handleStatusChange={handleStatusChange}
-          handlePublishResult={handlePublishResult}
-        />
-      ))}
+      {groupedMatches[dateStr].map(match => {
+        const predCount = predictionCountByMatchId?.[match.id] || 0;
+        const hasScoredPredictions = predCount > 0 && (match.status === 'live' || match.status === 'finished');
+        return (
+          <MatchCardItem
+            key={match.id}
+            match={{ ...match, _predictionCount: predCount, _hasScoredPredictions: hasScoredPredictions }}
+            hasLockedMatches={hasLockedMatches}
+            results={results}
+            setResults={setResults}
+            handleStatusChange={handleStatusChange}
+            handlePublishResult={handlePublishResult}
+            editMatch={editMatch}
+            deleteMatch={deleteMatch}
+          />
+        );
+      })}
     </div>
   ));
 }

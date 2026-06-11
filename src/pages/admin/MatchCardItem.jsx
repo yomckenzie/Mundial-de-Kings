@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Save } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Clock, Save, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { formatTime12h } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const STATUS_COLORS = {
   pending: 'bg-muted text-muted-foreground',
@@ -21,6 +25,29 @@ const STATUS_LABELS = {
   finished: 'Finalizado',
 };
 
+const STATUS_HINTS = {
+  pending:  'Oculto para usuarios. Solo se muestra dentro de 48h antes del partido.',
+  open:     'Visible para usuarios. Pueden enviar pronósticos.',
+  live:     'Visible en sección "EN VIVO". Pronósticos cerrados.',
+  closed:   'Visible en finalizados. No se aceptan pronósticos, sin resultado publicado.',
+  finished: 'Visible en finalizados. Resultado publicado y predicciones evaluadas.',
+};
+
+const VISIBLE_STATUSES = new Set(['open', 'live', 'closed', 'finished']);
+
+const VALID_TRANSITIONS = {
+  pending:  new Set(['open', 'closed']),
+  open:     new Set(['live', 'closed', 'pending']),
+  live:     new Set(['finished', 'closed']),
+  closed:   new Set(['live', 'finished']),
+  finished: new Set(['live', 'open']),
+};
+
+function isValidTransition(from, to) {
+  if (from === to) return true;
+  return VALID_TRANSITIONS[from]?.has(to) ?? false;
+}
+
 function isMatchLocked(match, nowMs = Date.now()) {
   const LOCK_HOURS = 24;
   if (!match.match_date) return false;
@@ -34,16 +61,17 @@ function canPublishResult(match) {
   return match.status === 'live' || match.status === 'finished';
 }
 
-function getElapsed(match, liveNow) {
-  if (match.status === 'live' && match.live_started_at) {
-    const startedAt = new Date(match.live_started_at).getTime();
-    if (isNaN(startedAt)) return match.elapsed;
-    return Math.floor((liveNow - startedAt) / 60000);
-  }
-  return match.elapsed;
-}
+export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch }) {
+  const handleReopen = () => {
+    if (window.confirm('¿Reabrir este partido? Se limpiará el resultado y los usuarios podrán volver a pronosticar.')) {
+      handleStatusChange(match, 'open');
+    }
+  };
 
-export default function MatchCardItem({ match, hasLockedMatches, liveNow, results, setResults, handleStatusChange, handlePublishResult }) {
+  const allowedNext = VALID_TRANSITIONS[match.status] || new Set();
+  const allStatuses = ['pending', 'open', 'live', 'closed', 'finished'];
+  const selectableStatuses = allStatuses.filter(s => s === match.status || allowedNext.has(s));
+
   return (
     <Card className={`mb-2 ${match.status === 'live' ? 'ring-2 ring-red-500/50' : ''}`}>
       <CardContent className="p-4 space-y-3">
@@ -52,10 +80,17 @@ export default function MatchCardItem({ match, hasLockedMatches, liveNow, result
             <Clock className="w-4 h-4" />{formatTime12h(match.match_time)}
             {match.group_stage && <Badge variant="outline" className="text-[10px] ml-1">{match.group_stage}</Badge>}
           </div>
-          <Badge className={STATUS_COLORS[match.status] || 'bg-muted'}>
-            {STATUS_LABELS[match.status] || match.status}
-            {match.status === 'live' && getElapsed(match, liveNow) != null && ` ${getElapsed(match, liveNow)}'`}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge
+              className={`${STATUS_COLORS[match.status] || 'bg-muted'} cursor-help`}
+              title={STATUS_HINTS[match.status] || ''}
+            >
+              {STATUS_LABELS[match.status] || match.status}
+            </Badge>
+            {!VISIBLE_STATUSES.has(match.status) && (
+              <span className="text-[10px] text-muted-foreground/70 italic">(oculto)</span>
+            )}
+          </div>
         </div>
 
         <div className="text-center font-bold text-lg">
@@ -74,20 +109,39 @@ export default function MatchCardItem({ match, hasLockedMatches, liveNow, result
             name={`status_${match.id}`}
             className="text-xs border rounded-md px-2 py-1 bg-background"
             value={match.status}
-            onChange={(e) => handleStatusChange(match, e.target.value)}
+            onChange={(e) => {
+              const newStatus = e.target.value;
+              if (!isValidTransition(match.status, newStatus)) {
+                toast.error(`Transición no permitida: ${match.status} → ${newStatus}`);
+                return;
+              }
+              handleStatusChange(match, newStatus);
+            }}
+            title="Cambiar estado del partido"
           >
-            <option value="pending">Pendiente</option>
-            <option value="open">Abierto</option>
-            <option value="live">En Vivo</option>
-            <option value="closed">Cerrado</option>
-            <option value="finished">Finalizado</option>
+            {selectableStatuses.map(s => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}{s !== match.status ? ` → ${STATUS_LABELS[s]}` : ''}
+              </option>
+            ))}
           </select>
 
-          {match.status === 'live' && (
-            <div className="flex items-center gap-1 text-xs font-mono bg-red-50 dark:bg-red-950/20 px-2 py-1 rounded-md border border-red-200 dark:border-red-900">
-              <span className="font-semibold text-red-600">{getElapsed(match, liveNow) ?? '0'}'</span>
-            </div>
+          {(match.status === 'finished' || match.status === 'closed' || match.status === 'live') && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1 text-amber-600 hover:text-amber-700"
+              onClick={handleReopen}
+              title="Reabrir partido (limpia resultado)"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Reabrir
+            </Button>
           )}
+
+          {/* Botones de Editar / Eliminar partido */}
+          {editMatch && <EditMatchDialog match={match} onSave={editMatch} />}
+          {deleteMatch && <DeleteMatchDialog match={match} onDelete={deleteMatch} />}
 
           <div className="flex items-center gap-1.5 ml-auto">
             {canPublishResult(match) ? (
@@ -141,5 +195,176 @@ export default function MatchCardItem({ match, hasLockedMatches, liveNow, result
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Diálogo de edición: fecha, hora, fase/grupo ───
+function EditMatchDialog({ match, onSave }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    match_date: match.match_date || '',
+    match_time: match.match_time || '',
+    group_stage: match.group_stage || '',
+  });
+
+  const handleOpenChange = (o) => {
+    setOpen(o);
+    if (o) {
+      setForm({
+        match_date: match.match_date || '',
+        match_time: match.match_time || '',
+        group_stage: match.group_stage || '',
+      });
+    }
+  };
+
+  const handleSave = () => {
+    if (!form.match_date || !form.match_time) {
+      toast.error('Fecha y hora son obligatorias');
+      return;
+    }
+    // No permitir editar partidos live/finished con predicciones scored
+    if ((match.status === 'live' || match.status === 'finished') && match._hasScoredPredictions) {
+      toast.error('No se puede editar un partido finalizado con predicciones evaluadas');
+      return;
+    }
+    onSave.mutate(
+      { id: match.id, data: form },
+      {
+        onSuccess: () => setOpen(false),
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" title="Editar fecha/hora/fase">
+          <Pencil className="w-3 h-3" />
+          Editar
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Editar partido</DialogTitle>
+          <DialogDescription>
+            Modifica la fecha, hora o fase. Los equipos y resultado no se pueden cambiar.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="bg-muted/30 rounded-md p-2 text-sm font-medium">
+            {match.team1} vs {match.team2}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor={`edit-date-${match.id}`}>Fecha</Label>
+              <Input
+                id={`edit-date-${match.id}`}
+                type="date"
+                value={form.match_date}
+                onChange={(e) => setForm({ ...form, match_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`edit-time-${match.id}`}>Hora</Label>
+              <Input
+                id={`edit-time-${match.id}`}
+                type="time"
+                value={form.match_time}
+                onChange={(e) => setForm({ ...form, match_time: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor={`edit-group-${match.id}`}>Fase / Grupo</Label>
+            <Input
+              id={`edit-group-${match.id}`}
+              value={form.group_stage}
+              onChange={(e) => setForm({ ...form, group_stage: e.target.value })}
+              placeholder="Ej: Grupo A, Octavos, Final"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="ghost">Cancelar</Button>
+          </DialogClose>
+          <Button onClick={handleSave} disabled={onSave.isPending}>
+            {onSave.isPending ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Diálogo de eliminación con confirmación ───
+function DeleteMatchDialog({ match, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+
+  const handleDelete = () => {
+    if (confirmText !== match.team1) {
+      toast.error(`Escribe "${match.team1}" para confirmar`);
+      return;
+    }
+    onDelete.mutate(match.id, {
+      onSuccess: () => setOpen(false),
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" title="Eliminar partido">
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-destructive">Eliminar partido</DialogTitle>
+          <DialogDescription>
+            Esta acción no se puede deshacer. Las predicciones existentes se desvincularán (no se borran del historial del usuario).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="bg-muted/30 rounded-md p-3 text-sm">
+            <p className="font-bold">{match.team1} vs {match.team2}</p>
+            <p className="text-muted-foreground text-xs">
+              {match.match_date} {match.match_time && `· ${formatTime12h(match.match_time)}`}
+            </p>
+            {match._predictionCount > 0 && (
+              <p className="text-amber-600 dark:text-amber-400 text-xs mt-2">
+                ⚠️ Este partido tiene {match._predictionCount} pronóstico{match._predictionCount > 1 ? 's' : ''} que se desvincularán.
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor={`delete-confirm-${match.id}`}>
+              Escribe <span className="font-bold">{match.team1}</span> para confirmar:
+            </Label>
+            <Input
+              id={`delete-confirm-${match.id}`}
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={match.team1}
+              className="mt-1"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="ghost">Cancelar</Button>
+          </DialogClose>
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={onDelete.isPending || confirmText !== match.team1}
+          >
+            {onDelete.isPending ? 'Eliminando...' : 'Eliminar partido'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

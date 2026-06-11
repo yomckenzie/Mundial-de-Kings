@@ -3,6 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
 import { toast } from 'sonner';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { formatTime12h } from '@/lib/utils';
 import BatchPublishCard from './BatchPublishCard';
 import QuickActions from './QuickActions';
 import StatusLegend from './StatusLegend';
@@ -28,6 +32,20 @@ export default function AdminMatches() {
     queryKey: ['admin-matches-sorted'],
     queryFn: () => api.entities.Match.list(),
   });
+
+  // Predicciones (para mostrar conteo y advertencia al eliminar)
+  const { data: predictions = [] } = useQuery({
+    queryKey: ['admin-all-predictions'],
+    queryFn: () => api.entities.Prediction.list(),
+  });
+  const predictionCountByMatchId = React.useMemo(() => {
+    const map = {};
+    for (const p of predictions) {
+      if (!p.match_id) continue;
+      map[p.match_id] = (map[p.match_id] || 0) + 1;
+    }
+    return map;
+  }, [predictions]);
 
   const matches = React.useMemo(() =>
     rawMatches.toSorted((a, b) => {
@@ -58,7 +76,9 @@ export default function AdminMatches() {
   const {
     hasLockedMatches,
     resetAllMatches, seedMutation, handleClearAll, createMatch,
+    editMatch, deleteMatch,
     handleStatusChange, handlePublishResult, handleBatchPublish,
+    suggestedToOpen,
   } = useMatchHandlers(matches, results, setResults, sourceState, setSourceState, liveNow);
 
   // Agrupar partidos por fecha
@@ -112,15 +132,47 @@ export default function AdminMatches() {
 
       <StatusLegend />
 
+      {/* FIX UX: banner de partidos 'pending' dentro de 24h que deberían
+          abrirse para que los usuarios puedan pronosticar. Antes había que
+          adivinar; ahora el admin ve 1 click para abrir cada uno. */}
+      {suggestedToOpen.length > 0 && (
+        <Card className="border-amber-400/50 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                {suggestedToOpen.length} partido{suggestedToOpen.length > 1 ? 's' : ''} pendiente{suggestedToOpen.length > 1 ? 's' : ''} que deberí{suggestedToOpen.length > 1 ? 'an' : 'a'} abrirse (faltan &lt; 24h)
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {suggestedToOpen.map(m => (
+                <Button
+                  key={m.id}
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 h-7 text-xs"
+                  onClick={() => handleStatusChange(m, 'open')}
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  Abrir {m.team1} vs {m.team2} ({formatTime12h(m.match_time)})
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <MatchGroupList
         sortedDates={sortedDates}
         groupedMatches={groupedMatches}
         hasLockedMatches={hasLockedMatches}
-        liveNow={liveNow}
         results={results}
         setResults={setResults}
         handleStatusChange={handleStatusChange}
         handlePublishResult={handlePublishResult}
+        editMatch={editMatch}
+        deleteMatch={deleteMatch}
+        predictionCountByMatchId={predictionCountByMatchId}
       />
     </div>
   );

@@ -36,6 +36,7 @@ const client = {
       filter: P((fields, order) => db.matches.filter(fields, order)),
       create: P((data) => db.matches.create(data)),
       update: P((id, data) => db.matches.update(id, data)),
+      delete: P((id) => db.matches.remove(id)),
       clearAll: P(() => db.matches.clearAll()),
       resetAll: P(() => db.matches.resetAll()),
       bulkCreate: P((matches) => db.matches.bulkCreate(matches)),

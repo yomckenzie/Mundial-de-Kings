@@ -3,6 +3,7 @@ import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { m, AnimatePresence } from 'framer-motion';
 import { api } from '@/api/client';
+import { db } from '@/lib/db';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -84,14 +85,10 @@ const isMatchOpenForPredictions = (match) => {
   return now >= openFrom && now < matchDateTime;
 };
 
-function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveNow }) {
+function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   const isLive = match.status === 'live';
-
-  const displayElapsed = isLive && match.live_started_at
-    ? String(Math.floor((liveNow - new Date(match.live_started_at).getTime()) / 60000))
-    : match.elapsed;
 
   return (
     <m.div
@@ -132,11 +129,6 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
             <div className="flex flex-col items-center gap-3 w-[130px] sm:w-[150px] md:min-w-[170px]">
               {/* Score / VS */}
               <div className="flex flex-col items-center gap-1">
-                {isLive && displayElapsed && (
-                  <div className="text-[11px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider">
-                    {displayElapsed}'
-                  </div>
-                )}
                 {match.status === 'finished' || isLive ? (
                   <m.div
                     className={`font-bold px-4 py-2 rounded-xl text-base min-w-[80px] text-center ${
@@ -370,13 +362,6 @@ export default function Matches() {
   const { user } = useOutletContext();
   const queryClient = useQueryClient();
   const [predictionsState, setPredictionsState] = useState({});
-  const [liveNow, setLiveNow] = useState(() => Date.now());
-
-  // Timer global para calcular elapsed en todos los MatchCards
-  useEffect(() => {
-    const interval = setInterval(() => setLiveNow(Date.now()), 10000);
-    return () => clearInterval(interval);
-  }, []);
 
   const { data: rawMatches = [], isLoading } = useQuery({
     queryKey: ['matches'],
@@ -395,15 +380,39 @@ export default function Matches() {
     enabled: !!user,
   });
 
-  // Refresh local cada 30s para ver cambios en DB
+  // Refresh local cada 15s para ver cambios en DB (scoring, badges, etc.)
   useEffect(() => {
-    const interval = setInterval(() => {
+    const refresh = () => {
       queryClient.invalidateQueries({ queryKey: ['matches'] });
       queryClient.invalidateQueries({
         predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0]?.startsWith('my-predictions')
       });
-    }, 30000);
-    return () => clearInterval(interval);
+    };
+    const interval = setInterval(refresh, 15000);
+    // FIX: también refrescar al volver a la pestaña (visibilitychange)
+    // para que al admin/publicar resultado y el usuario cambiar de tab,
+    // el badge se actualice de inmediato al volver.
+    const onVisibility = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    // FIX CRÍTICO: escuchar 'db-cloud-change' (disparado por
+    // evaluateMatchPredictions y por realtime Supabase) para invalidar
+    // queries inmediatamente cuando se actualizan predictions/users/matches
+    // desde OTRO cliente (ej: el admin finaliza y el usuario ve el badge
+    // ¡Acertaste! en <1s, no 15s).
+    const onCloudChange = async (e) => {
+      const table = e?.detail?.tableName;
+      if (table === 'predictions' || table === 'users' || table === 'matches') {
+        // Forzar sync FROM para que localStorage vea scored=true/is_correct=true
+        try { await db._syncSingleTableFromSupabase(table); } catch (err) { /* noop */ }
+        refresh();
+      }
+    };
+    window.addEventListener('db-cloud-change', onCloudChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('db-cloud-change', onCloudChange);
+    };
   }, [queryClient]);
 
   const submitPrediction = useMutation({
@@ -452,7 +461,11 @@ export default function Matches() {
       if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
       return (a.match_time || '').localeCompare(b.match_time || '');
     });
-  const finishedMatches = matches.filter(m => m.status === 'finished' || m.status === 'closed');
+  // FIX UX: separar 'closed' (sin resultado publicado) de 'finished' (con
+  // resultado y scoring). Antes aparecían juntos y era confuso. Ahora
+  // closed tiene su propia categoría "CERRADOS SIN RESULTADO".
+  const finishedMatches = matches.filter(m => m.status === 'finished');
+  const closedMatches = matches.filter(m => m.status === 'closed');
 
   if (isLoading) {
     return (
@@ -519,7 +532,6 @@ export default function Matches() {
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
                   handleSubmit={handleSubmit}
-                  liveNow={liveNow}
                 />
               ))}
             </div>
@@ -545,7 +557,6 @@ export default function Matches() {
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
                   handleSubmit={handleSubmit}
-                  liveNow={liveNow}
                 />
               ))}
             </div>
@@ -573,7 +584,34 @@ export default function Matches() {
                     submitPrediction={submitPrediction}
                     handlePredict={handlePredict}
                     handleSubmit={handleSubmit}
-                    liveNow={liveNow}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          </details>
+        </div>
+      )}
+
+      {/* Closed Matches (sin resultado publicado) */}
+      {closedMatches.length > 0 && (
+        <div>
+          <details className="group">
+            <summary className="font-display text-2xl tracking-wide mb-3 cursor-pointer hover:text-secondary transition flex items-center gap-2 text-muted-foreground">
+              CERRADOS SIN RESULTADO
+              <span className="text-sm font-sans font-normal text-muted-foreground">({closedMatches.length})</span>
+            </summary>
+            <div className="space-y-4 mt-4">
+              <AnimatePresence>
+                {closedMatches.map(match => (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    user={user}
+                    existing={getPredictionForMatch(match.id)}
+                    predictions={predictionsState}
+                    submitPrediction={submitPrediction}
+                    handlePredict={handlePredict}
+                    handleSubmit={handleSubmit}
                   />
                 ))}
               </AnimatePresence>

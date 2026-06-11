@@ -29,8 +29,35 @@ let _lastCleanAt = (() => { try { return localStorage.getItem(CLEAN_AT_KEY) || n
 // Usado por _syncBatchToSupabase para NO re-subir filas que no cambiaron
 // desde la última subida (evita el bug de "el admin borra y la fila
 // reaparece" cuando el cliente hace un syncAllTo indiscriminado).
-const _lastSyncTimestamps = {}; // { [tableName]: ISOString }
+const _lastSyncTimestamps = (() => {
+  try {
+    const raw = localStorage.getItem('chessking_last_sync_timestamps');
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+})(); // { [tableName]: ISOString } — persistido en localStorage para sobrevivir reloads
 const _uploadedSinceLastDelete = new Set(); // tableName set: subido después de un delete reciente
+
+function _saveLastSyncTimestamps() {
+  try { localStorage.setItem('chessking_last_sync_timestamps', JSON.stringify(_lastSyncTimestamps)); } catch {}
+}
+
+// FIX BUG PREDICCIÓN PERDIDA: cuando un cliente nuevo o un reload sin
+// _lastSyncTimestamps previo intenta subir predicciones, la rama
+// `lastSync ? filtered.filter(...) : []` descartaba TODO. Resultado: la
+// predicción creada localmente nunca llegaba a Supabase y al primer
+// sync FROM se sobrescribía localStorage con []. Ahora: si no hay
+// watermark para predictions/users Y la app no ha hecho un sync FROM
+// completo todavía, el primer sync TO sube todo (no perdemos filas nuevas).
+// Una vez que _syncAllFromSupabaseInternal corre y setea el watermark,
+// las subidas posteriores respetan el filtro estricto.
+let _initialSyncDone = (() => {
+  try { return localStorage.getItem('chessking_initial_sync_done') === '1'; } catch { return false; }
+})();
+
+function _markInitialSyncDone() {
+  _initialSyncDone = true;
+  try { localStorage.setItem('chessking_initial_sync_done', '1'); } catch {}
+}
 
 function sortBy(arr, order) {
   if (!order) return [...arr];
@@ -386,6 +413,11 @@ export const db = {
 
         this._notifyReactComponents();
       }
+      // FIX: marcar que el primer sync FROM ya ocurrió. A partir de aquí,
+      // el sync TO respeta el watermark para predictions/users (no se
+      // suben filas sin updated_at ni filas viejas que podrían resucitar
+      // entradas borradas en SQL).
+      _markInitialSyncDone();
       } catch {
         // Error silencioso al sincronizar desde Supabase
       } finally {
@@ -507,13 +539,19 @@ export const db = {
         const tableName = tableNameToSupabase(jsKey);
         const lastSync = _lastSyncTimestamps[tableName];
         let toUpload;
-        if (jsKey === 'predictions') {
-          // Predicciones: solo subir filas recién creadas en este browser
-          // (updated_at > lastSync). Filas con scored=true/is_correct=true
-          // ya están en Supabase y no deben re-subirse.
-          toUpload = lastSync
-            ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
-            : [];
+        if (jsKey === 'predictions' || jsKey === 'users') {
+          // FIX: predicciones y users solo suben si tienen updated_at más
+          // nuevo que el watermark. Si no hay watermark (cliente nuevo o
+          // reload sin sync previo), se permite la subida SOLO si el
+          // _initialSyncDone ya se completó (primer sync FROM ya pobló
+          // localStorage con la verdad del server). Si NO se ha hecho
+          // el sync FROM inicial, subimos todo (cliente no tiene estado
+          // previo que pueda resucitar filas borradas).
+          if (lastSync || _initialSyncDone) {
+            toUpload = filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync || 0).getTime());
+          } else {
+            toUpload = filtered;
+          }
         } else {
           toUpload = lastSync
             ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime())
@@ -529,6 +567,7 @@ export const db = {
           await syncTableToSupabaseFn(jsKey, records);
           const tableName = tableNameToSupabase(jsKey);
           _lastSyncTimestamps[tableName] = new Date().toISOString();
+          _saveLastSyncTimestamps();
         })
       );
     } finally {
@@ -558,12 +597,15 @@ export const db = {
       // el scoring las escribe directo en Supabase y no debe sobrescribirse.
       const tableName = tableNameToSupabase(jsKey);
       const lastSync = _lastSyncTimestamps[tableName];
-      const toUpload = (jsKey === 'predictions')
-        ? (lastSync ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime()) : [])
+      const toUpload = (jsKey === 'predictions' || jsKey === 'users')
+        ? (lastSync || _initialSyncDone
+            ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync || 0).getTime())
+            : filtered)
         : (lastSync ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime()) : filtered);
       if (toUpload.length > 0) {
         await syncTableToSupabaseFn(jsKey, toUpload);
         _lastSyncTimestamps[tableName] = new Date().toISOString();
+        _saveLastSyncTimestamps();
       }
     }
     if (_resyncFromQueued) {
@@ -1041,6 +1083,59 @@ export const db = {
       db._persist('matches');
       return d.matches[idx];
     },
+    /**
+     * Eliminar un partido. Las predicciones existentes se DESVINCULAN
+     * (match_id se pone a null) — no se borran, para preservar el
+     * historial de cada usuario. Requiere Supabase Auth Admin para
+     * el DELETE directo (RLS no permite DELETE anónimo).
+     */
+    async remove(id) {
+      const d = db._init();
+      const idx = d.matches.findIndex(m => m.id === id);
+      if (idx === -1) throw new Error('Match not found');
+      const match = d.matches[idx];
+
+      // Bloquear sync FROM/TO durante la operación para evitar que el
+      // polling resucite el partido antes de que el DELETE termine.
+      _blockFromSync = true;
+      _skipBackgroundSync = true;
+      try {
+        // 1. Desvincular predicciones (match_id = null). No las borramos.
+        const affected = (d.predictions || []).filter(p => p.match_id === id);
+        for (const p of affected) {
+          p.match_id = null;
+          p.updated_at = getNow();
+        }
+        if (affected.length > 0) {
+          // Subir predicciones desvinculadas a Supabase
+          db._persist('predictions');
+        }
+
+        // 2. Eliminar partido de localStorage + marcar deletedId
+        d.matches.splice(idx, 1);
+        db._addDeletedId('matches', id);
+        save(d);
+
+        // 3. DELETE directo en Supabase (no upsert) para garantizar borrado
+        if (isSupabaseAvailable() && supabase) {
+          const { error } = await supabase.from('matches').delete().eq('id', id);
+          if (error) {
+            throw new Error('No se pudo eliminar en Supabase: ' + (error.message || error));
+          }
+        }
+
+        // 4. Liberar bloqueos + refrescar
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
+        await db._syncSingleTable('predictions');
+        await db._syncDeletedIdsToCloud();
+        notifyReactComponents();
+        return { ok: true, detached: affected.length };
+      } finally {
+        _blockFromSync = false;
+        _skipBackgroundSync = false;
+      }
+    },
     async clearAll() {
       const d = db._init();
       // Eliminar directamente de Supabase si está disponible (await para evitar race condition con polling)
@@ -1456,6 +1551,7 @@ export const db = {
       const record = {
         id: makeId(),
         created_date: getNow(),
+        updated_at: getNow(),
         scored: false,
         is_correct: false,
         points_earned: 0,
