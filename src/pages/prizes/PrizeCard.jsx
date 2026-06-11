@@ -2,12 +2,48 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Ruler, Sparkles } from 'lucide-react';
+import { Package, Ruler, Sparkles, Loader2 } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/api/client';
+import { useOutletContext } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 export default function PrizeCard({ prize }) {
+  const { user } = useOutletContext();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const hasSizes = prize.sizes && typeof prize.sizes === 'object' && Object.keys(prize.sizes).length > 0;
   const [imgError, setImgError] = useState(false);
+  const [selectedSize, setSelectedSize] = useState(null);
   const gradient = prize.gradient || 'from-slate-600 to-slate-800';
+
+  // Mutation de canje. Descuenta puntos del user y crea un redemption pending.
+  // El admin aprueba/rechaza desde /admin/redemptions.
+  const redeemMutation = useMutation({
+    mutationFn: async () => {
+      const pointsCost = Number(prize.points_cost) || 0;
+      const payload = {
+        user_email: user.email,
+        prize_id: prize.id,
+        prize_name: prize.name,
+        points_spent: pointsCost,
+        status: 'pending',
+        selected_size: hasSizes ? selectedSize : null,
+      };
+      return api.entities.Redemption.create(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prizes'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-prizes'] });
+      queryClient.invalidateQueries({ queryKey: ['my-redemptions', user?.email] });
+      queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-prizes-redemptions'] });
+      toast.success(`🎁 Solicitud enviada. Pendiente de aprobación.`);
+      setSelectedSize(null);
+    },
+    onError: (err) => toast.error('Error al canjear: ' + (err.message || 'Error')),
+  });
   const emoji = prize.icon || '🎁';
   const hasRealImage = prize.image_url && !imgError;
 
@@ -71,7 +107,7 @@ export default function PrizeCard({ prize }) {
           </p>
         )}
 
-        {/* Tallas disponibles */}
+        {/* Tallas disponibles (clickeables) */}
         {hasSizes && (
           <div className="mb-3">
             <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
@@ -81,15 +117,24 @@ export default function PrizeCard({ prize }) {
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(prize.sizes).map(([size, stock]) => {
                 const inStock = Number(stock) > 0;
+                const isSelected = selectedSize === size;
                 return (
-                  <Badge
+                  <button
                     key={size}
-                    variant={inStock ? 'default' : 'outline'}
-                    className={`text-xs px-2 py-0.5 ${inStock ? 'bg-foreground text-background' : 'text-muted-foreground opacity-50'}`}
+                    type="button"
+                    disabled={!inStock}
+                    onClick={() => setSelectedSize(size)}
+                    className={`text-xs px-2 py-0.5 rounded-md border transition-colors ${
+                      isSelected
+                        ? 'bg-foreground text-background border-foreground'
+                        : inStock
+                        ? 'bg-background border-border hover:border-foreground'
+                        : 'opacity-50 cursor-not-allowed border-border'
+                    }`}
                   >
                     {size}
                     <span className="ml-1 font-normal opacity-70">({stock})</span>
-                  </Badge>
+                  </button>
                 );
               })}
             </div>
@@ -104,15 +149,44 @@ export default function PrizeCard({ prize }) {
           </div>
         </div>
 
-        {/* Botón de canje (desactivado temporalmente) */}
-        <Button
-          className="w-full gap-1.5"
-          disabled
-          title="Los canjes están temporalmente desactivados"
-        >
-          <Package className="w-4 h-4" />
-          Canjeos desactivados
-        </Button>
+        {/* Mutation de canje */}
+        {(() => {
+          const userPoints = user?.total_points || 0;
+          const canAfford = userPoints >= (prize.points_cost || 0);
+          const inStock = (prize.units_available || 0) > 0;
+          const needsSize = hasSizes && !selectedSize;
+          const isDisabled = !user || !canAfford || !inStock || needsSize || redeemMutation.isPending;
+
+          return (
+            <Button
+              className="w-full gap-1.5"
+              disabled={isDisabled}
+              onClick={() => {
+                if (!user) { navigate('/login'); return; }
+                if (needsSize) { toast.error('Selecciona una talla'); return; }
+                if (!canAfford) { toast.error(`Te faltan ${prize.points_cost - userPoints} pts`); return; }
+                if (window.confirm(`¿Canjear "${prize.name}" por ${prize.points_cost} pts?`)) {
+                  redeemMutation.mutate();
+                }
+              }}
+              title={!user ? 'Inicia sesión para canjear' : needsSize ? 'Selecciona una talla' : !canAfford ? 'No tienes suficientes puntos' : 'Canjear premio'}
+            >
+              {redeemMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</>
+              ) : !user ? (
+                <><Package className="w-4 h-4" /> Inicia sesión para canjear</>
+              ) : !canAfford ? (
+                <><Package className="w-4 h-4" /> Te faltan {prize.points_cost - userPoints} pts</>
+              ) : !inStock ? (
+                <><Package className="w-4 h-4" /> Agotado</>
+              ) : needsSize ? (
+                <><Ruler className="w-4 h-4" /> Selecciona talla</>
+              ) : (
+                <><Package className="w-4 h-4" /> Canjear por {prize.points_cost} pts</>
+              )}
+            </Button>
+          );
+        })()}
       </CardContent>
     </Card>
   );

@@ -162,13 +162,9 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
 const syncTableFromSupabaseFn = async (jsKey, localRecords) => {
   const tableName = tableNameToSupabase(jsKey);
   if (!tableName || !isSupabaseAvailable()) return localRecords;
-  // ╔═══════════════════════════════════════════════════════════════╗
-  // ║ TEMPORAL: No sincronizar premios desde Supabase             ║
-  // ║ Los 400+ premios duplicados en la BD solo se suben (TO),    ║
-  // ║ nunca se bajan (FROM). Hasta limpiar la BD manualmente.     ║
-  // ║ QUITAR esta línea cuando la BD esté limpia.                ║
-  // ╚═══════════════════════════════════════════════════════════════╝
-  if (jsKey === 'prizes') return localRecords;
+  // FIX: ya se sincronizan premios desde Supabase (sync FROM activo).
+  // Antes había un bypass temporal por los 400+ duplicados históricos;
+  // tras el wipe manual de la tabla, se re-habilita el sync normal.
   try {
     const result = await syncTableFromSupabase(tableName, localRecords, { lastCleanAt: _lastCleanAt });
     if (result) return result;
@@ -2707,67 +2703,21 @@ export const db = {
       save(d);
     }
 
-    // NO seedear premios por defecto — el admin los crea desde el panel
-    // PERO si el archivo prizes está vacío, seedear ejemplos para preview
-    // Usar IDs fijos para evitar duplicados al sincronizar con Supabase
-    if (d.prizes.length === 0) {
-      const now = getNow();
-      const demoPrizes = [
-        {
-          id: 'demo-camiseta-oficial', name: 'Camiseta Oficial', points_cost: 500,
-          description: 'Camiseta oficial del Mundial de Kings — Edición limitada 2026',
-          units_available: 25,
-          image_url: 'https://placehold.co/600x400/10b981/ffffff?text=Camiseta',
-          status: 'active',
-          created_date: now,
-        },
-        {
-          id: 'demo-gorra-snapback', name: 'Gorra Snapback', points_cost: 300,
-          description: 'Gorra ajustable con logo bordado',
-          units_available: 50,
-          image_url: 'https://placehold.co/600x400/f59e0b/ffffff?text=Gorra',
-          status: 'active',
-          created_date: now,
-        },
-        {
-          id: 'demo-pulsera-kings', name: 'Pulsera Kings', points_cost: 150,
-          description: 'Pulsera de silicona con diseño exclusivo',
-          units_available: 100,
-          image_url: 'https://placehold.co/600x400/8b5cf6/ffffff?text=Pulsera',
-          status: 'active',
-          created_date: now,
-        },
-      ];
-      d.prizes.push(...demoPrizes);
-      save(d);
-    }
+    // FIX: NO seedear premios por defecto. Antes, si localStorage estaba
+    // vacío (admin browser nuevo, cache limpio, etc.), se creaban 3
+    // premios demo con id: makeId() random. Cada vez que el admin
+    // recargaba con localStorage vacío, se sembraban 3 NUEVOS con IDs
+    // distintos, y como sync TO subía TODO, se duplicaban en la BD.
+    // Resultado: 415 premios duplicados.
+    // Ahora: si la BD está vacía, NO se siembra nada. El admin crea
+    // los premios desde el panel /admin/prizes. La página pública /prizes
+    // muestra un empty state.
+    // También se quita el dedup automático de "más de 10" porque ya
+    // no hay razón histórica para que haya muchos.
 
     // ╔═══════════════════════════════════════════════════════════════╗
-    // ║ TEMPORAL: Limpiar duplicados locales si hay más de 10       ║
-    // ║ (producto de los 400+ duplicados que bajaron de Supabase    ║
-    // ║ antes de desactivar el sync FROM).                          ║
-    // ║ QUITAR cuando la BD esté limpia y se reactive sync FROM.    ║
+    // ║ QUITADO: ya no se siembran demos ni se dedupea automáticamente║
+    // ║ Si la BD tiene duplicados, hacer wipe manual desde SQL Editor.║
     // ╚═══════════════════════════════════════════════════════════════╝
-    if (d.prizes.length > 10) {
-      const nameMap = new Map();
-      for (const p of d.prizes) {
-        const key = (p.name || '').toLowerCase().trim();
-        if (!key) continue;
-        if (!nameMap.has(key)) {
-          nameMap.set(key, p);
-        } else {
-          // Conservar el más antiguo
-          const existing = nameMap.get(key);
-          const existingTime = new Date(existing.created_date || 0).getTime();
-          const recTime = new Date(p.created_date || 0).getTime();
-          if (recTime < existingTime || (recTime === existingTime && (p.id || '') < (existing.id || ''))) {
-            nameMap.set(key, p);
-          }
-        }
-      }
-      d.prizes = Array.from(nameMap.values());
-      save(d);
-      console.warn(`[DB] seedIfEmpty: limpiados duplicados locales, quedan ${d.prizes.length} premios`);
-    }
   },
 };
