@@ -51,8 +51,8 @@ admin-matches*.png
 nul
 nul
 
-# k6 test credentials (contiene SUPABASE_ANON_KEY si se llena)
-k6-tests/env.js
+# k6 test credentials env file — ya no se ignora porque env.js no contiene
+# credenciales; SUPABASE_ANON_KEY, ADMIN_EMAIL y ADMIN_PASSWORD se pasan con -e al invocar k6.
 
 # k6 output files (correr con --out json=result.json)
 k6-results/

@@ -6,9 +6,9 @@
 // ═══════════════════════════════════════════════════════════
 
 import { group } from 'k6';
-import { SUPABASE_ANON_KEY, APP_URL } from './env.js';
+import { SUPABASE_ANON_KEY, APP_URL, ADMIN_EMAIL, ADMIN_PASSWORD, requireAdminCreds } from './env.js';
 import {
-  visitPage, supabaseQuery,
+  visitPage, supabaseQuery, supabaseLogin,
   humanPause
 } from './helpers.js';
 
@@ -68,7 +68,8 @@ export default function () {
 
     // 6. Login / Admin (algunos VUs)
     if (__VU <= 5 && hasSupabase) {
-      const token = supabaseLogin('admin@chessking.com', 'admin123');
+      requireAdminCreds();
+      const token = supabaseLogin(ADMIN_EMAIL, ADMIN_PASSWORD);
       if (token) {
         visitPage(APP_URL + '/admin', 'soak_admin');
         humanPause();
