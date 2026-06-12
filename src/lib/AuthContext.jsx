@@ -45,6 +45,14 @@ export const AuthProvider = ({ children }) => {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             db.setCurrentUserEmail(session.user.email);
+            // Esperar la primera carga desde Supabase ANTES de resolver el
+            // usuario. Sin esto, getCurrentUser() buscaba en la memoria local
+            // (aún vacía), devolvía null, y la app arrancaba "deslogueada":
+            // el guard de admin mostraba "No tienes permiso", el navbar
+            // "Crear cuenta", etc., hasta que llegaba el sync y todo
+            // cambiaba de golpe. El spinner global (isLoadingAuth) cubre
+            // esta espera. Los visitantes sin sesión no esperan nada.
+            await db.whenReady();
             refreshCurrentUser();
           }
         }
@@ -67,8 +75,12 @@ export const AuthProvider = ({ children }) => {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (session?.user) {
           db.setCurrentUserEmail(session.user.email);
-          const current = db.getCurrentUser();
-          dispatch({ type: 'SET_USER', user: current });
+          // Esperar la carga inicial igual que initAuth — este evento puede
+          // dispararse al arrancar, antes de que la tabla users esté en
+          // memoria, y publicaría user=null pisando al usuario real.
+          db.whenReady().then(() => {
+            dispatch({ type: 'SET_USER', user: db.getCurrentUser() });
+          });
         } else {
           db.setCurrentUserEmail(null);
           dispatch({ type: 'LOGOUT' });
