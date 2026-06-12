@@ -14,6 +14,7 @@ import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { formatTime12h } from '@/lib/utils';
+import { useLiveResults } from './matches/useLiveResults';
 
 // Referencia fija para parsear fechas en hora LOCAL (igual que el panel admin
 // en MatchGroupList.jsx). Evita el desfase de zona horaria que ocurre al usar
@@ -83,10 +84,18 @@ const isMatchOpenForPredictions = (match) => {
   return now >= openFrom && now < matchDateTime;
 };
 
-function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit }) {
+function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   const isLive = match.status === 'live';
+
+  // Datos en vivo de SportScore (se refrescan solos cada 30s vía useLiveResults).
+  // Si hay marcador en vivo, lo mostramos en lugar del estático de la BD.
+  const liveScore = liveResult && liveResult.team1Score != null && liveResult.team2Score != null
+    ? { t1: liveResult.team1Score, t2: liveResult.team2Score }
+    : null;
+  const liveLabel = liveResult?.label; // "67'", "HT", "Finalizado"...
+  const liveState = liveResult?.state;  // 'live' | 'finished' | 'upcoming'
 
   // Resultado conocido: partido finalizado con marcador publicado.
   // El veredicto (acertó/no acertó) se calcula localmente con la misma regla
@@ -140,18 +149,31 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               {/* Score / VS */}
               <div className="flex flex-col items-center gap-1">
                 {match.status === 'finished' || isLive ? (
-                  <m.div
-                    className={`font-bold px-4 py-2 rounded-xl text-base min-w-[80px] text-center ${
-                      isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
-                    }`}
-                    initial={isLive ? { scale: 1 } : undefined}
-                    animate={isLive ? { scale: [1, 1.03, 1] } : undefined}
-                    transition={isLive ? { repeat: Infinity, duration: 2 } : undefined}
-                  >
-                    {match.result_team1 != null ? match.result_team1 : '-'}
-                    {' - '}
-                    {match.result_team2 != null ? match.result_team2 : '-'}
-                  </m.div>
+                  <>
+                    <m.div
+                      className={`font-bold px-4 py-2 rounded-xl text-base min-w-[80px] text-center ${
+                        isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
+                      }`}
+                      initial={isLive ? { scale: 1 } : undefined}
+                      animate={isLive ? { scale: [1, 1.03, 1] } : undefined}
+                      transition={isLive ? { repeat: Infinity, duration: 2 } : undefined}
+                    >
+                      {/* En vivo: marcador de SportScore (auto-actualizado). Si no
+                          hay dato en vivo aún, cae al resultado de la BD. */}
+                      {liveScore ? liveScore.t1 : (match.result_team1 != null ? match.result_team1 : '-')}
+                      {' - '}
+                      {liveScore ? liveScore.t2 : (match.result_team2 != null ? match.result_team2 : '-')}
+                    </m.div>
+                    {/* Minuto/estado en vivo desde SportScore */}
+                    {isLive && liveLabel && (
+                      <span className={`text-[11px] font-bold flex items-center gap-1 ${
+                        liveState === 'finished' ? 'text-muted-foreground' : 'text-red-600'
+                      }`}>
+                        {liveState !== 'finished' && <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
+                        {liveState === 'finished' ? 'Final (por confirmar)' : liveLabel}
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <div className="px-4 py-2 rounded-xl bg-muted/50">
                     <span className="text-muted-foreground font-bold text-base">VS</span>
@@ -467,6 +489,9 @@ export default function Matches() {
     });
   };
 
+  // Resultados en vivo de SportScore (auto-refresco cada 30s), { matchId → liveResult }
+  const liveResults = useLiveResults(matches);
+
   const liveMatches = matches.filter(m => m.status === 'live');
   const upcomingMatches = matches
     .filter(m => (m.status === 'pending' || m.status === 'open') && isWithinVisibilityWindow(m))
@@ -547,6 +572,7 @@ export default function Matches() {
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
                   handleSubmit={handleSubmit}
+                  liveResult={liveResults[match.id]}
                 />
               ))}
             </div>
