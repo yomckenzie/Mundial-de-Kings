@@ -94,14 +94,14 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
       if ((Number(prize.units_available) || 0) <= 0) {
         throw new Error('Este premio está agotado o reservado por otros canjes.');
       }
-      const payload = {
-        user_email: user.email,
-        prize_id: prize.id,
-        prize_name: prize.name,
-        points_spent: pointsCost,
-        status: 'pending',
-      };
-      return api.entities.Redemption.create(payload);
+      // Canje atómico: la validación final de stock y puntos ocurre en
+      // Postgres (función redeem_prize) dentro de una transacción con lock.
+      // Si otro usuario canjeó la última unidad un instante antes, el
+      // servidor responde OUT_OF_STOCK y aquí NO se crea nada.
+      return api.entities.Redemption.redeem({
+        prizeId: prize.id,
+        userEmail: user.email,
+      });
     },
     onSuccess: () => {
       // 'prizes-public' y 'redemptions-public' son los que usa la página

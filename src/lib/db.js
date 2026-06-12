@@ -1907,6 +1907,57 @@ export const db = {
       await db._persist('redemptions');
       return record;
     },
+    /**
+     * Canje atómico server-side (anti race-condition).
+     * Llama a la función SQL redeem_prize() que valida stock y puntos DENTRO
+     * de una transacción con lock en el premio: si dos usuarios canjean el
+     * mismo premio al mismo tiempo desde dispositivos distintos, Postgres los
+     * procesa en serie y el segundo recibe OUT_OF_STOCK — nunca se crea un
+     * canje de más ni se duplica nada.
+     * Fallback: si la función aún no está instalada en Supabase (migración
+     * 2026-06-12-001 pendiente), usa el flujo local original.
+     */
+    async redeem({ prizeId, userEmail }) {
+      const id = makeId();
+      const createdDate = getNow();
+      if (isSupabaseAvailable() && supabase) {
+        const { data, error } = await supabase.rpc('redeem_prize', {
+          p_user_email: userEmail,
+          p_prize_id: prizeId,
+          p_id: id,
+          p_created_date: createdDate,
+        });
+        if (!error) {
+          if (data && !_data.redemptions.some(r => r.id === data.id)) {
+            _data.redemptions.push(data);
+          }
+          return data;
+        }
+        const msg = error.message || '';
+        // PGRST202 = función no encontrada → migración pendiente, usar fallback
+        const notInstalled = error.code === 'PGRST202' ||
+          (/redeem_prize/i.test(msg) && /could not find|does not exist|not exist/i.test(msg));
+        if (!notInstalled) {
+          // Errores de negocio lanzados por la función SQL → mensaje amigable
+          if (msg.includes('OUT_OF_STOCK')) throw new Error('Este premio se agotó hace un momento — otro usuario lo canjeó primero.');
+          if (msg.includes('INSUFFICIENT_POINTS')) throw new Error('No tienes suficientes puntos disponibles (puntos reservados en canjes pendientes).');
+          if (msg.includes('PRIZE_NOT_ACTIVE') || msg.includes('PRIZE_NOT_FOUND')) throw new Error('Este premio ya no está disponible.');
+          if (msg.includes('USER_NOT_FOUND')) throw new Error('Usuario no encontrado. Vuelve a iniciar sesión.');
+          throw new Error(msg);
+        }
+        console.warn('[DB] redeem_prize RPC no instalada — usando flujo local. Corre la migración 2026-06-12-001 en Supabase.');
+      }
+      // Fallback local (sin garantía atómica): mismo comportamiento anterior
+      const prize = _data.prizes.find(p => p.id === prizeId);
+      if (!prize) throw new Error('Este premio ya no está disponible.');
+      return db.redemptions.create({
+        user_email: userEmail,
+        prize_id: prizeId,
+        prize_name: prize.name,
+        points_spent: Number(prize.points_cost) || 0,
+        status: 'pending',
+      });
+    },
     async update(id, data) {
       const idx = _data.redemptions.findIndex(r => r.id === id);
       if (idx === -1) throw new Error('Redemption not found');

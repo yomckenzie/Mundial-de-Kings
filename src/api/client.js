@@ -58,6 +58,7 @@ const client = {
       list: P((order) => db.redemptions.list(order)),
       filter: P((fields, order) => db.redemptions.filter(fields, order)),
       create: P((data) => db.redemptions.create(data)),
+      redeem: P((args) => db.redemptions.redeem(args)),
       update: P((id, data) => db.redemptions.update(id, data)),
     },
     SupportTicket: {
