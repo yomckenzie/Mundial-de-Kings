@@ -17,7 +17,7 @@ export default function PointsBreakdown({ predictionPoints, bonusPoints, referra
             </div>
             <div>
               <p className="text-sm font-medium">Por pronósticos</p>
-              <p className="text-xs text-muted-foreground">Usado en el Ranking</p>
+              <p className="text-xs text-muted-foreground">Los únicos que cuentan para el Ranking</p>
             </div>
           </div>
           <span className="font-bold text-lg">{predictionPoints} pts</span>
@@ -65,7 +65,7 @@ export default function PointsBreakdown({ predictionPoints, bonusPoints, referra
         <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
           <div>
             <span className="font-bold">Total ganado</span>
-            <p className="text-xs text-muted-foreground">Para el ranking</p>
+            <p className="text-xs text-muted-foreground">Pronósticos + bonos + referidos · para canjear premios</p>
           </div>
           <span className="font-black text-xl">{totalPoints} pts</span>
         </div>
