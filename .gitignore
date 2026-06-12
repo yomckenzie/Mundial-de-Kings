@@ -61,3 +61,5 @@ k6-results/
 # Codebuff
 .agents/
 skills-lock.json
+build_output.txt
+*.log
