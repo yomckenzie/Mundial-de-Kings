@@ -1,6 +1,13 @@
 import { db } from '@/lib/db';
 
-const P = (fn) => (...args) => Promise.resolve().then(() => fn(...args));
+// Todas las operaciones de entidades esperan la primera carga desde
+// Supabase (db.whenReady). Sin esto, las páginas leían la memoria local
+// vacía al entrar, mostraban "no hay datos" y luego todo aparecía de
+// golpe cuando llegaba la nube. Tras la carga inicial no agrega latencia.
+const P = (fn) => async (...args) => {
+  await db.whenReady();
+  return fn(...args);
+};
 
 const client = {
   auth: {

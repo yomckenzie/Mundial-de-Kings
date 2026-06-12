@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { m } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Trophy, TrendingUp, Gift } from 'lucide-react';
 import { api } from '@/api/client';
 import PrizeCard from './prizes/PrizeCard';
@@ -131,6 +132,20 @@ export default function Prizes() {
             </CardContent>
           </Card>
         </m.div>
+      )}
+
+      {/* Skeletons mientras llega la primera carga desde Supabase */}
+      {isLoading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={`sk-${i}`} className="space-y-3">
+              <Skeleton className="aspect-video w-full rounded-xl" />
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-9 w-full rounded-md" />
+            </div>
+          ))}
+        </div>
       )}
 
       <m.div

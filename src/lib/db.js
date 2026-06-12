@@ -103,32 +103,40 @@ async function _deleteBatchFromCloud(tableName, ids) {
   }));
 }
 
-async function _loadAllFromCloud() {
-  if (!isSupabaseAvailable()) { _loaded = true; return; }
-  if (_loading) return;
+// Promesa de la carga en curso. Permite que las páginas ESPEREN la primera
+// carga desde Supabase (vía db.whenReady) en vez de leer la memoria vacía
+// y mostrar un falso "no hay datos" que luego se reemplaza de golpe.
+let _loadPromise = null;
+
+function _loadAllFromCloud() {
+  if (!isSupabaseAvailable()) { _loaded = true; return Promise.resolve(); }
+  if (_loading && _loadPromise) return _loadPromise;
   _loading = true;
-  try {
-    const tables = Object.keys(TABLE_MAP);
-    const results = await Promise.all(
-      tables.map(async (jsKey) => {
-        const tableName = tableNameToSupabase(jsKey);
-        const { data, error } = await supabase.from(tableName).select('*');
-        return { jsKey, data: error ? [] : (data || []) };
-      })
-    );
-    for (const { jsKey, data } of results) {
-      _data[jsKey].length = 0;
-      _data[jsKey].push(...data);
+  _loadPromise = (async () => {
+    try {
+      const tables = Object.keys(TABLE_MAP);
+      const results = await Promise.all(
+        tables.map(async (jsKey) => {
+          const tableName = tableNameToSupabase(jsKey);
+          const { data, error } = await supabase.from(tableName).select('*');
+          return { jsKey, data: error ? [] : (data || []) };
+        })
+      );
+      for (const { jsKey, data } of results) {
+        _data[jsKey].length = 0;
+        _data[jsKey].push(...data);
+      }
+      _loaded = true;
+      setupRealtimeSubscriptions();
+      notifyReactComponents();
+    } catch (err) {
+      console.warn('[DB] loadAll error:', err);
+      _loaded = true;
+    } finally {
+      _loading = false;
     }
-    _loaded = true;
-    setupRealtimeSubscriptions();
-    notifyReactComponents();
-  } catch (err) {
-    console.warn('[DB] loadAll error:', err);
-    _loaded = true;
-  } finally {
-    _loading = false;
-  }
+  })();
+  return _loadPromise;
 }
 
 async function _refreshTableFromCloud(jsKey) {
@@ -224,6 +232,19 @@ export const db = {
     // (tests may reassign db._data via resetDb)
     _data = this._data;
     return this._data;
+  },
+
+  /**
+   * Resuelve cuando la PRIMERA carga desde Supabase terminó.
+   * Las lecturas de la API (client.js) la esperan para que React Query
+   * mantenga isLoading=true hasta tener datos reales — así las páginas
+   * muestran skeletons en vez de un falso "no hay datos".
+   * Tras la carga inicial resuelve al instante (sin overhead).
+   */
+  async whenReady() {
+    this._init();
+    if (_loaded || !isSupabaseAvailable()) return;
+    if (_loadPromise) await _loadPromise;
   },
 
   async _persist(changedTable) {
