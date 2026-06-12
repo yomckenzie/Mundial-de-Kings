@@ -1908,9 +1908,9 @@ export const db = {
       return record;
     },
     update(id, data) {
-        const idx = _data.redemptions.findIndex(r => r.id === id);
+      const idx = _data.redemptions.findIndex(r => r.id === id);
       if (idx === -1) throw new Error('Redemption not found');
-      _data.redemptions[idx] = { ...d.redemptions[idx], ...data, updated_at: getNow() };
+      _data.redemptions[idx] = { ..._data.redemptions[idx], ...data, updated_at: getNow() };
       db._persist('redemptions');
       return _data.redemptions[idx];
     },
