@@ -206,7 +206,9 @@ export default function Profile() {
   const predictionPoints = user?.prediction_points || 0;
   const bonusPoints = user?.bonus_points || 0;
   const totalPoints = user?.total_points || 0;
-  const totalSpent = redemptions.reduce((sum, r) => sum + (r.points_spent || 0), 0);
+  const totalSpent = redemptions
+    .filter(r => ['pending', 'approved', 'delivered'].includes(r.status))
+    .reduce((sum, r) => sum + (r.points_spent || 0), 0);
   const availablePoints = Math.max(0, totalPoints - totalSpent);
   const accuracy = scoredPreds.length > 0 ? Math.round((correctPreds.length / scoredPreds.length) * 100) : 0;
 

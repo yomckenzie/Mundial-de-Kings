@@ -46,8 +46,8 @@ export default function RedemptionsTab({ redemptions, isLoading }) {
                   </p>
                 </div>
               </div>
-              <Badge variant={r.status === 'delivered' ? 'default' : r.status === 'approved' ? 'secondary' : 'outline'} className="shrink-0">
-                {r.status === 'pending' ? 'Pendiente' : r.status === 'approved' ? 'Aprobado' : 'Entregado'}
+              <Badge variant={r.status === 'delivered' ? 'default' : r.status === 'approved' ? 'secondary' : r.status === 'rejected' ? 'destructive' : 'outline'} className="shrink-0">
+                {r.status === 'pending' ? 'Pendiente' : r.status === 'approved' ? 'Aprobado' : r.status === 'delivered' ? 'Entregado' : 'Rechazado'}
               </Badge>
             </CardContent>
           </Card>
