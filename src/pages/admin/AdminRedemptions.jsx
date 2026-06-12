@@ -71,8 +71,6 @@ export default function AdminRedemptions() {
 
       await api.entities.Redemption.update(redemption.id, {
         status: 'rejected',
-        rejection_reason: reason,
-        rejected_at: new Date().toISOString(),
       });
     },
     onSuccess: () => {
