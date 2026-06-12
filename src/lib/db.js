@@ -749,7 +749,7 @@ export const db = {
         const existingLocal = _data.appSettings.findIndex(s => s.key === 'last_clean');
         const cleanRecord = { id: makeId(), key: 'last_clean', value: cleanTimestamp, created_date: now };
         if (existingLocal >= 0) {
-          _data.appSettings[existingLocal] = { ...d.appSettings[existingLocal], value: cleanTimestamp };
+          _data.appSettings[existingLocal] = { ..._data.appSettings[existingLocal], value: cleanTimestamp };
         } else {
           _data.appSettings.push(cleanRecord);
         }
@@ -855,7 +855,7 @@ export const db = {
     update(id, data) {
         const idx = _data.users.findIndex(u => u.id === id);
       if (idx === -1) throw new Error('User not found');
-      _data.users[idx] = { ...d.users[idx], ...data, updated_at: getNow() };
+      _data.users[idx] = { ..._data.users[idx], ...data, updated_at: getNow() };
       db._persist('users');
       return _data.users[idx];
     },
@@ -959,7 +959,7 @@ export const db = {
     update(id, data) {
         const idx = _data.matches.findIndex(m => m.id === id);
       if (idx === -1) throw new Error('Match not found');
-      _data.matches[idx] = { ...d.matches[idx], ...data, updated_at: getNow() };
+      _data.matches[idx] = { ..._data.matches[idx], ...data, updated_at: getNow() };
       db._persist('matches');
       return _data.matches[idx];
     },
@@ -1447,7 +1447,7 @@ export const db = {
       }
       const idx = _data.predictions.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prediction not found');
-      _data.predictions[idx] = { ...d.predictions[idx], ...data, updated_at: getNow() };
+      _data.predictions[idx] = { ..._data.predictions[idx], ...data, updated_at: getNow() };
       db._persist('predictions');
       return _data.predictions[idx];
     },
@@ -2168,7 +2168,7 @@ export const db = {
     update(id, data) {
         const idx = _data.appSettings.findIndex(s => s.id === id);
       if (idx === -1) throw new Error('Setting not found');
-      _data.appSettings[idx] = { ...d.appSettings[idx], ...data, updated_at: getNow() };
+      _data.appSettings[idx] = { ..._data.appSettings[idx], ...data, updated_at: getNow() };
       db._persist('appSettings');
       return _data.appSettings[idx];
     },
