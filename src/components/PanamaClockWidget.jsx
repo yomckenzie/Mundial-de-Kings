@@ -23,8 +23,7 @@ const pad = (n) => {
 // Obtiene los componentes de fecha/hora en la zona horaria de Panamá (UTC-5),
 // independientemente de la zona horaria del dispositivo. Usa Intl.DateTimeFormat
 // con timeZone: 'America/Panama' (Panamá no usa horario de verano).
-function getPanamaParts() {
-  const formatter = new Intl.DateTimeFormat('es-PA', {
+const _panamaFormatter = new Intl.DateTimeFormat('es-PA', {
     timeZone: 'America/Panama',
     year: 'numeric',
     month: '2-digit',
@@ -35,6 +34,9 @@ function getPanamaParts() {
     hour12: true,
     weekday: 'short',
   });
+
+function getPanamaParts() {
+  const formatter = _panamaFormatter;
   const parts = formatter.formatToParts(new Date());
   const get = (type) => parts.find(p => p.type === type)?.value;
   // En formato 12h, Intl separa el "AM"/"PM" como dayPeriod en algunos locales

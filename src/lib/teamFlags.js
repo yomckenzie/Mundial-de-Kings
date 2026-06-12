@@ -1,6 +1,12 @@
 // Mapa de nombres de equipos a sus banderas (emoji) y códigos ISO para imágenes SVG
 // Las imágenes se sirven desde flagcdn.com en formato SVG (vector = calidad infinita)
 
+/* eslint-disable react-refresh/only-export-components */
+// Este archivo NO contiene componentes React, solo data (TEAM_FLAGS) y helpers
+// puros (getTeamFlag, getFlagImageUrl). El nombre .jsx es histórico; el rule
+// "only-export-components" no aplica a archivos sin JSX. La corrección
+// definitiva sería renombrar a teamFlags.js, pero implica tocar todos los imports.
+
 const TEAM_FLAGS = {
   // Grupo A
   'México': { flag: '🇲🇽', iso: 'mx' },

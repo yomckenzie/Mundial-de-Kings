@@ -61,6 +61,10 @@ function canPublishResult(match) {
   return match.status === 'live' || match.status === 'finished';
 }
 
+// Movido fuera del componente: es un valor estático (no usa state ni props),
+// reconstruirlo en cada render desperdicia trabajo y rompe memoización de hijos.
+const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
+
 export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch }) {
   const handleReopen = () => {
     if (window.confirm('¿Reabrir este partido? Se limpiará el resultado y los usuarios podrán volver a pronosticar.')) {
@@ -69,8 +73,7 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
   };
 
   const allowedNext = VALID_TRANSITIONS[match.status] || new Set();
-  const allStatuses = ['pending', 'open', 'live', 'closed', 'finished'];
-  const selectableStatuses = allStatuses.filter(s => s === match.status || allowedNext.has(s));
+  const selectableStatuses = ALL_STATUSES.filter(s => s === match.status || allowedNext.has(s));
 
   return (
     <Card className={`mb-2 ${match.status === 'live' ? 'ring-2 ring-red-500/50' : ''}`}>

@@ -50,7 +50,7 @@ export default function CountryCodeSelect({ value, onChange, id = 'phone-country
           <div className="py-4 text-center text-sm text-muted-foreground">Sin resultados</div>
         )}
         {filtered.map((c) => (
-          <SelectItem key={`${c.iso}-${c.code}`} value={c.code}>
+          <SelectItem key={`${c.iso}-${c.code}-${c.name}`} value={c.code}>
             <span className="flex items-center gap-2">
               <span aria-hidden="true">{c.flag}</span>
               <span>{c.name}</span>

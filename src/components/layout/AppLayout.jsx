@@ -1,33 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { UserPlus } from 'lucide-react';
-import { api } from '@/api/client';
 import Navbar from './Navbar';
 import PanamaClockWidget from '@/components/PanamaClockWidget';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [authState, setAuthState] = useState({ user: null, loading: true });
-  const updateUser = useCallback((u) => setAuthState(prev => ({ ...prev, user: u })), []);
+  // Consumir el auth context (única fuente de verdad). Antes este componente
+  // tenía su propio useState + useEffect(api.auth.me) que corría solo en mount;
+  // tras login, `authState.user` quedaba en null hasta el siguiente render y el
+  // navbar mostraba "Crear cuenta / Iniciar sesión" hasta que el user navegaba
+  // a otra sección. Usar useAuth() elimina ese desfase.
+  const { user, isLoadingAuth, refreshUser } = useAuth();
 
-  useEffect(() => {
-    let cancelled = false;
-    api.auth.me().then(me => {
-      if (cancelled) return;
-      setAuthState({ user: me, loading: false });
-      if (me && !me.profile_complete && me.role !== 'admin') {
-        navigate('/complete-profile');
-      }
-    }).catch(() => {
-      if (!cancelled) setAuthState({ user: null, loading: false });
-    });
-    return () => { cancelled = true; };
-  }, [navigate]);
+  // Si el user existe pero no completó perfil (y no es admin), enviar a /complete-profile
+  // — comportamiento previo del componente.
+  React.useEffect(() => {
+    if (user && !user.profile_complete && user.role !== 'admin') {
+      navigate('/complete-profile');
+    }
+  }, [user, navigate]);
 
-  if (authState.loading) {
+  if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
@@ -38,12 +36,14 @@ export default function AppLayout() {
     );
   }
 
+  const setUser = () => refreshUser();
+
   return (
     <div className="min-h-screen bg-background">
-      <Navbar user={authState.user} />
+      <Navbar user={user} />
       <div className="border-b border-border bg-muted/50 flex flex-col items-center justify-center gap-2 py-2 px-3">
         <PanamaClockWidget />
-        {!authState.user && (
+        {!user && (
           <Link to="/register" className="shrink-0">
             <Button
               size="sm"
@@ -62,7 +62,7 @@ export default function AppLayout() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
         >
-          <Outlet context={{ user: authState.user, setUser: updateUser }} />
+          <Outlet context={{ user, setUser }} />
         </m.div>
       </main>
     </div>

@@ -118,9 +118,15 @@ const client = {
         }
         case 'recalcUserPoints': {
           const predictions = db.predictions.list();
+          // Deduplicar: contar solo una prediccion por (user_email, match_id)
+          // para evitar que duplicados inflen los puntos (ej: 600pts por 1 acierto)
+          const seen = new Set();
           const pointsMap = {};
           predictions.forEach(p => {
             if (p.is_correct) {
+              const key = p.user_email + '|' + p.match_id;
+              if (seen.has(key)) return;
+              seen.add(key);
               pointsMap[p.user_email] = (pointsMap[p.user_email] || 0) + 100;
             }
           });

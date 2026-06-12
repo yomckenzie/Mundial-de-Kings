@@ -41,12 +41,28 @@ let _updatedUsers = {};
 const mockSupabase = {
   from: vi.fn((table) => {
     if (table === 'predictions') {
+      // Soporta select().eq().eq() para filtrar por múltiples campos
+      const predSelect = (fields) => {
+        let filtered = _predictionRows;
+        const chain = {
+          eq: (col, val) => {
+            filtered = filtered.filter(r => r[col] === val);
+            return chain;
+          },
+          then: (resolve) => Promise.resolve({ data: filtered, error: null }).then(resolve),
+        };
+        return chain;
+      };
       return {
-        select: vi.fn(() => ({
-          eq: vi.fn(() => Promise.resolve({ data: _predictionRows, error: null })),
-        })),
+        select: vi.fn(predSelect),
         upsert: vi.fn((rows) => {
           _upsertedPredictions.push(...rows);
+          // Actualizar _predictionRows para que el recalculo vea datos frescos
+          for (const row of rows) {
+            const idx = _predictionRows.findIndex(r => r.id === row.id);
+            if (idx >= 0) _predictionRows[idx] = { ..._predictionRows[idx], ...row };
+            else _predictionRows.push(row);
+          }
           return Promise.resolve({ error: null });
         }),
       };
@@ -113,10 +129,10 @@ beforeEach(() => {
 describe('evaluateMatchPredictions', () => {
   it('pronóstico correcto otorga 100 puntos y marca scored=true', async () => {
     _predictionRows = [
-      { id: 'p1', user_email: 'jugador@test.com', pred_team1: 2, pred_team2: 1, scored: false, points_earned: 0 },
+      { id: 'p1', user_email: 'jugador@test.com', match_id: 'match-1', pred_team1: 2, pred_team2: 1, scored: false, is_correct: false, points_earned: 0 },
     ];
     _adminRows = [];
-    _userMap = { 'jugador@test.com': { prediction_points: 0, total_points: 0 } };
+    _userMap = { 'jugador@test.com': { id: 'u1', prediction_points: 0, total_points: 0 } };
 
     const resultado = await evaluateMatchPredictions('match-1', 2, 1);
 
@@ -130,43 +146,40 @@ describe('evaluateMatchPredictions', () => {
     expect(upserteado.points_earned).toBe(100);
     expect(upserteado.is_correct).toBe(true);
 
-    // Debe haber sumado puntos al usuario
-    expect(_updatedUsers['jugador@test.com']).toBeDefined();
-    expect(_updatedUsers['jugador@test.com'].prediction_points).toBe(100);
-    expect(_updatedUsers['jugador@test.com'].total_points).toBe(100);
+    // Debe haber recalculado puntos del usuario a 100
+    const updates = _updatedUsers['u1'];
+    expect(updates).toBeDefined();
+    expect(updates.prediction_points).toBe(100);
+    expect(updates.total_points).toBe(100);
   });
 
   it('re-ejecutar sobre scored=true no duplica puntos (idempotencia)', async () => {
     // Predicción ya evaluada previamente con 100 puntos
     _predictionRows = [
-      { id: 'p2', user_email: 'jugador@test.com', pred_team1: 2, pred_team2: 1, scored: true, points_earned: 100 },
+      { id: 'p2', user_email: 'jugador@test.com', match_id: 'match-1', pred_team1: 2, pred_team2: 1, scored: true, is_correct: true, points_earned: 100 },
     ];
     _adminRows = [];
     // El usuario ya tiene los 100 puntos del primer ciclo
-    _userMap = { 'jugador@test.com': { prediction_points: 100, total_points: 100 } };
+    _userMap = { 'jugador@test.com': { id: 'u2', prediction_points: 100, total_points: 100 } };
 
     const resultado = await evaluateMatchPredictions('match-1', 2, 1);
 
     expect(resultado.evaluated).toBe(1);
     expect(resultado.correct).toBe(1);
 
-    // Debe haber revertido 100 y sumado 100 → neto = 100 (no 200)
-    const updates = _updatedUsers['jugador@test.com'];
-    // El valor final enviado a Supabase: revertir deja 0, luego sumar deja 100
-    // (dos UPDATEs por el mismo email: la primera es el revert, la segunda la suma)
-    // Verificamos que la última actualización refleja exactamente 100
-    // _updatedUsers guarda el último update; predicción final siempre debe ser 100
+    // Debe recalcular a 100 (no duplicar a 200)
+    const updates = _updatedUsers['u2'];
     expect(updates).toBeDefined();
-    // prediction_points final debe ser 100 (no 200)
     expect(updates.prediction_points).toBe(100);
+    expect(updates.total_points).toBe(100);
   });
 
   it('los admins se excluyen del cálculo', async () => {
     _predictionRows = [
-      { id: 'p3', user_email: 'admin@test.com', pred_team1: 1, pred_team2: 0, scored: false, points_earned: 0 },
+      { id: 'p3', user_email: 'admin@test.com', match_id: 'match-1', pred_team1: 1, pred_team2: 0, scored: false, is_correct: false, points_earned: 0 },
     ];
     _adminRows = [{ email: 'admin@test.com' }];
-    _userMap = { 'admin@test.com': { prediction_points: 0, total_points: 0 } };
+    _userMap = { 'admin@test.com': { id: 'u3', prediction_points: 0, total_points: 0 } };
 
     const resultado = await evaluateMatchPredictions('match-1', 1, 0);
 
@@ -179,10 +192,10 @@ describe('evaluateMatchPredictions', () => {
 
   it('pronóstico incorrecto no suma puntos', async () => {
     _predictionRows = [
-      { id: 'p4', user_email: 'jugador2@test.com', pred_team1: 0, pred_team2: 0, scored: false, points_earned: 0 },
+      { id: 'p4', user_email: 'jugador2@test.com', match_id: 'match-1', pred_team1: 0, pred_team2: 0, scored: false, is_correct: false, points_earned: 0 },
     ];
     _adminRows = [];
-    _userMap = { 'jugador2@test.com': { prediction_points: 0, total_points: 0 } };
+    _userMap = { 'jugador2@test.com': { id: 'u4', prediction_points: 0, total_points: 0 } };
 
     const resultado = await evaluateMatchPredictions('match-1', 3, 1);
 
@@ -194,7 +207,10 @@ describe('evaluateMatchPredictions', () => {
     expect(upserteado.scored).toBe(true);
     expect(upserteado.points_earned).toBe(0);
 
-    // No se suma nada al usuario (correctEmails está vacío)
-    expect(_updatedUsers['jugador2@test.com']).toBeUndefined();
+    // Se recalcula el usuario pero con 0 puntos (no acertó)
+    const updates = _updatedUsers['u4'];
+    expect(updates).toBeDefined();
+    expect(updates.prediction_points).toBe(0);
+    expect(updates.total_points).toBe(0);
   });
 });

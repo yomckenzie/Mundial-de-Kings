@@ -6,23 +6,15 @@ const POINTS_PER_CORRECT = 100;
 /**
  * Evalúa todos los pronósticos de un partido contra el resultado real.
  *
- * REESCRITO para corregir dos bugs críticos del código anterior:
+ * IDEMPOTENTE: puede ejecutarse múltiples veces sin duplicar puntos.
+ * Usa recalculo completo desde cero (no incrementos) para garantizar
+ * que el resultado final sea siempre el mismo sin importar cuántas
+ * veces se ejecute.
  *
- *  1. "Borra en server, aparece de nuevo" — antes hacía
- *     `db._syncAllToSupabase()` que re-subía TODO el localStorage, incluyendo
- *     filas que el admin había borrado en el SQL Editor. Ahora usamos
- *     operaciones SQL directas a través de Supabase (no syncFrom→syncTo).
- *
- *  2. "Duplicación de puntos" — antes hacía
- *     `User.update(id, { total_points: u.total_points + 100 })` que es
- *     read-modify-write. Si dos clientes lo ejecutaban a la vez, o si el
- *     cliente tenía un valor local desactualizado, los puntos se duplicaban.
- *
- *     La protección real viene de la combinación de:
- *     - Paso 3: revertir puntos scored=true antes de re-puntuar (idempotencia)
- *     - Paso 5: upsert con scored=true (segunda ejecución es no-op)
- *     - Paso 6: el cálculo `(u.prediction_points || 0) + amount` solo es
- *       correcto si el paso 3 ya revirtió. Garantizado por el orden secuencial.
+ * Flujo:
+ *  1. Marcar predicciones como scored (upsert idempotente)
+ *  2. Recalcular puntos de usuarios afectados desde cero
+ *  3. Otorgar comisión de referidos
  *
  * @param {string} matchId
  * @param {number} resultTeam1
@@ -35,10 +27,10 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
     return { evaluated: 0, correct: 0 };
   }
 
-  // 1. Cargar pronósticos del partido directamente desde Supabase (server-authoritative)
+  // 1. Cargar pronósticos del partido directamente desde Supabase
   const { data: allPredictions, error: predErr } = await supabase
     .from('predictions')
-    .select('id, user_email, pred_team1, pred_team2, scored, points_earned')
+    .select('id, user_email, pred_team1, pred_team2')
     .eq('match_id', matchId);
 
   if (predErr) {
@@ -58,38 +50,12 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
   const predictions = allPredictions.filter(p => !adminEmails.has(p.user_email));
   if (predictions.length === 0) return { evaluated: 0, correct: 0 };
 
-  // 3. Revertir puntos previamente otorgados (idempotencia).
-  //    Agrupamos por email: si un usuario tiene varios predictions scored,
-  //    revertimos la suma total en una sola UPDATE.
-  const revertByEmail = new Map();
-  for (const p of predictions) {
-    if (p.scored && (p.points_earned || 0) > 0) {
-      revertByEmail.set(
-        p.user_email,
-        (revertByEmail.get(p.user_email) || 0) + (p.points_earned || 0)
-      );
-    }
-  }
-  for (const [email, amount] of revertByEmail) {
-    const { data: u } = await supabase
-      .from('users')
-      .select('prediction_points, total_points')
-      .eq('email', email)
-      .single();
-    if (!u) continue;
-    const newPred = Math.max(0, (u.prediction_points || 0) - amount);
-    const newTotal = Math.max(0, (u.total_points || 0) - amount);
-    const { error } = await supabase
-      .from('users')
-      .update({ prediction_points: newPred, total_points: newTotal })
-      .eq('email', email);
-    if (error) console.warn(`[evaluateMatchPredictions] revert ${email}:`, error.message);
-  }
-
-  // 4. Puntuar todos los pronósticos
+  // 3. Puntuar predicciones (upsert idempotente — sobreescribe sin duplicar)
   const correctEmails = new Set();
+  const allEmails = new Set();
   const predictionUpdates = [];
   for (const pred of predictions) {
+    allEmails.add(pred.user_email);
     const isCorrect =
       pred.pred_team1 === resultTeam1 && pred.pred_team2 === resultTeam2;
     const pointsEarned = isCorrect ? POINTS_PER_CORRECT : 0;
@@ -102,41 +68,27 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
     });
   }
 
-  // 5. UPDATE de predictions en lotes (idempotente: si scored=true ya,
-  //    vuelve a escribir lo mismo; si el resultado cambia, es intencional)
   const BATCH = 100;
+  const batches = [];
   for (let i = 0; i < predictionUpdates.length; i += BATCH) {
     const batch = predictionUpdates.slice(i, i + BATCH);
-    const { error } = await supabase
-      .from('predictions')
-      .upsert(batch, { onConflict: 'id' });
+    batches.push(supabase.from('predictions').upsert(batch, { onConflict: 'id' }));
+  }
+  const results = await Promise.all(batches);
+  for (const { error } of results) {
     if (error) {
       console.error('[evaluateMatchPredictions] Error actualizando predictions:', error);
     }
   }
 
-  // 6. Sumar puntos a usuarios que acertaron (1 UPDATE por email único)
-  //    Garantía de no-duplicación: el paso 3 ya revirtió los puntos scored
-  //    anteriores. Si scored era false → sumamos 100. Si scored era true
-  //    con points_earned=100 → revertimos 100 y sumamos 100. Net: 100.
-  for (const email of correctEmails) {
-    const { data: u } = await supabase
-      .from('users')
-      .select('prediction_points, total_points')
-      .eq('email', email)
-      .single();
-    if (!u) continue;
-    const { error } = await supabase
-      .from('users')
-      .update({
-        prediction_points: (u.prediction_points || 0) + POINTS_PER_CORRECT,
-        total_points: (u.total_points || 0) + POINTS_PER_CORRECT,
-      })
-      .eq('email', email);
-    if (error) console.warn(`[evaluateMatchPredictions] add points ${email}:`, error.message);
-  }
+  // 4. Recalcular puntos de usuarios afectados desde cero (idempotente)
+  //    Para cada usuario con predicciones en este partido:
+  //    - Contar sus predicciones scored=true + is_correct=true (TODAS, no solo este partido)
+  //    - prediction_points = count × 100
+  //    - total_points = prediction_points + bonus_points + referral_points
+  await recalculatePointsForEmails(allEmails);
 
-  // 7. Otorgar comisión de referido (5 pts) al referente de cada usuario
+  // 5. Otorgar comisión de referido (5 pts) al referente de cada usuario acertador
   if (correctEmails.size > 0) {
     try {
       await Promise.all(
@@ -149,7 +101,7 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
     }
   }
 
-  // 8. Disparar refresh de cache local (evento, sin re-subir nada)
+  // 6. Disparar refresh de cache local
   if (typeof window !== 'undefined') {
     try {
       window.dispatchEvent(new CustomEvent('db-cloud-change', {
@@ -162,4 +114,59 @@ export async function evaluateMatchPredictions(matchId, resultTeam1, resultTeam2
   }
 
   return { evaluated: predictions.length, correct: correctEmails.size };
+}
+
+/**
+ * Recalcula puntos desde cero para un conjunto de emails.
+ * Idempotente: ejecutar 1 o 100 veces produce el mismo resultado.
+ * Lee el total de predicciones correctas scored de cada usuario
+ * y SETea prediction_points y total_points.
+ */
+async function recalculatePointsForEmails(emails) {
+  // Ejecutar recálculos en paralelo (Promise.all) en vez de await secuencial
+  await Promise.all([...emails].map(async (email) => {
+    try {
+      // Obtener datos del usuario
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, bonus_points, referral_points')
+        .eq('email', email)
+        .single();
+      if (!user) return;
+
+      // Contar predicciones correctas scored de este usuario (TODAS las tablas)
+      // INCLUIR match_id para deduplicar: si hay duplicados en BD con distinto id
+      // pero mismo (user_email, match_id), solo contar 1 vez.
+      const { data: correctPreds } = await supabase
+        .from('predictions')
+        .select('id, match_id')
+        .eq('user_email', email)
+        .eq('scored', true)
+        .eq('is_correct', true);
+
+      // Deduplicar por (user_email, match_id) — evita que duplicados inflen puntos
+      const seenMatches = new Set();
+      let correctCount = 0;
+      for (const p of (correctPreds || [])) {
+        const key = p.match_id || '__nomatch__';
+        if (seenMatches.has(key)) continue;
+        seenMatches.add(key);
+        correctCount++;
+      }
+      const predictionPoints = correctCount * POINTS_PER_CORRECT;
+      const bonusPoints = user.bonus_points || 0;
+      const referralPoints = user.referral_points || 0;
+      const totalPoints = predictionPoints + bonusPoints + referralPoints;
+
+      await supabase
+        .from('users')
+        .update({
+          prediction_points: predictionPoints,
+          total_points: totalPoints,
+        })
+        .eq('id', user.id);
+    } catch (e) {
+      console.warn(`[recalculatePointsForEmails] Error recalculando ${email}:`, e?.message);
+    }
+  }));
 }

@@ -57,7 +57,9 @@ export default function HomeBanner() {
               className="w-full h-full object-cover"
               // Primer banner: alta prioridad (es la imagen LCP). Resto: lazy.
               loading={current === 0 ? 'eager' : 'lazy'}
-              fetchPriority={current === 0 ? 'high' : 'auto'}
+              // ⚠️ React 18 NO reconoce fetchPriority (camelCase) — usa fetchpriority (lowercase).
+              // React 19+ lo soportará nativamente como prop camelCase.
+              fetchpriority={current === 0 ? 'high' : 'auto'}
               decoding="async"
             />
           </m.div>

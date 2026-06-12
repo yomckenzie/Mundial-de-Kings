@@ -242,8 +242,23 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
           // Para tablas de admin (matches, prizes), la nube manda
           // Para tablas de usuario (predictions, redemptions, etc.), el local manda
           if (ADMIN_TABLES.has(tableName)) {
-            // La nube es la autoridad — el admin hizo cambios allí
-            result.push({ ...local, ...remote })
+            // 🐛 FIX RACE CONDITION: Si el registro local fue modificado hace
+            // menos de 30 segundos, preservar la versión local aunque la tabla
+            // sea admin-authoritative. Esto evita que un sync FROM (disparado
+            // por Realtime u otro mecanismo) revierta cambios admin recientes
+            // antes de que el sync TO tenga oportunidad de subirlos a Supabase.
+            // Ejemplo: admin cambia status → 'live', sync TO programado (800ms),
+            // pero llega un evento Realtime ANTES → sync FROM lee 'open' de
+            // Supabase (stale) y lo sobreescribe si no hacemos esta guarda.
+            const localUpdated = local.updated_at ? new Date(local.updated_at).getTime() : 0
+            const isRecentUpdate = (Date.now() - localUpdated) < 30 * 1000
+            if (isRecentUpdate) {
+              // Cambio local reciente — preservar hasta que sync TO propague
+              result.push(local)
+            } else {
+              // Sin cambios recientes — la nube es la autoridad
+              result.push({ ...local, ...remote })
+            }
           } else {
             // El usuario local puede tener datos no subidos aún
             result.push({ ...remote, ...local })
@@ -561,21 +576,22 @@ export async function listImages(bucket = 'banners') {
     if (error) throw error
     if (!data || data.length === 0) return []
 
-    return data
-      .filter(f => f.id && !f.name.startsWith('.')) // filtrar carpetas y archivos ocultos
-      .map(f => {
-        const { data: { publicUrl } } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(f.name)
-        return {
-          name: f.name,
-          publicUrl,
-          created_at: f.created_at,
-          id: f.id,
-          metadata: f.metadata,
-        }
-      })
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)) // más recientes primero
+    // Combina filter+map en un solo loop (un solo recorrido)
+    const result = [];
+    for (const f of data) {
+      if (!f.id || f.name.startsWith('.')) continue; // filtrar carpetas y archivos ocultos
+      const { data: { publicUrl } } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(f.name)
+      result.push({
+        name: f.name,
+        publicUrl,
+        created_at: f.created_at,
+        id: f.id,
+        metadata: f.metadata,
+      });
+    }
+    return result.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)); // más recientes primero
   } catch {
     return []
   }

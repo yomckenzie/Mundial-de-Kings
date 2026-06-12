@@ -2,3 +2,4 @@ allowBuilds:
   esbuild: true
 minimumReleaseAge: 10080
 trustLockfile: true
+trustPolicy: no-downgrade

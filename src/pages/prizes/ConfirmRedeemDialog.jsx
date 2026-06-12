@@ -32,9 +32,11 @@ export default function ConfirmRedeemDialog({
             {/* Selector de talla */}
             {hasSizes && availableSizes.length > 0 && (
               <div className="space-y-1.5">
-                <label className="text-sm font-medium flex items-center gap-1.5">
+                <fieldset className="space-y-1.5 border-0 p-0 m-0">
+                <legend className="text-sm font-medium flex items-center gap-1.5 mb-2">
                   <Ruler className="w-4 h-4" />
                   Selecciona tu talla
+                </legend>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(prize.sizes).map(([size, stock]) => {
@@ -64,7 +66,7 @@ export default function ConfirmRedeemDialog({
                 {!selectedSize && (
                   <p className="text-xs text-muted-foreground">Selecciona una talla para continuar</p>
                 )}
-              </div>
+              </fieldset>
             )}
 
             {/* Si hay tallas pero todas están agotadas */}

@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
-import { Database, Layers, RefreshCw, Plus } from 'lucide-react';
+import { Layers, RefreshCw, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { TEAM_FLAGS } from '@/lib/teamFlags';
 
@@ -19,7 +19,7 @@ const SORTED_TEAMS = Object.entries(TEAM_FLAGS)
   .sort((a, b) => a[0].localeCompare(b[0], 'es'))
   .map(([name, info]) => ({ name, ...info }));
 
-export default function QuickActions({ onSeed, seeding, hasLocked, onDedupe, deduping, matchCount, onClear, clearing, onCreateMatch, creating }) {
+export default function QuickActions({ hasLocked, onDedupe, deduping, matchCount, onClear, clearing, onCreateMatch, creating }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ team1: '', team2: '', match_date: '', match_time: '', group_stage: '' });
 
@@ -43,9 +43,6 @@ export default function QuickActions({ onSeed, seeding, hasLocked, onDedupe, ded
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button variant="outline" size="sm" onClick={onSeed} disabled={seeding || hasLocked} className="gap-2">
-        <Database className="w-4 h-4" /> {seeding ? 'Sembrando...' : 'Seedear 104 partidos'}
-      </Button>
       <Button variant="secondary" size="sm" onClick={onDedupe} disabled={deduping || matchCount === 0} className="gap-2">
         <Layers className="w-4 h-4" /> {deduping ? 'Deduplicando...' : 'Deduplicar partidos'}
       </Button>

@@ -1,7 +1,6 @@
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { seedAllMatches } from '@/api/seedMatches';
 import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';
 import { toast } from 'sonner';
 
@@ -56,15 +55,6 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       queryClient.invalidateQueries({ queryKey: ['ranking'] });
       toast.success('✅ Todos los partidos reiniciados a Pendiente');
     },
-  });
-
-  const seedMutation = useMutation({
-    mutationFn: () => seedAllMatches(api),
-    onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
-      toast.success(`✅ ¡${created.length} partidos del Mundial 2026 creados!`);
-    },
-    onError: (err) => toast.error(err?.message || 'Error al seedear partidos'),
   });
 
   const handleClearAll = () => {
@@ -157,7 +147,10 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       } else {
         toast.success('Partido actualizado');
       }
-      if (newStatus === 'finished' && match.result_team1 != null && match.result_team2 != null) {
+      // Solo evaluar si es la PRIMERA VEZ que se finaliza.
+      // Si ya estaba finished, no re-ejecutar scoring (idempotencia extra).
+      const alreadyFinished = match.status === 'finished' && match.result_team1 != null && match.result_team2 != null;
+      if (newStatus === 'finished' && !alreadyFinished && match.result_team1 != null && match.result_team2 != null) {
         const evalResult = await evaluateMatchPredictions(match.id, match.result_team1, match.result_team2);
         if (evalResult.correct > 0) {
           toast.success(`✅ ${evalResult.correct} pronóstico${evalResult.correct > 1 ? 's' : ''} acertado${evalResult.correct > 1 ? 's' : ''}`);
@@ -184,6 +177,15 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     if (!canPublishResult(match)) {
       toast.error('El partido debe estar EN VIVO o FINALIZADO para actualizar el marcador.');
       return;
+    }
+    // Guard: si el partido ya está finalizado con el mismo resultado, no re-ejecutar scoring
+    if (match.status === 'finished' && match.result_team1 != null && match.result_team2 != null) {
+      const r = results.form[match.id];
+      const sameResult = r && Number(r.team1) === match.result_team1 && Number(r.team2) === match.result_team2;
+      if (sameResult || !r || r.team1 === '' || r.team2 === '') {
+        toast.info('Este partido ya fue finalizado y evaluado.');
+        return;
+      }
     }
     const r = results.form[match.id];
     if (r?.team1 === undefined || r?.team2 === undefined || r.team1 === '' || r.team2 === '') {
@@ -289,7 +291,6 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
   return {
     hasLockedMatches,
     resetAllMatches,
-    seedMutation,
     handleClearAll,
     createMatch,
     editMatch,

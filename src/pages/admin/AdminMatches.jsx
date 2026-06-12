@@ -75,7 +75,7 @@ export default function AdminMatches() {
 
   const {
     hasLockedMatches,
-    resetAllMatches, seedMutation, handleClearAll, createMatch,
+    resetAllMatches, handleClearAll, createMatch,
     editMatch, deleteMatch,
     handleStatusChange, handlePublishResult, handleBatchPublish,
     suggestedToOpen,
@@ -96,8 +96,6 @@ export default function AdminMatches() {
   return (
     <div className="space-y-4">
       <QuickActions
-        onSeed={() => seedMutation.mutate()}
-        seeding={seedMutation.isPending}
         hasLocked={hasLockedMatches}
         onDedupe={async () => {
           setSourceState(prev => ({ ...prev, deduping: true }));

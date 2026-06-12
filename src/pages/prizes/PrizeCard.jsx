@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Ruler, Sparkles, Loader2 } from 'lucide-react';
+import { Package, Ruler, Sparkles, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useOutletContext } from 'react-router-dom';
@@ -17,6 +17,69 @@ export default function PrizeCard({ prize }) {
   const [imgError, setImgError] = useState(false);
   const [selectedSize, setSelectedSize] = useState(null);
   const gradient = prize.gradient || 'from-slate-600 to-slate-800';
+
+  // Lista de imágenes: preferir image_urls (nuevo formato) y caer a image_url (legacy)
+  const imageList = Array.isArray(prize.image_urls) && prize.image_urls.length > 0
+    ? prize.image_urls
+    : (prize.image_url ? [prize.image_url] : []);
+  const hasRealImage = imageList.length > 0 && !imgError;
+  const [activeImg, setActiveImg] = useState(0);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const startXRef = useRef(0);
+  const roRef = useRef(null);
+  const totalImgs = imageList.length;
+
+  // Medir el viewport en píxeles (callback ref). El contenedor se monta
+  // solo si hay imagen real, así que medimos en cuanto aparece.
+  const setViewportRef = (el) => {
+    if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
+    if (el) {
+      setViewportWidth(el.clientWidth);
+      requestAnimationFrame(() => {
+        if (el.clientWidth > 0) setViewportWidth(el.clientWidth);
+      });
+      const ro = new ResizeObserver(() => {
+        if (el.clientWidth > 0) setViewportWidth(el.clientWidth);
+      });
+      ro.observe(el);
+      roRef.current = ro;
+    } else {
+      setViewportWidth(0);
+    }
+  };
+
+  useEffect(() => {
+    return () => { if (roRef.current) roRef.current.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    if (activeImg >= totalImgs) setActiveImg(0);
+  }, [totalImgs, activeImg]);
+
+  const prevImg = () => setActiveImg(i => (i - 1 + totalImgs) % totalImgs);
+  const nextImg = () => setActiveImg(i => (i + 1) % totalImgs);
+
+  const onPointerDown = (e) => {
+    if (totalImgs <= 1) return;
+    setIsDragging(true);
+    startXRef.current = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+  };
+  const onPointerMove = (e) => {
+    if (!isDragging) return;
+    const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    setDragOffset(Math.max(-200, Math.min(200, x - startXRef.current)));
+  };
+  const onPointerUp = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    if (Math.abs(dragOffset) > 50) {
+      if (dragOffset < 0) nextImg();
+      else prevImg();
+    }
+    setDragOffset(0);
+  };
 
   // Mutation de canje. Descuenta puntos del user y crea un redemption pending.
   // El admin aprueba/rechaza desde /admin/redemptions.
@@ -45,27 +108,88 @@ export default function PrizeCard({ prize }) {
     onError: (err) => toast.error('Error al canjear: ' + (err.message || 'Error')),
   });
   const emoji = prize.icon || '🎁';
-  const hasRealImage = prize.image_url && !imgError;
 
   return (
     <Card className="overflow-hidden h-full flex flex-col group border-0 shadow-md hover:shadow-xl transition-shadow duration-300">
-      {/* Header con imagen real o fallback degradado+emoji */}
+      {/* Header con carrusel de imágenes o fallback degradado+emoji */}
       <div
+        ref={setViewportRef}
         className={`relative aspect-video w-full overflow-hidden ${
           !hasRealImage ? `bg-gradient-to-br ${gradient} flex items-center justify-center` : ''
         }`}
+        onMouseDown={onPointerDown}
+        onMouseMove={onPointerMove}
+        onMouseUp={onPointerUp}
+        onMouseLeave={onPointerUp}
+        onTouchStart={onPointerDown}
+        onTouchMove={onPointerMove}
+        onTouchEnd={onPointerUp}
       >
         {hasRealImage ? (
           <>
-            <img
-              src={prize.image_url}
-              alt={prize.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-              onError={() => setImgError(true)}
-              loading="lazy"
-            />
+            <div
+              className="flex w-full h-full"
+              style={{
+                width: `${totalImgs * 100}%`,
+                transform: `translateX(${-activeImg * viewportWidth + dragOffset}px)`,
+                transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)',
+                cursor: isDragging ? 'grabbing' : (totalImgs > 1 ? 'grab' : 'default'),
+              }}
+            >
+              {imageList.map((url, i) => (
+                <div
+                  key={`${i}-${url.slice(-12)}`}
+                  className="h-full shrink-0"
+                  style={{ width: `${100 / totalImgs}%` }}
+                >
+                  <img
+                    src={url}
+                    alt={`${prize.name} - ${i + 1}`}
+                    className="w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-500 ease-out"
+                    onError={i === 0 ? () => setImgError(true) : undefined}
+                    loading="lazy"
+                    draggable={false}
+                  />
+                </div>
+              ))}
+            </div>
             {/* Overlay sutil en la parte inferior */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
+            {/* Flechas */}
+            {totalImgs > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); prevImg(); }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                  aria-label="Imagen anterior"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); nextImg(); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                  aria-label="Siguiente imagen"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                {/* Dots */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                  {imageList.map((_, i) => (
+                    <button
+                      key={`d-${i}`}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setActiveImg(i); }}
+                      className={`h-1 rounded-full transition-all ${
+                        i === activeImg ? 'bg-white w-4' : 'bg-white/40 w-1 hover:bg-white/70'
+                      }`}
+                      aria-label={`Ir a imagen ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </>
         ) : (
           <>

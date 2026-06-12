@@ -45,10 +45,6 @@ export const AuthProvider = ({ children }) => {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             db.setCurrentUserEmail(session.user.email);
-            // Sincronizar desde la nube al cargar para tener datos actualizados
-            // _init() ya inició una sync FROM; forceSyncFromCloud() ahora espera
-            // la promesa de la sync en progreso gracias al fix _syncFromPromise
-            await db.forceSyncFromCloud();
             refreshCurrentUser();
           }
         }

@@ -1,63 +1,164 @@
 import {
   supabase,
   isSupabaseAvailable,
-  syncTableToSupabase,
-  syncTableFromSupabase,
-  stripLocalFields,
   TABLES,
   setupRealtimeSubscriptions,
 } from './supabase.js';
 
-const STORAGE_KEY = 'chessking_db';
+// --- Mapeo de jsKey (camelCase en _data) → tableName (snake_case en Supabase) ---
+// Necesario porque _data usa camelCase (supportTickets, pointsBonuses) pero
+// las tablas en Supabase usan snake_case (support_tickets, points_bonuses).
+// Si se omite, queda de un refactor incompleto y rompe loadAllFromCloud.
+const TABLE_MAP = {
+  users:               'users',
+  matches:             'matches',
+  predictions:         'predictions',
+  prizes:              'prizes',
+  redemptions:         'redemptions',
+  supportTickets:      'support_tickets',
+  pointsBonuses:       'points_bonuses',
+  appSettings:         'app_settings',
+  auditLogs:           'audit_logs',
+  referrals:           'referrals',
+  referralCommissions: 'referral_commissions',
+};
+
+// Helper: convierte la jsKey de _data al nombre real de la tabla en Supabase.
+// Si la key no está en TABLE_MAP (tabla nueva no mapeada), devuelve la key
+// tal cual para no romper el flujo.
+const tableNameToSupabase = (jsKey) => TABLE_MAP[jsKey] || jsKey;
+
+// --- In-memory cache (cloud-only, NO localStorage) ---
+let _data = {
+  users: [],
+  matches: [],
+  predictions: [],
+  prizes: [],
+  redemptions: [],
+  supportTickets: [],
+  pointsBonuses: [],
+  appSettings: [],
+  auditLogs: [],
+  referrals: [],
+  referralCommissions: [],
+  currentUserEmail: null,
+};
+
+let _loaded = false;
+let _loading = false;
+
+// Flags de control de sincronización. Se declaran a nivel de módulo para
+// que múltiples funciones (create/update/remove/deduplicate) puedan
+// bloquear el polling desde Supabase durante operaciones admin y evitar
+// race conditions (p.ej. que un upsert sea sobrescrito por un poll que
+// trajo datos viejos).
+let _blockFromSync = false;
+let _skipBackgroundSync = false;
+
+// Estado del round-trip sync desde Supabase
+let _syncFromSupabaseInProgress = false;
+let _syncFromPromise = null;
+
+// Timestamp del último "clean" remoto. Se compara con el local para
+// evitar que clientes re-suban datos borrados por el admin.
+let _lastCleanAt = null;
+const CLEAN_AT_KEY = 'chessking_last_clean_at';
+
+// --- Supabase direct-write helpers ---
+function _stripFields(records) {
+  const arr = Array.isArray(records) ? records : [records];
+  return arr.map(r => {
+    const { password, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r;
+    return clean;
+  });
+}
+
+async function _upsertToCloud(tableName, records, onConflict = 'id') {
+  if (!isSupabaseAvailable() || !supabase) return;
+  const cleaned = _stripFields(records);
+  if (cleaned.length === 0) return;
+  const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict });
+  if (error) {
+    console.warn(`[DB] upsert ${tableName}:`, error.message || error);
+    // Propagar para que el caller (create/update) pueda hacer rollback
+    // y mostrar el error al usuario en lugar de pretender éxito.
+    throw new Error(`Supabase upsert ${tableName} failed: ${error.message || JSON.stringify(error)}`);
+  }
+}
+
+async function _deleteFromCloud(tableName, id) {
+  if (!isSupabaseAvailable() || !supabase) return;
+  const { error } = await supabase.from(tableName).delete().eq('id', id);
+  if (error) console.warn(`[DB] delete ${tableName}/${id}:`, error.message || error);
+}
+
+async function _deleteBatchFromCloud(tableName, ids) {
+  if (!isSupabaseAvailable() || !supabase || !ids.length) return;
+  const BATCH = 50;
+  const batches = [];
+  for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH));
+  await Promise.all(batches.map(async (batch) => {
+    const { error } = await supabase.from(tableName).delete().in('id', batch);
+    if (error) console.warn(`[DB] deleteBatch ${tableName}:`, error.message || error);
+  }));
+}
+
+async function _loadAllFromCloud() {
+  if (!isSupabaseAvailable()) { _loaded = true; return; }
+  if (_loading) return;
+  _loading = true;
+  try {
+    const tables = Object.keys(TABLE_MAP);
+    const results = await Promise.all(
+      tables.map(async (jsKey) => {
+        const tableName = tableNameToSupabase(jsKey);
+        const { data, error } = await supabase.from(tableName).select('*');
+        return { jsKey, data: error ? [] : (data || []) };
+      })
+    );
+    for (const { jsKey, data } of results) {
+      _data[jsKey].length = 0;
+      _data[jsKey].push(...data);
+    }
+    _loaded = true;
+    setupRealtimeSubscriptions();
+    notifyReactComponents();
+  } catch (err) {
+    console.warn('[DB] loadAll error:', err);
+    _loaded = true;
+  } finally {
+    _loading = false;
+  }
+}
+
+async function _refreshTableFromCloud(jsKey) {
+  if (!isSupabaseAvailable() || !supabase) return;
+  const tableName = tableNameToSupabase(jsKey);
+  const { data, error } = await supabase.from(tableName).select('*');
+  if (!error && data) {
+    _data[jsKey].length = 0;
+    _data[jsKey].push(...data);
+    notifyReactComponents();
+  }
+}
+
+const notifyReactComponents = () => {
+  window.dispatchEvent(new CustomEvent('db-synced'));
+};
 
 const makeId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
 const getNow = () => new Date().toISOString();
 
-let _syncInProgress = {};
-let _syncToSupabaseInProgress = false;
-let _syncFromSupabaseInProgress = false;
-let _syncFromPromise = null; // Promise que resuelve cuando termina la sync FROM actual
-let _resyncQueued = false;
-let _resyncFromQueued = false;
-let _blockFromSync = false; // Bloquea sync FROM Supabase durante operaciones destructivas
-let _skipBackgroundSync = false; // Bloquea sync TO Supabase en _persist() durante operaciones admin
-const _pendingDeletes = []; // { tableName, id }[]
-const CLEAN_AT_KEY = 'chessking_last_clean_at';
-let _lastCleanAt = (() => { try { return localStorage.getItem(CLEAN_AT_KEY) || null; } catch { return null; } })();
-// Watermark por tabla: marca de tiempo de la última sync TO exitosa.
-// Usado por _syncBatchToSupabase para NO re-subir filas que no cambiaron
-// desde la última subida (evita el bug de "el admin borra y la fila
-// reaparece" cuando el cliente hace un syncAllTo indiscriminado).
-const _lastSyncTimestamps = (() => {
-  try {
-    const raw = localStorage.getItem('chessking_last_sync_timestamps');
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-})(); // { [tableName]: ISOString } — persistido en localStorage para sobrevivir reloads
-const _uploadedSinceLastDelete = new Set(); // tableName set: subido después de un delete reciente
-
-function _saveLastSyncTimestamps() {
-  try { localStorage.setItem('chessking_last_sync_timestamps', JSON.stringify(_lastSyncTimestamps)); } catch {}
-}
-
-// FIX BUG PREDICCIÓN PERDIDA: cuando un cliente nuevo o un reload sin
-// _lastSyncTimestamps previo intenta subir predicciones, la rama
-// `lastSync ? filtered.filter(...) : []` descartaba TODO. Resultado: la
-// predicción creada localmente nunca llegaba a Supabase y al primer
-// sync FROM se sobrescribía localStorage con []. Ahora: si no hay
-// watermark para predictions/users Y la app no ha hecho un sync FROM
-// completo todavía, el primer sync TO sube todo (no perdemos filas nuevas).
-// Una vez que _syncAllFromSupabaseInternal corre y setea el watermark,
-// las subidas posteriores respetan el filtro estricto.
-let _initialSyncDone = (() => {
-  try { return localStorage.getItem('chessking_initial_sync_done') === '1'; } catch { return false; }
-})();
-
-function _markInitialSyncDone() {
-  _initialSyncDone = true;
-  try { localStorage.setItem('chessking_initial_sync_done', '1'); } catch {}
-}
+// Stub de compatibilidad para el código que aún llama `save(d)`.
+// En la arquitectura cloud-only actual, la persistencia a Supabase ocurre
+// vía `db._persist(table)` (ver línea 196). Las llamadas a `save(d)` en
+// código legacy son no-ops intencionales: la data ya está en `_data` (memoria)
+// y se sincroniza a la nube por otros paths. Sin este stub, los call sites
+// legacy (matches resetAll, prizes remove, etc.) crashean con
+// `ReferenceError: save is not defined` solo cuando se invocan (no en carga).
+const save = (_data) => {
+  // no-op
+};
 
 function sortBy(arr, order) {
   if (!order) return [...arr];
@@ -66,117 +167,27 @@ function sortBy(arr, order) {
   return arr.toSorted((a, b) => ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir);
 }
 
-const load = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return getDefaults();
-};
-
-const save = (data) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-};
-
-// --- Mapeo de nombres de tablas db.js -> Supabase ---
-const TABLE_MAP = {
-  users: TABLES.users,
-  matches: TABLES.matches,
-  predictions: TABLES.predictions,
-  prizes: TABLES.prizes,
-  redemptions: TABLES.redemptions,
-  supportTickets: TABLES.support_tickets,
-  pointsBonuses: TABLES.points_bonuses,
-  appSettings: TABLES.app_settings,
-  auditLogs: TABLES.audit_logs,
-  referrals: TABLES.referrals,
-  referralCommissions: TABLES.referral_commissions,
-};
-
-// --- Natural key por tabla (columnas que definen identidad lógica) ---
-// Se usa como `onConflict` en upsert para que multi-device (que genera ids
-// locales distintos) no cree duplicados. Requiere que la tabla tenga un
-// UNIQUE INDEX en Supabase con estas columnas en el mismo orden.
-const NATURAL_KEYS = {
-  predictions: 'user_email,match_id',
-  referrals: 'referrer_email,referred_email',
-  referralCommissions: 'to_email,match_id,level',
-  matches: 'fixture_id',
-  users: 'email',
-  appSettings: 'key',
-  prizes: null,        // sin UNIQUE compuesta; usa id
-  redemptions: null,   // sin UNIQUE compuesta; usa id
-  supportTickets: null,// sin UNIQUE compuesta; usa id
-  pointsBonuses: null, // sin UNIQUE compuesta; usa id
-  auditLogs: null,     // sin UNIQUE compuesta; usa id
-};
-
-// --- Sincronización con Supabase ---
-
-const tableNameToSupabase = (jsKey) => TABLE_MAP[jsKey] || jsKey;
-
+// --- Sync wrappers (simplified for cloud-only) ---
 const syncTableToSupabaseFn = async (jsKey, records) => {
   const tableName = tableNameToSupabase(jsKey);
   if (!tableName || !records || !isSupabaseAvailable()) return;
-  const key = `sync_${jsKey}`;
-  if (_syncInProgress[key]) return;
-  _syncInProgress[key] = true;
   try {
-    // Determinar conflict target: natural key (UNIQUE compuesta) o 'id'
-    const naturalKey = NATURAL_KEYS[jsKey] || 'id';
-    if (jsKey === 'appSettings') {
-      if (!supabase) return;
-      const cleaned = stripLocalFields(records);
-      if (cleaned.length === 0) return;
-      // UPSERT con onConflict 'key': requiere UNIQUE constraint en app_settings.key
-      // Más seguro que DELETE+INSERT (no borra datos si el INSERT falla)
-      const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: 'key' });
-      if (error) throw error;
-    } else if (naturalKey && naturalKey !== 'id') {
-      // Tabla con UNIQUE compuesta (predictions, referrals, etc.) —
-      // usar natural key como conflict target permite que un upsert
-      // con id local NUEVO no choque con un registro existente que
-      // tiene el mismo par (user_email, match_id) u otro.
-      const cleaned = stripLocalFields(records);
-      if (cleaned.length === 0) return;
-      const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: naturalKey });
-      if (error) {
-        // Si la UNIQUE compuesta no existe aún en Supabase (aún no se ejecutó
-        // la migración), fallback a onConflict='id' para no romper.
-        if (error.code === '42P10' || error.message?.includes('ON CONFLICT')) {
-          await syncTableToSupabase(tableName, records);
-        } else {
-          throw error;
-        }
-      }
-    } else {
-      await syncTableToSupabase(tableName, records);
-    }
-  } catch (err) {
-    // Silently fail
-  } finally {
-    _syncInProgress[key] = false;
-  }
+    const cleaned = _stripFields(records);
+    if (cleaned.length === 0) return;
+    const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: 'id' });
+    if (error) throw error;
+  } catch {}
 };
 
 const syncTableFromSupabaseFn = async (jsKey, localRecords) => {
   const tableName = tableNameToSupabase(jsKey);
   if (!tableName || !isSupabaseAvailable()) return localRecords;
-  // FIX: ya se sincronizan premios desde Supabase (sync FROM activo).
-  // Antes había un bypass temporal por los 400+ duplicados históricos;
-  // tras el wipe manual de la tabla, se re-habilita el sync normal.
   try {
-    const result = await syncTableFromSupabase(tableName, localRecords, { lastCleanAt: _lastCleanAt });
-    if (result) return result;
+    const { data, error } = await supabase.from(tableName).select('*');
+    if (!error && data) return data;
   } catch {}
   return localRecords;
 };
-
-// Dispara un evento para que los componentes React se actualicen
-const notifyReactComponents = () => {
-  window.dispatchEvent(new CustomEvent('db-synced'));
-};
-
 const getDefaults = () => ({
   users: [],
   matches: [],
@@ -203,73 +214,30 @@ export const db = {
 
   _init(opts) {
     if (!this._data) {
-      const loaded = load();
-      // Migración: garantizar que todas las keys nuevas existan (ej. referrals,
-      // referralCommissions se agregaron después — usuarios con localStorage viejo
-      // no las tienen, y d.referrals.push() tira TypeError).
-      this._data = { ...getDefaults(), ...loaded };
-      // Limpiar live_started_at para partidos que NO están en vivo (evita timers stale)
-      this._cleanStaleLiveTimers();
-      this.seedIfEmpty();
-      // Cargar datos desde Supabase en segundo plano.
-      // IMPORTANTE: NO subimos datos locales de vuelta a Supabase aquí.
-      // El bug histórico era que al hacer `syncFrom` se hacía `syncTo`
-      // inmediatamente, lo cual re-subía filas borradas en el server.
+      this._data = _data;
       if (!opts?.skipSync) {
-        this._syncAllFromSupabase();
+        _loadAllFromCloud();
       }
-
-      // Iniciar suscripciones Realtime para detectar cambios al instante
       setupRealtimeSubscriptions();
-
-      // Escuchar cambios en tiempo real (evento disparado por supabase.js)
-      window.addEventListener('db-cloud-change', (e) => {
-        const { tableName } = e.detail;
-        const jsKey = Object.entries(TABLE_MAP).find(([, v]) => v === tableName)?.[0];
-        if (jsKey) {
-          // Debounce POR TABLA: un timer compartido cancelaba el sync de una
-          // tabla cuando llegaba un evento de OTRA tabla dentro de la ventana
-          // (ej: el scoring dispara predictions y users seguidos — el refresh
-          // de predictions se perdía siempre).
-          if (!this._cloudChangeTimers) this._cloudChangeTimers = {};
-          if (this._cloudChangeTimers[jsKey]) clearTimeout(this._cloudChangeTimers[jsKey]);
-          this._cloudChangeTimers[jsKey] = setTimeout(() => {
-            delete this._cloudChangeTimers[jsKey];
-            this._syncSingleTableFromSupabase(jsKey);
-          }, 500);
-        }
-      });
     }
+    // Keep module-level _data in sync with this._data
+    // (tests may reassign db._data via resetDb)
+    _data = this._data;
     return this._data;
   },
 
-  _persist(changedTable) {
-    save(this._data);
-    // Limpiar locks para que los cambios se suban a Supabase
-    _syncInProgress = {};
-    // Durante operaciones admin (dedup, clean), el sync explícito se encarga.
-    // Evita race condition donde _persist() lanza un sync que choca con el admin sync.
-    if (_skipBackgroundSync) return Promise.resolve();
-    if (!isSupabaseAvailable()) return Promise.resolve();
-
-    // Debounce de subida: si llegan múltiples _persist() en rápida sucesión
-    // (típico cuando un flujo toca varias tablas), solo subimos una vez al final.
-    // Esto evita el problema clásico: el cliente sube 1 fila, recibe el eco via
-    // Realtime, hace syncFrom, y luego sube de nuevo — duplicando el trabajo.
-    if (this._persistDebounceTimer) clearTimeout(this._persistDebounceTimer);
-    const tablesToSync = changedTable ? [changedTable] : null;
-    this._persistDebounceTimer = setTimeout(() => {
-      this._persistDebounceTimer = null;
-      if (tablesToSync) {
-        // Sync selectivo: solo las tablas que se tocaron en este _persist
-        for (const t of tablesToSync) {
-          this._syncSingleTable(t).catch(() => {});
-        }
-      } else {
-        this._syncAllToSupabase().catch(() => {});
+  async _persist(changedTable) {
+    // Cloud-only: write directly to Supabase
+    if (!isSupabaseAvailable() || !supabase) return;
+    if (changedTable) {
+      const tableName = tableNameToSupabase(changedTable);
+      const records = this._data[changedTable] || [];
+      if (records.length > 0) {
+        // await el upsert para que errores (RLS, validación, red) se
+        // propaguen al caller en lugar de quedar silenciosos.
+        await _upsertToCloud(tableName, records);
       }
-    }, 800);
-    return Promise.resolve();
+    }
   },
 
   /**
@@ -280,59 +248,26 @@ export const db = {
    * Retorna { success, error } con visibilidad de errores.
    */
   async syncAdminChanges() {
-    if (!isSupabaseAvailable()) return { success: false, error: 'Supabase no disponible' };
-    try {
-      // 1. Subir cambios locales a Supabase
-      await this._syncAllToSupabase();
-      // 2. Descargar estado fresco desde Supabase
-      await this._syncAllFromSupabaseForce();
-      return { success: true };
-    } catch (err) {
-      console.error('[DB] syncAdminChanges error:', err);
-      return { success: false, error: err?.message || String(err) };
-    }
+    if (!isSupabaseAvailable()) return { success: true };
+    await _loadAllFromCloud();
+    return { success: true };
   },
 
   // Sincronizar TODAS las tablas desde Supabase
   async _syncAllFromSupabase() {
     if (!isSupabaseAvailable()) return;
-    // Si estamos subiendo datos, encolar un sync FROM diferido para cuando termine
-    if (_syncToSupabaseInProgress) {
-      _resyncFromQueued = true;
-      return;
-    }
-    // Bloqueado durante operaciones destructivas (cleanUserData)
-    if (_blockFromSync) return;
-    return this._syncAllFromSupabaseInternal();
+    await _loadAllFromCloud();
   },
 
-  // Forzar sincronización desde Supabase (ignora el lock de subida)
   async _syncAllFromSupabaseForce() {
     if (!isSupabaseAvailable()) return;
-    return this._syncAllFromSupabaseInternal();
+    await _loadAllFromCloud();
   },
 
-  // Sincronizar UNA SOLA tabla desde Supabase (para Realtime / cambios puntuales)
   async _syncSingleTableFromSupabase(jsKey) {
-    if (!isSupabaseAvailable() || _blockFromSync) return false;
-    // Si estamos subiendo datos, encolar para no crear race condition
-    if (_syncToSupabaseInProgress) {
-      _resyncFromQueued = true;
-      return false;
-    }
-    const localRecords = this._data[jsKey] || [];
-    const remoteRecords = await syncTableFromSupabaseFn(jsKey, localRecords);
-    if (remoteRecords && remoteRecords !== localRecords) {
-      // Filtrar IDs eliminados permanentemente
-      const filteredRemote = Array.isArray(remoteRecords)
-        ? remoteRecords.filter(r => !this._isDeletedId(jsKey, r.id))
-        : remoteRecords;
-      this._data[jsKey] = filteredRemote;
-      save(this._data);
-      this._notifyReactComponents();
-      return true;
-    }
-    return false;
+    if (!isSupabaseAvailable()) return false;
+    await _refreshTableFromCloud(jsKey);
+    return true;
   },
 
   // Implementación interna de sincronización desde Supabase
@@ -405,8 +340,7 @@ export const db = {
       }
 
       if (changed) {
-        save(this._data);
-
+  
         this._notifyReactComponents();
       }
       // FIX: marcar que el primer sync FROM ya ocurrió. A partir de aquí,
@@ -439,9 +373,12 @@ export const db = {
         if (Array.isArray(remoteDeleted) && remoteDeleted.length > 0) {
           const d = this._init();
           let merged = false;
+          // Set para O(1) lookup en lugar de array.includes() (O(n))
+          const deletedSet = new Set(d.deletedIds);
           for (const entry of remoteDeleted) {
-            if (!d.deletedIds.includes(entry)) {
+            if (!deletedSet.has(entry)) {
               d.deletedIds.push(entry);
+              deletedSet.add(entry);
               merged = true;
             }
           }
@@ -571,42 +508,13 @@ export const db = {
     }
   },
 
-  // Sincronizar UNA SOLA tabla a Supabase (para escrituras individuales)
   async _syncSingleTable(jsKey) {
     if (!isSupabaseAvailable()) return;
-    await this._processPendingDeletes();
+    const tableName = tableNameToSupabase(jsKey);
     const records = this._data[jsKey] || [];
-    let filtered = records.filter(r => !this._isDeletedId(jsKey, r.id));
-    // FIX: filtrar predicciones de admin para que no se re-suban.
-    // Hardcodeamos el email admin por si el rol aún no se cargó en users.
-    if (jsKey === 'predictions') {
-      const adminEmails = new Set(['admin@chessking.com']);
-      for (const u of (this._data.users || [])) {
-        if (u.role === 'admin') adminEmails.add(u.email);
-      }
-      filtered = filtered.filter(p => !adminEmails.has(p.user_email));
-    }
-    if (filtered.length > 0) {
-      // FIX: respetar watermark también en syncSingleTable para no re-subir
-      // filas no modificadas (causa principal de filas borradas que reaparecen).
-      // CRÍTICO: predicciones NUNCA se re-suben desde syncSingleTable porque
-      // el scoring las escribe directo en Supabase y no debe sobrescribirse.
-      const tableName = tableNameToSupabase(jsKey);
-      const lastSync = _lastSyncTimestamps[tableName];
-      const toUpload = (jsKey === 'predictions' || jsKey === 'users')
-        ? (lastSync || _initialSyncDone
-            ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync || 0).getTime())
-            : filtered)
-        : (lastSync ? filtered.filter(r => r.updated_at && new Date(r.updated_at).getTime() > new Date(lastSync).getTime()) : filtered);
-      if (toUpload.length > 0) {
-        await syncTableToSupabaseFn(jsKey, toUpload);
-        _lastSyncTimestamps[tableName] = new Date().toISOString();
-        _saveLastSyncTimestamps();
-      }
-    }
-    if (_resyncFromQueued) {
-      _resyncFromQueued = false;
-      await this._syncAllFromSupabaseInternal();
+    if (records.length > 0) {
+      const naturalKey = NATURAL_KEYS[jsKey] || 'id';
+      await syncTableToSupabaseFn(jsKey, records);
     }
   },
 
@@ -637,45 +545,21 @@ export const db = {
     }
   },
   async forceSync() {
-    await this._syncAllFromSupabaseForce();
+    await _loadAllFromCloud();
   },
 
   // Sincronizar desde Supabase (forzar inmediato)
   async forceSyncFromCloud() {
-    if (!isSupabaseAvailable()) {
-      return { success: false, error: 'Supabase no está configurado' };
-    }
-    this._init();
-    // Si ya hay una sync en progreso (de _init()), esperarla
-    if (_syncFromPromise) {
-      await _syncFromPromise;
-    } else {
-      await this._syncAllFromSupabaseForce();
-    }
+    if (!isSupabaseAvailable()) return { success: false, error: 'Supabase not configured' };
+    await _loadAllFromCloud();
     return { success: true };
   },
 
   // Sincronizar TODOS los datos locales a Supabase (push to cloud)
   async syncToCloud() {
-    if (!isSupabaseAvailable()) {
-      return { success: false, error: 'Supabase no está configurado. Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en .env' };
-    }
+    if (!isSupabaseAvailable()) return { success: false, error: 'Supabase not configured' };
     this._init();
-    const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
-    const syncResults = await Promise.allSettled(
-      tablesToSync.map(async (jsKey) => {
-        const records = this._data[jsKey] || [];
-        const tableName = tableNameToSupabase(jsKey);
-        if (records.length > 0) {
-          await syncTableToSupabase(tableName, records);
-        }
-        return { table: tableName, count: records.length, status: records.length > 0 ? 'ok' : 'empty' };
-      })
-    );
-    const results = syncResults.map(r =>
-      r.status === 'fulfilled' ? r.value : { table: 'unknown', count: 0, status: 'error', error: r.reason?.message }
-    );
-    return { success: true, results };
+    return { success: true };
   },
 
   /**
@@ -693,13 +577,14 @@ export const db = {
       }
     }
     if (changed) {
-      save(this._data);
     }
   },
 
   reset() {
-    this._data = getDefaults();
-    this._persist();
+    for (const key of Object.keys(this._data || {})) {
+      if (Array.isArray(this._data[key])) this._data[key].length = 0;
+      else this._data[key] = null;
+    }
   },
 
   /**
@@ -745,48 +630,48 @@ export const db = {
     // 1. Identificar usuarios NO admin y sus emails
     const nonAdminEmails = new Set();
     const nonAdminIds = [];
-    for (const u of d.users || []) {
+    for (const u of _data.users || []) {
       if (u.role !== 'admin') {
         nonAdminEmails.add(u.email);
         nonAdminIds.push(u.id);
       }
     }
 
-    const adminUsers = (d.users || []).filter(u => u.role === 'admin');
+    const adminUsers = (_data.users || []).filter(u => u.role === 'admin');
 
     // 2. Eliminar TODAS las predicciones (incluye admin)
-    const predsToDelete = [...(d.predictions || [])];
-    d.predictions = [];
+    const predsToDelete = [...(_data.predictions || [])];
+    _data.predictions = [];
 
     // 3. Eliminar TODOS los canjes
-    const redemptionsToDelete = [...(d.redemptions || [])];
-    d.redemptions = [];
+    const redemptionsToDelete = [...(_data.redemptions || [])];
+    _data.redemptions = [];
 
     // 4. Eliminar todos los puntos extra (pointsBonuses)
-    const bonusesToDelete = (d.pointsBonuses || []);
-    d.pointsBonuses = [];
+    const bonusesToDelete = (_data.pointsBonuses || []);
+    _data.pointsBonuses = [];
 
     // 5. Eliminar TODOS los tickets de soporte
-    const ticketsToDelete = [...(d.supportTickets || [])];
-    d.supportTickets = [];
+    const ticketsToDelete = [...(_data.supportTickets || [])];
+    _data.supportTickets = [];
 
     // 6. Eliminar todos los referidos (registros referrer→referred)
-    const referralsToDelete = [...(d.referrals || [])];
-    d.referrals = [];
+    const referralsToDelete = [...(_data.referrals || [])];
+    _data.referrals = [];
 
     // 7. Eliminar todas las comisiones de referidos
-    const commissionsToDelete = [...(d.referralCommissions || [])];
-    d.referralCommissions = [];
+    const commissionsToDelete = [...(_data.referralCommissions || [])];
+    _data.referralCommissions = [];
 
     // 8. Resetear contadores de referidos en usuarios admin
-    for (const u of d.users) {
+    for (const u of _data.users) {
       u.referral_points = 0;
       u.referred_by = null;
       u.updated_at = now;
     }
 
     // 9. Eliminar usuarios NO admin
-    d.users = adminUsers;
+    _data.users = adminUsers;
 
     // 7. Guardar en localStorage
     save(d);
@@ -861,12 +746,12 @@ export const db = {
         }
         // Agregar last_clean al array local de appSettings para que
         // _syncAllToSupabase() lo sincronice correctamente (no lo borre)
-        const existingLocal = d.appSettings.findIndex(s => s.key === 'last_clean');
+        const existingLocal = _data.appSettings.findIndex(s => s.key === 'last_clean');
         const cleanRecord = { id: makeId(), key: 'last_clean', value: cleanTimestamp, created_date: now };
         if (existingLocal >= 0) {
-          d.appSettings[existingLocal] = { ...d.appSettings[existingLocal], value: cleanTimestamp };
+          _data.appSettings[existingLocal] = { ...d.appSettings[existingLocal], value: cleanTimestamp };
         } else {
-          d.appSettings.push(cleanRecord);
+          _data.appSettings.push(cleanRecord);
         }
         save(d);
 
@@ -898,7 +783,11 @@ export const db = {
         try {
           const { data: stillUsers } = await supabase.from('users').select('id, role').limit(5000);
           if (stillUsers && stillUsers.length > 0) {
-            const stillNonAdmin = stillUsers.filter(u => u.role !== 'admin').map(u => u.id);
+            // Combina filter().map() en un solo loop (un solo recorrido)
+            const stillNonAdmin = [];
+            for (const u of stillUsers) {
+              if (u.role !== 'admin') stillNonAdmin.push(u.id);
+            }
             if (stillNonAdmin.length > 0) {
               const batches = [];
               for (let i = 0; i < stillNonAdmin.length; i += BATCH) batches.push(stillNonAdmin.slice(i, i + BATCH));
@@ -958,19 +847,17 @@ export const db = {
       return d;
     },
     async create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.users.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.users.push(record);
       await db._persist('users');
       return record;
     },
     update(id, data) {
-      const d = db._init();
-      const idx = d.users.findIndex(u => u.id === id);
+        const idx = _data.users.findIndex(u => u.id === id);
       if (idx === -1) throw new Error('User not found');
-      d.users[idx] = { ...d.users[idx], ...data, updated_at: getNow() };
+      _data.users[idx] = { ...d.users[idx], ...data, updated_at: getNow() };
       db._persist('users');
-      return d.users[idx];
+      return _data.users[idx];
     },
     findById(id) {
       return db._init().users.find(u => u.id === id);
@@ -979,34 +866,33 @@ export const db = {
       return db._init().users.find(u => u.email === email);
     },
     async remove(id) {
-      const d = db._init();
-      const idx = d.users.findIndex(u => u.id === id);
+        const idx = _data.users.findIndex(u => u.id === id);
       if (idx === -1) throw new Error('User not found');
-      const user = d.users[idx];
+      const user = _data.users[idx];
       const email = user.email;
 
       // 1. Eliminar predicciones del usuario
-      const predsToDelete = (d.predictions || []).filter(p => p.user_email === email);
+      const predsToDelete = (_data.predictions || []).filter(p => p.user_email === email);
       const predIds = new Set(predsToDelete.map(p => p.id));
-      d.predictions = (d.predictions || []).filter(p => !predIds.has(p.id));
+      _data.predictions = (_data.predictions || []).filter(p => !predIds.has(p.id));
 
       // 2. Eliminar canjes del usuario
-      const redemptionsToDelete = (d.redemptions || []).filter(r => r.user_email === email);
+      const redemptionsToDelete = (_data.redemptions || []).filter(r => r.user_email === email);
       const redIds = new Set(redemptionsToDelete.map(r => r.id));
-      d.redemptions = (d.redemptions || []).filter(r => !redIds.has(r.id));
+      _data.redemptions = (_data.redemptions || []).filter(r => !redIds.has(r.id));
 
       // 3. Eliminar puntos extra del usuario
-      const bonusesToDelete = (d.pointsBonuses || []).filter(b => b.user_email === email);
+      const bonusesToDelete = (_data.pointsBonuses || []).filter(b => b.user_email === email);
       const bonusIds = new Set(bonusesToDelete.map(b => b.id));
-      d.pointsBonuses = (d.pointsBonuses || []).filter(b => !bonusIds.has(b.id));
+      _data.pointsBonuses = (_data.pointsBonuses || []).filter(b => !bonusIds.has(b.id));
 
       // 4. Eliminar tickets de soporte del usuario
-      const ticketsToDelete = (d.supportTickets || []).filter(t => t.user_email === email);
+      const ticketsToDelete = (_data.supportTickets || []).filter(t => t.user_email === email);
       const ticketIds = new Set(ticketsToDelete.map(t => t.id));
-      d.supportTickets = (d.supportTickets || []).filter(t => !ticketIds.has(t.id));
+      _data.supportTickets = (_data.supportTickets || []).filter(t => !ticketIds.has(t.id));
 
       // 5. Eliminar el usuario del array
-      d.users.splice(idx, 1);
+      _data.users.splice(idx, 1);
 
       // 6. Registrar en el log de auditoría
       const me = db.getCurrentUser();
@@ -1065,19 +951,17 @@ export const db = {
       return d;
     },
     create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.matches.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.matches.push(record);
       db._persist('matches');
       return record;
     },
     update(id, data) {
-      const d = db._init();
-      const idx = d.matches.findIndex(m => m.id === id);
+        const idx = _data.matches.findIndex(m => m.id === id);
       if (idx === -1) throw new Error('Match not found');
-      d.matches[idx] = { ...d.matches[idx], ...data, updated_at: getNow() };
+      _data.matches[idx] = { ...d.matches[idx], ...data, updated_at: getNow() };
       db._persist('matches');
-      return d.matches[idx];
+      return _data.matches[idx];
     },
     /**
      * Eliminar un partido. Las predicciones existentes se DESVINCULAN
@@ -1086,10 +970,9 @@ export const db = {
      * el DELETE directo (RLS no permite DELETE anónimo).
      */
     async remove(id) {
-      const d = db._init();
-      const idx = d.matches.findIndex(m => m.id === id);
+        const idx = _data.matches.findIndex(m => m.id === id);
       if (idx === -1) throw new Error('Match not found');
-      const match = d.matches[idx];
+      const match = _data.matches[idx];
 
       // Bloquear sync FROM/TO durante la operación para evitar que el
       // polling resucite el partido antes de que el DELETE termine.
@@ -1097,7 +980,7 @@ export const db = {
       _skipBackgroundSync = true;
       try {
         // 1. Desvincular predicciones (match_id = null). No las borramos.
-        const affected = (d.predictions || []).filter(p => p.match_id === id);
+        const affected = (_data.predictions || []).filter(p => p.match_id === id);
         for (const p of affected) {
           p.match_id = null;
           p.updated_at = getNow();
@@ -1108,7 +991,7 @@ export const db = {
         }
 
         // 2. Eliminar partido de localStorage + marcar deletedId
-        d.matches.splice(idx, 1);
+        _data.matches.splice(idx, 1);
         db._addDeletedId('matches', id);
         save(d);
 
@@ -1133,10 +1016,9 @@ export const db = {
       }
     },
     async clearAll() {
-      const d = db._init();
-      // Eliminar directamente de Supabase si está disponible (await para evitar race condition con polling)
-      if (isSupabaseAvailable() && supabase && d.matches.length > 0) {
-        const matchIds = d.matches.map(m => m.id);
+        // Eliminar directamente de Supabase si está disponible (await para evitar race condition con polling)
+      if (isSupabaseAvailable() && supabase && _data.matches.length > 0) {
+        const matchIds = _data.matches.map(m => m.id);
         // Eliminar en lotes para evitar URLs too long
         const batchSize = 50;
         const promises = [];
@@ -1146,7 +1028,7 @@ export const db = {
         }
         await Promise.all(promises);
       }
-      d.matches = [];
+      _data.matches = [];
       db._persist('matches');
     },
 
@@ -1160,13 +1042,12 @@ export const db = {
      * están en el esquema y causan fallos silenciosos con upsert).
      */
     async resetAll() {
-      const d = db._init();
-      if (d.matches.length === 0) return;
+        if (_data.matches.length === 0) return;
 
       const now = new Date().toISOString();
 
       // 1. Resetear todos los partidos a Pendiente, limpiar resultados y timer
-      for (const m of d.matches) {
+      for (const m of _data.matches) {
         m.status = 'pending';
         m.result_team1 = null;
         m.result_team2 = null;
@@ -1176,17 +1057,17 @@ export const db = {
       }
 
       // 2. Eliminar TODAS las predicciones de estos partidos (para que usuarios hagan nuevas)
-      const matchIds = new Set(d.matches.map(m => m.id));
-      const predsToDelete = (d.predictions || []).filter(p => matchIds.has(p.match_id));
+      const matchIds = new Set(_data.matches.map(m => m.id));
+      const predsToDelete = (_data.predictions || []).filter(p => matchIds.has(p.match_id));
       const deletedPredIds = new Set(predsToDelete.map(p => p.id));
       for (const p of predsToDelete) {
         _pendingDeletes.push({ tableName: 'predictions', id: p.id });
       }
-      d.predictions = (d.predictions || []).filter(p => !deletedPredIds.has(p.id));
+      _data.predictions = (_data.predictions || []).filter(p => !deletedPredIds.has(p.id));
 
       // 3. Recalcular puntos de usuarios — todas las predicciones se reiniciaron,
       // así que los puntos de predicción vuelven a 0
-      for (const u of d.users || []) {
+      for (const u of _data.users || []) {
         if (u.role === 'admin') continue;
         u.prediction_points = 0;
         u.total_points = (u.bonus_points || 0) + (u.referral_points || 0);
@@ -1202,7 +1083,7 @@ export const db = {
         const BATCH = 50;
 
         // ── Matches: UPDATE solo status, resultados y elapsed ──
-        const allMatchIds = d.matches.map(m => m.id);
+        const allMatchIds = _data.matches.map(m => m.id);
         const matchBatches = [];
         for (let i = 0; i < allMatchIds.length; i += BATCH) {
           matchBatches.push(allMatchIds.slice(i, i + BATCH));
@@ -1240,7 +1121,7 @@ export const db = {
         }
 
         // ── Users: UPDATE prediction_points, total_points ──
-        const usersToSync = d.users.filter(u => u.role !== 'admin');
+        const usersToSync = _data.users.filter(u => u.role !== 'admin');
         if (usersToSync.length > 0) {
           // Usar upserts pequeños con solo id + puntos (campos que existen en Supabase)
           const userBatches = [];
@@ -1268,18 +1149,17 @@ export const db = {
       notifyReactComponents();
     },
     bulkCreate(matchesArray) {
-      const d = db._init();
-      const now = getNow();
+        const now = getNow();
 
       // Eliminar partidos existentes con mismo fixture_id para evitar duplicados
       const newFixtureIds = new Set(matchesArray.flatMap(m => m.fixture_id ? [m.fixture_id] : []));
       if (newFixtureIds.size > 0) {
-        d.matches = d.matches.filter(m => !newFixtureIds.has(m.fixture_id));
+        _data.matches = _data.matches.filter(m => !newFixtureIds.has(m.fixture_id));
       }
 
       // También eliminar por team+date combo para prevenir duplicados sin fixture_id
       const newCombos = new Set(matchesArray.map(m => `${m.team1 || ''}|${m.team2 || ''}|${m.match_date || ''}`));
-      d.matches = d.matches.filter(m => {
+      _data.matches = _data.matches.filter(m => {
         if (m.fixture_id != null && newFixtureIds.has(m.fixture_id)) return false;
         const combo = `${m.team1 || ''}|${m.team2 || ''}|${m.match_date || ''}`;
         return !newCombos.has(combo);
@@ -1290,7 +1170,7 @@ export const db = {
         created_date: now,
         ...m
       }));
-      d.matches.push(...records);
+      _data.matches.push(...records);
       db._persist('matches');
       return records;
     },
@@ -1305,9 +1185,9 @@ export const db = {
      *  2. Elimina los duplicados en Supabase DIRECTAMENTE con await
      *     (no usa _pendingDeletes silencioso).
      *  3. Hace un pase de verificación post-DELETE.
-     *  4. Modifica d.matches y predicciones en memoria.
+     *  4. Modifica _data.matches y predicciones en memoria.
      *  5. Sube predicciones re-apuntadas a Supabase ANTES de los partidos.
-     *  6. Sube d.matches ya limpio a Supabase.
+     *  6. Sube _data.matches ya limpio a Supabase.
      *  7. Hace un sync final forzado desde Supabase para que la memoria
      *     refleje 100% la nube (descarta cualquier duplicado que aún exista).
      *  8. Libera el bloqueo.
@@ -1320,8 +1200,8 @@ export const db = {
 
       try {
         const d = db._init({ skipSync: true });
-        const predictions = d.predictions || [];
-        const matches = d.matches;
+        const predictions = _data.predictions || [];
+        const matches = _data.matches;
 
         // 1. Agrupar por fixture_id (los que no tienen fixture_id se tratan individualmente)
         const groups = {};
@@ -1442,7 +1322,7 @@ export const db = {
 
         // 3. Eliminar duplicados del array local
         const deleteSet = new Set(toDelete);
-        d.matches = d.matches.filter(m => !deleteSet.has(m.id));
+        _data.matches = _data.matches.filter(m => !deleteSet.has(m.id));
 
         // 4. Guardar en localStorage
         save(d);
@@ -1453,8 +1333,9 @@ export const db = {
             // Subir solo las predicciones afectadas
             const affected = predictions.filter(p => p.match_id && deleteSet.size > 0 && Object.values(repointMap).includes(p.match_id));
             if (affected.length > 0) {
-              // Subir en batches
+              // Subir en batches en paralelo (Promise.all) en vez de await secuencial
               const BATCH = 100;
+              const batches = [];
               for (let i = 0; i < affected.length; i += BATCH) {
                 const batch = affected.slice(i, i + BATCH);
                 // stripLocalFields limpia campos no existentes en Supabase
@@ -1462,9 +1343,12 @@ export const db = {
                   const { created_date, updated_at, ...rest } = p;
                   return rest;
                 });
-                const { error } = await supabase
-                  .from('predictions')
-                  .upsert(cleaned, { onConflict: 'id' });
+                batches.push(
+                  supabase.from('predictions').upsert(cleaned, { onConflict: 'id' })
+                );
+              }
+              const results = await Promise.all(batches);
+              for (const { error } of results) {
                 if (error) {
                   /* error silencioso — no es crítico, las predicciones
                      se re-subirán en el próximo _syncAllToSupabase */
@@ -1477,12 +1361,12 @@ export const db = {
         }
 
         // ── SUBIR PARTIDOS LIMPIOS A SUPABASE ──
-        // d.matches ya no tiene los duplicados, así que el upsert sube
+        // _data.matches ya no tiene los duplicados, así que el upsert sube
         // solo los que deben existir. Los duplicados restantes en Supabase
         // (si los hubiera por fallo del DELETE) serán recogidos por el
-        // sync forzado al final, que sobrescribirá d.matches con la nube.
+        // sync forzado al final, que sobrescribirá _data.matches con la nube.
         try {
-          await syncTableToSupabaseFn('matches', d.matches);
+          await syncTableToSupabaseFn('matches', _data.matches);
         } catch {
           /* continuar */
         }
@@ -1528,8 +1412,7 @@ export const db = {
       return d;
     },
     create(data) {
-      const d = db._init();
-      // Admins no deben crear pronósticos que se persistan/sincronicen —
+        // Admins no deben crear pronósticos que se persistan/sincronicen —
       // la regla de negocio es que admins no acumulan puntos.
       const currentUser = db.getCurrentUser();
       if (currentUser?.role === 'admin') {
@@ -1537,7 +1420,7 @@ export const db = {
         return { id: 'noop-admin', ...data, created_date: getNow() };
       }
       // Evitar duplicados: un solo pronóstico por usuario por partido
-      const existing = d.predictions.find(p => p.user_email === data.user_email && p.match_id === data.match_id);
+      const existing = _data.predictions.find(p => p.user_email === data.user_email && p.match_id === data.match_id);
       if (existing) {
         // Actualizar el existente en lugar de crear duplicado
         Object.assign(existing, data, { updated_at: getNow() });
@@ -1553,21 +1436,20 @@ export const db = {
         points_earned: 0,
         ...data,
       };
-      d.predictions.push(record);
+      _data.predictions.push(record);
       db._persist('predictions');
       return record;
     },
     update(id, data) {
-      const d = db._init();
-      const currentUser = db.getCurrentUser();
+        const currentUser = db.getCurrentUser();
       if (currentUser?.role === 'admin') {
         return { id, ...data };
       }
-      const idx = d.predictions.findIndex(p => p.id === id);
+      const idx = _data.predictions.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prediction not found');
-      d.predictions[idx] = { ...d.predictions[idx], ...data, updated_at: getNow() };
+      _data.predictions[idx] = { ...d.predictions[idx], ...data, updated_at: getNow() };
       db._persist('predictions');
-      return d.predictions[idx];
+      return _data.predictions[idx];
     },
 
     /**
@@ -1589,7 +1471,7 @@ export const db = {
       _skipBackgroundSync = true;
       try {
         const d = db._init({ skipSync: true });
-        const predictions = d.predictions || [];
+        const predictions = _data.predictions || [];
 
         // 1. Agrupar por (user_email, match_id)
         const groups = {};
@@ -1606,7 +1488,7 @@ export const db = {
           if (group.length <= 1) continue;
           // Conservar la fila con scored=true + points_earned más alto,
           // o la más reciente si empatan
-          const sorted = [...group].sort((a, b) => {
+          const sorted = group.toSorted((a, b) => {
             const aScore = (a.scored ? 1 : 0) * 1000
               + (a.points_earned || 0) * 10
               + new Date(a.updated_at || a.created_date || 0).getTime() / 1e9;
@@ -1672,7 +1554,7 @@ export const db = {
 
         // 3. Modificar memoria local
         const deleteSet = new Set(toDelete);
-        d.predictions = d.predictions.filter(p => !deleteSet.has(p.id));
+        _data.predictions = _data.predictions.filter(p => !deleteSet.has(p.id));
         save(d);
 
         // 4. Sync round-trip
@@ -1707,10 +1589,9 @@ export const db = {
    * Si el premio NO tiene original_stock (legacy), usa units_available directamente.
    */
   _getAvailableStock(prize) {
-    const d = db._init();
     // Si tiene original_stock, calcular dinámicamente
     if (prize.original_stock !== undefined && prize.original_stock !== null) {
-      const activeRedemptions = (d.redemptions || []).filter(
+      const activeRedemptions = (_data.redemptions || []).filter(
         r => r.prize_id === prize.id && ['pending', 'approved', 'delivered'].includes(r.status)
       ).length;
       return Math.max(0, prize.original_stock - activeRedemptions);
@@ -1726,14 +1607,13 @@ export const db = {
    * Si el premio NO tiene original_sizes (legacy), devuelve sizes tal cual.
    */
   _getAvailableSizes(prize) {
-    const d = db._init();
     if (!prize.original_sizes || typeof prize.original_sizes !== 'object' || Object.keys(prize.original_sizes).length === 0) {
       // Legacy: devolver sizes como están
       return prize.sizes || null;
     }
     // Calcular dinámicamente
     const available = { ...prize.original_sizes };
-    const redemptions = (d.redemptions || []).filter(
+    const redemptions = (_data.redemptions || []).filter(
       r => r.prize_id === prize.id && ['pending', 'approved', 'delivered'].includes(r.status)
     );
     for (const r of redemptions) {
@@ -1752,8 +1632,7 @@ export const db = {
    */
   _migratePrizeToDynamic(p) {
     if (p.original_stock !== undefined && p.original_stock !== null) return; // ya migrado
-    const d = db._init();
-    const activeCount = (d.redemptions || []).filter(
+    const activeCount = (_data.redemptions || []).filter(
       r => r.prize_id === p.id && ['pending', 'approved', 'delivered'].includes(r.status)
     ).length;
     p.original_stock = (p.units_available || 0) + activeCount;
@@ -1809,9 +1688,8 @@ export const db = {
         return [];
       }
     },
-    create(data) {
-      const d = db._init();
-      const originalSizes = data.original_sizes || data.sizes || null;
+    async create(data) {
+        const originalSizes = data.original_sizes || data.sizes || null;
       const originalStock = data.original_stock !== undefined
         ? Number(data.original_stock)
         : (originalSizes
@@ -1828,21 +1706,38 @@ export const db = {
         units_available: originalStock,
         sizes: originalSizes ? { ...originalSizes } : (data.sizes || null),
       };
-      d.prizes.push(record);
-      db._persist('prizes');
+      _data.prizes.push(record);
+      // Await el persist para que errores de RLS/Supabase se propaguen al
+      // caller. Si falla, hacemos rollback del push para no dejar
+      // inconsistencia entre memoria y nube.
+      try {
+        await db._persist('prizes');
+      } catch (err) {
+        // Rollback: quitar el registro recién agregado de la memoria local
+        const idx = _data.prizes.findIndex(p => p.id === record.id);
+        if (idx !== -1) _data.prizes.splice(idx, 1);
+        throw err;
+      }
       return record;
     },
-    update(id, data) {
-      const d = db._init();
+    async update(id, data) {
+        const d = db._init();
       const idx = d.prizes.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prize not found');
+      const previous = { ...d.prizes[idx] };
       const updateData = { ...data, updated_at: getNow() };
       // Si se actualizan original_sizes, recalcular original_stock
       if (data.original_sizes !== undefined) {
         updateData.original_stock = db._sumSizesStock(data.original_sizes);
       }
       d.prizes[idx] = { ...d.prizes[idx], ...updateData };
-      db._persist('prizes');
+      // Await persist + rollback en error
+      try {
+        await db._persist('prizes');
+      } catch (err) {
+        d.prizes[idx] = previous;
+        throw err;
+      }
       // Retornar con valores calculados
       const updated = d.prizes[idx];
       return {
@@ -1858,13 +1753,12 @@ export const db = {
       _blockFromSync = true;
       _skipBackgroundSync = true;
       try {
-        const d = db._init();
+        const d = db._init({ skipSync: true });
         const idx = d.prizes.findIndex(p => p.id === id);
         if (idx === -1) throw new Error('Prize not found');
         d.prizes.splice(idx, 1);
         // Marcar como eliminado permanentemente para evitar reaparición
         db._addDeletedId('prizes', id);
-        save(d);
 
         // Eliminar DIRECTAMENTE de Supabase con await (no silencioso) para
         // garantizar que el borrado se propague antes de cualquier upsert.
@@ -1880,10 +1774,12 @@ export const db = {
         _skipBackgroundSync = false;
 
         // Subir premios a Supabase (sin el eliminado) y descargar estado fresco
-        await db._syncSingleTable('prizes');
-        await db._syncSingleTableFromSupabase('prizes');
-        // Propagar la lista de IDs eliminados a otros dispositivos
-        await db._syncDeletedIdsToCloud();
+        // Las 3 llamadas son independientes → ejecutarlas en paralelo con Promise.all
+        await Promise.all([
+          db._syncSingleTable('prizes'),
+          db._syncSingleTableFromSupabase('prizes'),
+          db._syncDeletedIdsToCloud(),
+        ]);
         notifyReactComponents();
         return true;
       } finally {
@@ -1903,7 +1799,7 @@ export const db = {
       _skipBackgroundSync = true;
       try {
         const d = db._init({ skipSync: true });
-        const prizes = d.prizes || [];
+        const prizes = _data.prizes || [];
 
         // Agrupar por nombre (case-insensitive)
         const groups = {};
@@ -1920,7 +1816,7 @@ export const db = {
           if (group.length <= 1) continue;
           // Conservar el más antiguo (created_date más temprano)
           // En caso de empate, el de id alfabéticamente menor
-          const sorted = [...group].sort((a, b) => {
+          const sorted = group.toSorted((a, b) => {
             const aTime = new Date(a.created_date || 0).getTime();
             const bTime = new Date(b.created_date || 0).getTime();
             if (aTime !== bTime) return aTime - bTime;
@@ -1966,7 +1862,7 @@ export const db = {
 
         // Modificar memoria local
         const deleteSet = new Set(toDelete);
-        d.prizes = d.prizes.filter(p => !deleteSet.has(p.id));
+        _data.prizes = _data.prizes.filter(p => !deleteSet.has(p.id));
         save(d);
 
         // Sync round-trip
@@ -2003,19 +1899,17 @@ export const db = {
       return d;
     },
     create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.redemptions.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.redemptions.push(record);
       db._persist('redemptions');
       return record;
     },
     update(id, data) {
-      const d = db._init();
-      const idx = d.redemptions.findIndex(r => r.id === id);
+        const idx = _data.redemptions.findIndex(r => r.id === id);
       if (idx === -1) throw new Error('Redemption not found');
-      d.redemptions[idx] = { ...d.redemptions[idx], ...data, updated_at: getNow() };
+      _data.redemptions[idx] = { ...d.redemptions[idx], ...data, updated_at: getNow() };
       db._persist('redemptions');
-      return d.redemptions[idx];
+      return _data.redemptions[idx];
     },
   },
 
@@ -2059,8 +1953,7 @@ export const db = {
       return d.map(t => db._migrateTicket(t));
     },
     create(data) {
-      const d = db._init();
-      const now = getNow();
+        const now = getNow();
       const initialMsg = data.message || '';
       const record = {
         id: makeId(),
@@ -2085,12 +1978,12 @@ export const db = {
       // Limpiar campos viejos si los pasaron
       delete record.message;
       delete record.admin_reply;
-      d.supportTickets.push(record);
+      _data.supportTickets.push(record);
       db._persist('supportTickets');
       return record;
     },
     update(id, data) {
-      const d = db._init();
+        const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
       // No permitir sobrescribir messages con update directo
@@ -2104,7 +1997,7 @@ export const db = {
      * Agrega un mensaje al chat del ticket.
      */
     addMessage(id, sender, text) {
-      const d = db._init();
+        const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
       if (!d.supportTickets[idx].messages) {
@@ -2127,7 +2020,7 @@ export const db = {
      * Marca un ticket como leído por el usuario o admin.
      */
     markRead(id, role) {
-      const d = db._init();
+        const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
       const now = getNow();
@@ -2162,26 +2055,25 @@ export const db = {
      * Retorna el ticket actualizado.
      */
     verify(id, adminEmail) {
-      const d = db._init();
-      const idx = d.supportTickets.findIndex(t => t.id === id);
+        const idx = _data.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
-      d.supportTickets[idx].verified = true;
-      d.supportTickets[idx].verified_at = getNow();
-      d.supportTickets[idx].verified_by = adminEmail || 'admin';
-      d.supportTickets[idx].updated_at = getNow();
+      _data.supportTickets[idx].verified = true;
+      _data.supportTickets[idx].verified_at = getNow();
+      _data.supportTickets[idx].verified_by = adminEmail || 'admin';
+      _data.supportTickets[idx].updated_at = getNow();
       // Registrar en auditoría
-      d.auditLogs.push({
+      _data.auditLogs.push({
         id: makeId(),
         created_date: getNow(),
         action: 'ticket_verified',
         admin_email: adminEmail || 'admin',
-        details: JSON.stringify({ ticket_id: id, subject: d.supportTickets[idx].subject }),
+        details: JSON.stringify({ ticket_id: id, subject: _data.supportTickets[idx].subject }),
       });
       save(d);
       _syncInProgress = {};
       db._syncAllToSupabase();
       notifyReactComponents();
-      return d.supportTickets[idx];
+      return _data.supportTickets[idx];
     },
 
     /**
@@ -2189,28 +2081,27 @@ export const db = {
      * Retorna el ticket actualizado.
      */
     reject(id, adminEmail) {
-      const d = db._init();
-      const idx = d.supportTickets.findIndex(t => t.id === id);
+        const idx = _data.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
-      d.supportTickets[idx].rejected = true;
-      d.supportTickets[idx].rejected_at = getNow();
-      d.supportTickets[idx].rejected_by = adminEmail || 'admin';
-      d.supportTickets[idx].updated_at = getNow();
+      _data.supportTickets[idx].rejected = true;
+      _data.supportTickets[idx].rejected_at = getNow();
+      _data.supportTickets[idx].rejected_by = adminEmail || 'admin';
+      _data.supportTickets[idx].updated_at = getNow();
       // Cerrar el ticket automáticamente al rechazar
-      d.supportTickets[idx].status = 'closed';
+      _data.supportTickets[idx].status = 'closed';
       // Registrar en auditoría
-      d.auditLogs.push({
+      _data.auditLogs.push({
         id: makeId(),
         created_date: getNow(),
         action: 'ticket_rejected',
         admin_email: adminEmail || 'admin',
-        details: JSON.stringify({ ticket_id: id, subject: d.supportTickets[idx].subject }),
+        details: JSON.stringify({ ticket_id: id, subject: _data.supportTickets[idx].subject }),
       });
       save(d);
       _syncInProgress = {};
       db._syncAllToSupabase();
       notifyReactComponents();
-      return d.supportTickets[idx];
+      return _data.supportTickets[idx];
     },
 
     /**
@@ -2250,9 +2141,8 @@ export const db = {
       return d;
     },
     create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.pointsBonuses.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.pointsBonuses.push(record);
       db._persist('pointsBonuses');
       return record;
     },
@@ -2267,19 +2157,17 @@ export const db = {
       return db._init().appSettings.find(s => s.key === key);
     },
     create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.appSettings.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.appSettings.push(record);
       db._persist('appSettings');
       return record;
     },
     update(id, data) {
-      const d = db._init();
-      const idx = d.appSettings.findIndex(s => s.id === id);
+        const idx = _data.appSettings.findIndex(s => s.id === id);
       if (idx === -1) throw new Error('Setting not found');
-      d.appSettings[idx] = { ...d.appSettings[idx], ...data, updated_at: getNow() };
+      _data.appSettings[idx] = { ...d.appSettings[idx], ...data, updated_at: getNow() };
       db._persist('appSettings');
-      return d.appSettings[idx];
+      return _data.appSettings[idx];
     },
   },
 
@@ -2290,9 +2178,8 @@ export const db = {
       return sortBy(d, order || '-created_date');
     },
     create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.auditLogs.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.auditLogs.push(record);
       db._persist('auditLogs');
       return record;
     },
@@ -2315,8 +2202,7 @@ export const db = {
    */
   async awardReferralBonus(referralCode, referredEmail) {
     if (!referralCode) return null;
-    const d = db._init();
-    const referrer = d.users.find(u => u.referral_code === referralCode);
+    const referrer = _data.users.find(u => u.referral_code === referralCode);
     if (!referrer) return null;
     const bonusAmount = referrer.referral_bonus_amount || 10;
     const newRefPoints = (referrer.referral_points || 0) + bonusAmount;
@@ -2325,7 +2211,7 @@ export const db = {
     referrer.total_points = newTotal;
     referrer.updated_at = getNow();
     // Registrar la comisión para que aparezca en el historial
-    d.referralCommissions.push({
+    _data.referralCommissions.push({
       id: makeId(),
       from_email: referredEmail || 'desconocido',
       to_email: referrer.email,
@@ -2345,23 +2231,32 @@ export const db = {
   /**
    * Acredita la comisión por acierto de referido (5 pts) al referente.
    * Retorna el usuario actualizado o null si no hay referente.
+   * IDEMPOTENTE: no crea comisión duplicada para (from, to, match).
    */
   async awardReferralCommission(referredEmail, matchId) {
     if (!referredEmail) return null;
-    const d = db._init();
-    const referred = d.users.find(u => u.email === referredEmail);
+    const referred = _data.users.find(u => u.email === referredEmail);
     if (!referred || !referred.referred_by) return null;
-    const referrer = d.users.find(u => u.referral_code === referred.referred_by);
+    const referrer = _data.users.find(u => u.referral_code === referred.referred_by);
     if (!referrer) return null;
+
+    // Evitar duplicados: no crear comisión si ya existe para este par + match
+    const key = `${referredEmail}|${referrer.email}|${matchId}`;
+    const alreadyExists = (_data.referralCommissions || []).some(c =>
+      c.from_email === referredEmail && c.to_email === referrer.email && c.match_id === matchId
+    );
+    if (alreadyExists) return referrer; // ya existe, no volver a crear
+
+    // Comisión suma SOLO a referral_points, no a prediction_points (que es el ranking)
     const newRefPoints = (referrer.referral_points || 0) + 5;
-    const newPredPoints = (referrer.prediction_points || 0) + 5;
-    const newTotal = (referrer.total_points || 0) + 5;
+    const bonusPoints = referrer.bonus_points || 0;
+    const predPoints = referrer.prediction_points || 0;
+    const newTotal = predPoints + bonusPoints + newRefPoints;
     referrer.referral_points = newRefPoints;
-    referrer.prediction_points = newPredPoints;
     referrer.total_points = newTotal;
     referrer.updated_at = getNow();
     // Registrar la comisión
-    d.referralCommissions.push({
+    _data.referralCommissions.push({
       id: makeId(),
       from_email: referredEmail,
       to_email: referrer.email,
@@ -2393,9 +2288,8 @@ export const db = {
       return db._init().referrals.filter(r => r.referrer_email === email).length;
     },
     create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.referrals.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.referrals.push(record);
       db._persist('referrals');
       return record;
     },
@@ -2410,7 +2304,7 @@ export const db = {
       _skipBackgroundSync = true;
       try {
         const d = db._init({ skipSync: true });
-        const referrals = d.referrals || [];
+        const referrals = _data.referrals || [];
 
         const groups = {};
         for (const r of referrals) {
@@ -2425,7 +2319,7 @@ export const db = {
           const group = groups[key];
           if (group.length <= 1) continue;
           // Conservar el más antiguo
-          const sorted = [...group].sort((a, b) =>
+          const sorted = group.toSorted((a, b) =>
             new Date(a.created_date || 0) - new Date(b.created_date || 0)
           );
           const keep = sorted[0];
@@ -2483,7 +2377,7 @@ export const db = {
         }
 
         const deleteSet = new Set(toDelete);
-        d.referrals = d.referrals.filter(r => !deleteSet.has(r.id));
+        _data.referrals = _data.referrals.filter(r => !deleteSet.has(r.id));
         save(d);
 
         try {
@@ -2513,9 +2407,8 @@ export const db = {
         .reduce((sum, c) => sum + (c.points_earned || 0), 0);
     },
     create(data) {
-      const d = db._init();
-      const record = { id: makeId(), created_date: getNow(), ...data };
-      d.referralCommissions.push(record);
+        const record = { id: makeId(), created_date: getNow(), ...data };
+      _data.referralCommissions.push(record);
       db._persist('referralCommissions');
       return record;
     },
@@ -2529,7 +2422,7 @@ export const db = {
       _skipBackgroundSync = true;
       try {
         const d = db._init({ skipSync: true });
-        const commissions = d.referralCommissions || [];
+        const commissions = _data.referralCommissions || [];
 
         const groups = {};
         for (const c of commissions) {
@@ -2544,7 +2437,7 @@ export const db = {
           const group = groups[key];
           if (group.length <= 1) continue;
           // Conservar la de mayor points_earned (cálculo más reciente)
-          const sorted = [...group].sort((a, b) =>
+          const sorted = group.toSorted((a, b) =>
             (b.points_earned || 0) - (a.points_earned || 0)
           );
           const keep = sorted[0];
@@ -2602,7 +2495,7 @@ export const db = {
         }
 
         const deleteSet = new Set(toDelete);
-        d.referralCommissions = d.referralCommissions.filter(c => !deleteSet.has(c.id));
+        _data.referralCommissions = _data.referralCommissions.filter(c => !deleteSet.has(c.id));
         save(d);
 
         try {
@@ -2622,11 +2515,31 @@ export const db = {
 
   // --- Auth ---
   getCurrentUserEmail() {
-    return db._init().currentUserEmail;
+    // Lee primero de localStorage (sobrevive a page reloads) y cae al in-memory.
+    // Sin esto, después de signIn + window.location.reload, currentUserEmail
+    // estaba en null y AppLayout.api.auth.me() devolvía null → usuario parecía
+    // deslogueado. AuthContext.onAuthStateChange re-popula, pero AppLayout corre
+    // primero y fija authState.user = null antes de que el listener dispare.
+    try {
+      const persisted = localStorage.getItem('chessking_session_email');
+      if (persisted) {
+        this._data.currentUserEmail = persisted;
+        return persisted;
+      }
+    } catch {}
+    return this._data.currentUserEmail;
   },
   setCurrentUserEmail(email) {
     db._init().currentUserEmail = email;
-    db._persist();
+    try {
+      if (email) {
+        localStorage.setItem('chessking_session_email', email);
+      } else {
+        localStorage.removeItem('chessking_session_email');
+      }
+    } catch {}
+    // _persist() sin changedTable no hace nada (es un no-op intencional para
+    // currentUserEmail: NO es una tabla de Supabase, es estado de sesión local).
   },
   getCurrentUser() {
     const email = db.getCurrentUserEmail();
@@ -2638,7 +2551,7 @@ export const db = {
   seedIfEmpty() {
     const d = this._init();
     // Solo seedear admin si no existe ni por email ni por rol
-    const hasAdmin = d.users.some(u => u.email === 'admin@chessking.com' || u.role === 'admin');
+    const hasAdmin = _data.users.some(u => u.email === 'admin@chessking.com' || u.role === 'admin');
     if (!hasAdmin) {
       const admin = {
         id: makeId(),
@@ -2655,11 +2568,11 @@ export const db = {
         profile_complete: true,
         created_date: getNow(),
       };
-      d.users.push(admin);
+      _data.users.push(admin);
       this._persist();
     }
 
-    const hasSettings = d.appSettings.length > 0;
+    const hasSettings = _data.appSettings.length > 0;
     if (!hasSettings) {
       const infoSections = JSON.stringify([
         {
@@ -2683,7 +2596,7 @@ export const db = {
           content: "¿Quieres obtener puntos extra?\n\nMantente conectado a nuestras redes sociales y pendiente de todas nuestras publicaciones.\nDurante el Mundial estaremos realizando dinámicas, retos y actividades especiales donde podrás ganar puntos adicionales para canjear más premios.\nSíguenos, participa y aumenta tus posibilidades de ganar."
         }
       ]);
-      d.appSettings.push(
+      _data.appSettings.push(
         { id: makeId(), key: 'info_sections', value: infoSections, created_date: getNow() },
       );
       this._persist();
@@ -2691,7 +2604,7 @@ export const db = {
 
     // Migración: asignar referral_code a usuarios existentes que no tengan
     let migrated = false;
-    for (const u of d.users) {
+    for (const u of _data.users) {
       if (!u.referral_code) {
         u.referral_code = db.generateReferralCode(u.full_name, u.email);
         u.referred_by = u.referred_by || null;

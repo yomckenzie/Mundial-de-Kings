@@ -3,8 +3,6 @@ import { useOutletContext, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { m, AnimatePresence } from 'framer-motion';
 import { api } from '@/api/client';
-import { db } from '@/lib/db';
-
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -388,30 +386,11 @@ export default function Matches() {
         predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0]?.startsWith('my-predictions')
       });
     };
-    const interval = setInterval(refresh, 15000);
-    // FIX: también refrescar al volver a la pestaña (visibilitychange)
-    // para que al admin/publicar resultado y el usuario cambiar de tab,
-    // el badge se actualice de inmediato al volver.
+    // Refrescar al volver a la pestaña (visibilitychange)
     const onVisibility = () => { if (!document.hidden) refresh(); };
     document.addEventListener('visibilitychange', onVisibility);
-    // FIX CRÍTICO: escuchar 'db-cloud-change' (disparado por
-    // evaluateMatchPredictions y por realtime Supabase) para invalidar
-    // queries inmediatamente cuando se actualizan predictions/users/matches
-    // desde OTRO cliente (ej: el admin finaliza y el usuario ve el badge
-    // ¡Acertaste! en <1s, no 15s).
-    const onCloudChange = async (e) => {
-      const table = e?.detail?.tableName;
-      if (table === 'predictions' || table === 'users' || table === 'matches') {
-        // Forzar sync FROM para que localStorage vea scored=true/is_correct=true
-        try { await db._syncSingleTableFromSupabase(table); } catch (err) { /* noop */ }
-        refresh();
-      }
-    };
-    window.addEventListener('db-cloud-change', onCloudChange);
     return () => {
-      clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('db-cloud-change', onCloudChange);
     };
   }, [queryClient]);
 

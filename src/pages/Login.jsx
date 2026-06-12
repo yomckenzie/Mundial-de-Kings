@@ -48,9 +48,6 @@ export default function Login() {
       const user = data.user;
       db.setCurrentUserEmail(user.email);
 
-      // Sincronizar los datos del usuario recién ingresado desde la nube
-      await db.forceSyncFromCloud();
-
       const profile = db.getCurrentUser();
       toast.success(`¡Bienvenido, ${profile?.full_name || user.email}!`);
       window.location.href = redirect;
