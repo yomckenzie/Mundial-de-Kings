@@ -63,10 +63,18 @@ DECLARE
   v_created  TIMESTAMPTZ;
   v_row      redemptions%ROWTYPE;
 BEGIN
-  -- 1) Lock de la fila del premio: serializa canjes concurrentes del MISMO
-  --    premio. El segundo usuario espera aquí hasta que el primero termine,
-  --    y entonces ve el canje recién insertado al contar el stock.
-  SELECT * INTO v_prize FROM prizes WHERE id = p_prize_id FOR UPDATE;
+  -- 1) Locks de aplicación (advisory locks, se liberan al terminar la
+  --    transacción). Serializan canjes concurrentes del MISMO premio y del
+  --    MISMO usuario sin requerir permisos de UPDATE sobre las tablas.
+  --    NO usar SELECT ... FOR UPDATE aquí: bajo RLS exige pasar la política
+  --    de UPDATE (solo admin) y filtra la fila silenciosamente para
+  --    usuarios normales → daba PRIZE_NOT_FOUND a todo el que no es admin.
+  --    Orden consistente premio→usuario en toda la función (sin deadlocks).
+  PERFORM pg_advisory_xact_lock(hashtext('redeem_prize:' || p_prize_id));
+  PERFORM pg_advisory_xact_lock(hashtext('redeem_user:' || p_user_email));
+
+  -- 2) Leer premio y usuario (SELECT simple — solo requiere permiso de lectura)
+  SELECT * INTO v_prize FROM prizes WHERE id = p_prize_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'PRIZE_NOT_FOUND';
   END IF;
@@ -74,9 +82,7 @@ BEGIN
     RAISE EXCEPTION 'PRIZE_NOT_ACTIVE';
   END IF;
 
-  -- 2) Lock de la fila del usuario: serializa canjes del MISMO usuario
-  --    sobre premios distintos (evita gastar los mismos puntos dos veces).
-  SELECT * INTO v_user FROM users WHERE email = p_user_email FOR UPDATE;
+  SELECT * INTO v_user FROM users WHERE email = p_user_email;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'USER_NOT_FOUND';
   END IF;
