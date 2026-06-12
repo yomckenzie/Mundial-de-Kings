@@ -1589,15 +1589,18 @@ export const db = {
    * Si el premio NO tiene original_stock (legacy), usa units_available directamente.
    */
   _getAvailableStock(prize) {
-    // Si tiene original_stock, calcular dinámicamente
+    // Contar canjes activos (pending, approved, delivered = RESERVADO)
+    const activeRedemptions = (_data.redemptions || []).filter(
+      r => r.prize_id === prize.id && ['pending', 'approved', 'delivered'].includes(r.status)
+    ).length;
+
+    // Si tiene original_stock, usar ese como base
     if (prize.original_stock !== undefined && prize.original_stock !== null) {
-      const activeRedemptions = (_data.redemptions || []).filter(
-        r => r.prize_id === prize.id && ['pending', 'approved', 'delivered'].includes(r.status)
-      ).length;
       return Math.max(0, prize.original_stock - activeRedemptions);
     }
-    // Legacy: usar units_available tal cual
-    return prize.units_available || 0;
+
+    // Legacy: restar canjes activos de units_available
+    return Math.max(0, (prize.units_available || 0) - activeRedemptions);
   },
 
   /**
