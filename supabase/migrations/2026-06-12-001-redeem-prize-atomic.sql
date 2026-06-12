@@ -20,11 +20,16 @@
 -- Esta migración es IDEMPOTENTE: la podés correr varias veces sin romper.
 -- ════════════════════════════════════════════════════════════════════════════
 
--- Registrar en versionado (si existe la tabla de migraciones)
+-- Registrar en versionado (solo si existe la tabla en el esquema public —
+-- ojo: Supabase tiene su propia supabase_migrations.schema_migrations,
+-- por eso hay que filtrar por table_schema = 'public')
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations') THEN
-    INSERT INTO schema_migrations (version, description)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'schema_migrations'
+  ) THEN
+    INSERT INTO public.schema_migrations (version, description)
     VALUES ('2026-06-12-001', 'Canje atomico server-side: redeem_prize() anti race-condition')
     ON CONFLICT (version) DO NOTHING;
   END IF;
