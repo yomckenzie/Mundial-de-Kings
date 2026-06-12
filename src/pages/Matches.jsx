@@ -88,6 +88,18 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   const isLive = match.status === 'live';
 
+  // Resultado conocido: partido finalizado con marcador publicado.
+  // El veredicto (acertó/no acertó) se calcula localmente con la misma regla
+  // que evaluateMatchPredictions (marcador exacto) para mostrarlo apenas se
+  // publique el resultado, sin esperar a que corra la evaluación (scored).
+  const resultKnown = match.status === 'finished' && match.result_team1 != null && match.result_team2 != null;
+  const predHit = existing && resultKnown && (
+    existing.scored
+      ? !!existing.is_correct
+      : Number(existing.pred_team1) === Number(match.result_team1) &&
+        Number(existing.pred_team2) === Number(match.result_team2)
+  );
+
   return (
     <m.div
       layout
@@ -166,22 +178,34 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                           <span className="text-base font-bold text-muted-foreground/40">-</span>
                           <span className="text-lg font-black">{existing.pred_team2}</span>
                         </div>
-                        {existing.scored && match.status === 'finished' && match.result_team1 != null && match.result_team2 != null && user?.role !== 'admin' ? (
-                          <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
-                            existing.is_correct
-                              ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400'
-                          }`}>
-                            {existing.is_correct ? (
-                              <><CheckCircle2 className="w-4 h-4" /><span className="font-semibold text-xs">¡Acertaste! +100</span></>
-                            ) : (
-                              <><X className="w-4 h-4" /><span className="font-semibold text-xs">No acertaste</span></>
-                            )}
+                        {resultKnown && user?.role !== 'admin' ? (
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico:</p>
+                            <p className="text-xs font-bold text-foreground text-center">
+                              {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
+                            </p>
+                            <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
+                              predHit
+                                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400'
+                            }`}>
+                              {predHit ? (
+                                <><CheckCircle2 className="w-4 h-4" /><span className="font-semibold text-xs">🏆 ¡Ganaste! +100 pts</span></>
+                              ) : (
+                                <><X className="w-4 h-4" /><span className="font-semibold text-xs">Perdiste — no acertaste el marcador</span></>
+                              )}
+                            </div>
                           </div>
                         ) : user?.role === 'admin' ? (
                           <div className="text-center text-[11px] text-muted-foreground font-medium py-1.5 px-2 rounded-lg bg-muted/30">
                             <p>Tu pronóstico: {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}</p>
-                            <p className="text-[10px] mt-0.5">Los admins no acumulan puntos</p>
+                            {resultKnown ? (
+                              <p className={`font-semibold mt-0.5 ${predHit ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                                {predHit ? 'Acertaste' : 'No acertaste'} · los admins no acumulan puntos
+                              </p>
+                            ) : (
+                              <p className="text-[10px] mt-0.5">Los admins no acumulan puntos</p>
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-1">
@@ -212,22 +236,34 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       <span className="text-base font-bold text-muted-foreground/40">-</span>
                       <span className="text-lg font-black">{existing.pred_team2}</span>
                     </div>
-                    {existing.scored && match.status === 'finished' && match.result_team1 != null && match.result_team2 != null && user?.role !== 'admin' ? (
-                      <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
-                        existing.is_correct
-                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400'
-                      }`}>
-                        {existing.is_correct ? (
-                          <><CheckCircle2 className="w-4 h-4" /><span className="font-semibold text-xs">¡Acertaste! +100</span></>
-                        ) : (
-                          <><X className="w-4 h-4" /><span className="font-semibold text-xs">No acertaste</span></>
-                        )}
+                    {resultKnown && user?.role !== 'admin' ? (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico:</p>
+                        <p className="text-xs font-bold text-foreground text-center">
+                          {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}
+                        </p>
+                        <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
+                          predHit
+                            ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400'
+                        }`}>
+                          {predHit ? (
+                            <><CheckCircle2 className="w-4 h-4" /><span className="font-semibold text-xs">🏆 ¡Ganaste! +100 pts</span></>
+                          ) : (
+                            <><X className="w-4 h-4" /><span className="font-semibold text-xs">Perdiste — no acertaste el marcador</span></>
+                          )}
+                        </div>
                       </div>
                     ) : user?.role === 'admin' ? (
                       <div className="text-center text-[11px] text-muted-foreground font-medium py-1.5 px-2 rounded-lg bg-muted/30">
                         <p>Tu pronóstico: {match.team1} {existing.pred_team1} - {existing.pred_team2} {match.team2}</p>
-                        <p className="text-[10px] mt-0.5">Los admins no acumulan puntos</p>
+                        {resultKnown ? (
+                          <p className={`font-semibold mt-0.5 ${predHit ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                            {predHit ? 'Acertaste' : 'No acertaste'} · los admins no acumulan puntos
+                          </p>
+                        ) : (
+                          <p className="text-[10px] mt-0.5">Los admins no acumulan puntos</p>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-1">
