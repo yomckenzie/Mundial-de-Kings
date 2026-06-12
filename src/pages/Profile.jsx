@@ -286,7 +286,14 @@ export default function Profile() {
               transition={{ duration: 0.2 }}
               className="space-y-4"
             >
-              <OverviewTab bonuses={bonuses} myCommissions={myCommissions} allUsers={allUsers} matchMap={matchMap} />
+              <OverviewTab
+                bonuses={bonuses}
+                myCommissions={myCommissions}
+                allUsers={allUsers}
+                matchMap={matchMap}
+                predictions={predictions}
+                redemptions={redemptions}
+              />
             </m.div>
           )}
 
