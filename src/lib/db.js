@@ -1432,7 +1432,7 @@ export const db = {
       }
       return d;
     },
-    create(data) {
+    async create(data) {
         // Admins no deben crear pronósticos que se persistan/sincronicen —
       // la regla de negocio es que admins no acumulan puntos.
       const currentUser = db.getCurrentUser();
@@ -1443,9 +1443,13 @@ export const db = {
       // Evitar duplicados: un solo pronóstico por usuario por partido
       const existing = _data.predictions.find(p => p.user_email === data.user_email && p.match_id === data.match_id);
       if (existing) {
-        // Actualizar el existente en lugar de crear duplicado
+        // Actualizar el existente en lugar de crear duplicado.
         Object.assign(existing, data, { updated_at: getNow() });
-        db._persist('predictions');
+        // Persistir SOLO esta fila — NO db._persist('predictions'), que
+        // reintenta subir toda la tabla (todos los usuarios) y la RLS
+        // rechaza el lote porque un usuario normal no puede tocar filas
+        // ajenas. await para que un fallo se propague al caller.
+        await _upsertToCloud('predictions', [existing]);
         return existing;
       }
       const record = {
@@ -1458,7 +1462,11 @@ export const db = {
         ...data,
       };
       _data.predictions.push(record);
-      db._persist('predictions');
+      // Insert de una sola fila propia → pasa la política predictions_insert_own.
+      // await: si Supabase rechaza, create() lanza y la mutación muestra error
+      // en vez de un falso "¡Enviado!" (antes no se esperaba y el pronóstico
+      // se perdía silenciosamente al recargar).
+      await _upsertToCloud('predictions', [record]);
       return record;
     },
     async update(id, data) {
