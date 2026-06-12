@@ -63,27 +63,12 @@ export default function AdminRedemptions() {
 
   const rejectRedemption = useMutation({
     mutationFn: async ({ redemption, reason }) => {
-      // La razón ya viene formateada con el sufijo "otro: ..." si aplica
-      const user = userMap[redemption.user_email];
+      // Los puntos NUNCA se restaron (solo se "reservaron" en status pending).
+      // El disponible se calcula dinámicamente: total - sum(points_spent de canjes activos).
+      // Al rechazar (cambiar status a rejected), el canje ya no cuenta como activo,
+      // así que el saldo disponible se incrementa automáticamente.
+      // NO necesitamos sumar puntos ni actualizar stock: solo marcar como rechazado.
 
-      // 1. Devolver puntos al usuario (total_points)
-      //    Al rechazar, SUMAMOS points_spent de vuelta al total (el usuario
-      //    recibe sus puntos nuevamente). Los disponibles se calculan como
-      //    total - sum(points_spent de canjes activos). Al rechazar, este
-      //    canje ya no cuenta como activo, así que el saldo se incrementa.
-      if (user) {
-        await api.entities.User.update(user.id, {
-          total_points: (user.total_points || 0) + (redemption.points_spent || 0),
-        });
-      }
-
-      // 2. Stock dinámico: NO devolvemos stock al premio.
-      //    El stock disponible se calcula como:
-      //      stock_actual = original_stock - canjes_activos
-      //    Al cambiar el status a 'rejected', esta redención ya no cuenta
-      //    como "canje activo", por lo que el stock "vuelve" automáticamente.
-
-      // 3. Marcar canje como rechazado con razón + timestamp
       await api.entities.Redemption.update(redemption.id, {
         status: 'rejected',
         rejection_reason: reason,

@@ -852,11 +852,11 @@ export const db = {
       await db._persist('users');
       return record;
     },
-    update(id, data) {
+    async update(id, data) {
         const idx = _data.users.findIndex(u => u.id === id);
       if (idx === -1) throw new Error('User not found');
       _data.users[idx] = { ..._data.users[idx], ...data, updated_at: getNow() };
-      db._persist('users');
+      await db._persist('users');
       return _data.users[idx];
     },
     findById(id) {
@@ -956,11 +956,11 @@ export const db = {
       db._persist('matches');
       return record;
     },
-    update(id, data) {
+    async update(id, data) {
         const idx = _data.matches.findIndex(m => m.id === id);
       if (idx === -1) throw new Error('Match not found');
       _data.matches[idx] = { ..._data.matches[idx], ...data, updated_at: getNow() };
-      db._persist('matches');
+      await db._persist('matches');
       return _data.matches[idx];
     },
     /**
@@ -1440,7 +1440,7 @@ export const db = {
       db._persist('predictions');
       return record;
     },
-    update(id, data) {
+    async update(id, data) {
         const currentUser = db.getCurrentUser();
       if (currentUser?.role === 'admin') {
         return { id, ...data };
@@ -1448,7 +1448,7 @@ export const db = {
       const idx = _data.predictions.findIndex(p => p.id === id);
       if (idx === -1) throw new Error('Prediction not found');
       _data.predictions[idx] = { ..._data.predictions[idx], ...data, updated_at: getNow() };
-      db._persist('predictions');
+      await db._persist('predictions');
       return _data.predictions[idx];
     },
 
@@ -1901,17 +1901,17 @@ export const db = {
       }
       return d;
     },
-    create(data) {
+    async create(data) {
         const record = { id: makeId(), created_date: getNow(), ...data };
       _data.redemptions.push(record);
-      db._persist('redemptions');
+      await db._persist('redemptions');
       return record;
     },
-    update(id, data) {
+    async update(id, data) {
       const idx = _data.redemptions.findIndex(r => r.id === id);
       if (idx === -1) throw new Error('Redemption not found');
       _data.redemptions[idx] = { ..._data.redemptions[idx], ...data, updated_at: getNow() };
-      db._persist('redemptions');
+      await db._persist('redemptions');
       return _data.redemptions[idx];
     },
   },
@@ -1985,14 +1985,14 @@ export const db = {
       db._persist('supportTickets');
       return record;
     },
-    update(id, data) {
+    async update(id, data) {
         const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
       // No permitir sobrescribir messages con update directo
       if (data.messages) delete data.messages;
       d.supportTickets[idx] = { ...d.supportTickets[idx], ...data, updated_at: getNow() };
-      db._persist('supportTickets');
+      await db._persist('supportTickets');
       return db._migrateTicket(d.supportTickets[idx]);
     },
 
@@ -2165,11 +2165,11 @@ export const db = {
       db._persist('appSettings');
       return record;
     },
-    update(id, data) {
+    async update(id, data) {
         const idx = _data.appSettings.findIndex(s => s.id === id);
       if (idx === -1) throw new Error('Setting not found');
       _data.appSettings[idx] = { ..._data.appSettings[idx], ...data, updated_at: getNow() };
-      db._persist('appSettings');
+      await db._persist('appSettings');
       return _data.appSettings[idx];
     },
   },
