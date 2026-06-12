@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Trophy, TrendingUp, Gift } from 'lucide-react';
 import { api } from '@/api/client';
 import PrizeCard from './prizes/PrizeCard';
-import { db } from '@/lib/db';
 
 // ─────────────────────────────────────────────────────────────────
 // PREMIOS — ahora se consultan de la BD (tabla `prizes`).
@@ -40,14 +39,37 @@ export default function Prizes() {
   // Antes: `p.status === 'active' && p.units_available > 0` excluía premios
   // con stock 0, lo que ocultaba premios legítimos al público y daba la
   // impresión de que no había catálogo.
-  const prizes = dbPrizes.filter(p => p.status === 'active');
+  // Canjes de TODOS los usuarios — vía React Query (reactivo) para que
+  // puntos disponibles y stock se actualicen al instante tras canjear,
+  // sin recargar la página. Antes se leía db._init() directo (no reactivo).
+  const { data: allRedemptions = [] } = useQuery({
+    queryKey: ['redemptions-public'],
+    queryFn: () => api.entities.Redemption.list(),
+  });
+  const activeRedemptions = allRedemptions.filter(r =>
+    ['pending', 'approved', 'delivered'].includes(r.status)
+  );
+
+  // Stock dinámico: el canje pendiente/aprobado/entregado reserva la unidad;
+  // si el admin lo rechaza, la unidad regresa al inventario automáticamente.
+  const reservedByPrize = activeRedemptions.reduce((acc, r) => {
+    acc[r.prize_id] = (acc[r.prize_id] || 0) + 1;
+    return acc;
+  }, {});
+  const prizes = dbPrizes
+    .filter(p => p.status === 'active')
+    .map(p => ({
+      ...p,
+      units_available: Math.max(0, (Number(p.units_available) || 0) - (reservedByPrize[p.id] || 0)),
+    }));
+
   const totalPoints = user?.total_points || 0;
   // Descontar puntos ya gastados en canjes activos (pending, approved, delivered)
-  const redemptions = db._init().redemptions || [];
-  const userRedemptions = user ? redemptions.filter(r => r.user_email === user.email) : [];
-  const totalSpent = userRedemptions
-    .filter(r => ['pending', 'approved', 'delivered'].includes(r.status))
-    .reduce((sum, r) => sum + (Number(r.points_spent) || 0), 0);
+  const totalSpent = user
+    ? activeRedemptions
+        .filter(r => r.user_email === user.email)
+        .reduce((sum, r) => sum + (Number(r.points_spent) || 0), 0)
+    : 0;
   const availablePoints = Math.max(0, totalPoints - totalSpent);
 
   const pointsProgress = prizes.length > 0
@@ -123,7 +145,7 @@ export default function Prizes() {
             whileHover="hover"
             whileTap={{ scale: 0.98 }}
           >
-            <PrizeCard prize={prize} />
+            <PrizeCard prize={prize} availablePoints={availablePoints} />
           </m.div>
         ))}
       </m.div>

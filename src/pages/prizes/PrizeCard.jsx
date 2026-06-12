@@ -9,7 +9,7 @@ import { useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
-export default function PrizeCard({ prize }) {
+export default function PrizeCard({ prize, availablePoints = 0 }) {
   const { user } = useOutletContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -86,6 +86,14 @@ export default function PrizeCard({ prize }) {
   const redeemMutation = useMutation({
     mutationFn: async () => {
       const pointsCost = Number(prize.points_cost) || 0;
+      // Validación defensiva contra doble clic / canjes repetidos:
+      // availablePoints ya descuenta los canjes activos (pending/approved/delivered).
+      if (pointsCost > availablePoints) {
+        throw new Error('No tienes suficientes puntos disponibles. Tus puntos están reservados en canjes pendientes.');
+      }
+      if ((Number(prize.units_available) || 0) <= 0) {
+        throw new Error('Este premio está agotado o reservado por otros canjes.');
+      }
       const payload = {
         user_email: user.email,
         prize_id: prize.id,
@@ -96,6 +104,10 @@ export default function PrizeCard({ prize }) {
       return api.entities.Redemption.create(payload);
     },
     onSuccess: () => {
+      // 'prizes-public' y 'redemptions-public' son los que usa la página
+      // Premios — sin invalidarlos, el saldo/stock no se actualizaba hasta recargar.
+      queryClient.invalidateQueries({ queryKey: ['prizes-public'] });
+      queryClient.invalidateQueries({ queryKey: ['redemptions-public'] });
       queryClient.invalidateQueries({ queryKey: ['prizes'] });
       queryClient.invalidateQueries({ queryKey: ['admin-prizes'] });
       queryClient.invalidateQueries({ queryKey: ['my-redemptions', user?.email] });
@@ -274,7 +286,10 @@ export default function PrizeCard({ prize }) {
 
         {/* Mutation de canje */}
         {(() => {
-          const userPoints = user?.total_points || 0;
+          // availablePoints (no total_points): descuenta canjes activos.
+          // Con total_points el usuario podía canjear varias veces seguidas
+          // porque el total nunca baja al crear un canje pendiente.
+          const userPoints = availablePoints;
           const canAfford = userPoints >= (prize.points_cost || 0);
           const inStock = (prize.units_available || 0) > 0;
           const needsSize = hasSizes && !selectedSize;
