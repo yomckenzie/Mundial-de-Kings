@@ -84,10 +84,12 @@ const isMatchOpenForPredictions = (match) => {
   return now >= openFrom && now < matchDateTime;
 };
 
-function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult }) {
+function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult, live }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
-  const isLive = match.status === 'live';
+  // 'live' (prop) lo fuerza el horario: aunque la BD diga 'open', si el
+  // partido ya empezó se trata como en vivo (sección EN VIVO + marcador).
+  const isLive = match.status === 'live' || !!live;
 
   // Datos en vivo de SportScore (se refrescan solos cada 30s vía useLiveResults).
   // Si hay marcador en vivo, lo mostramos en lugar del estático de la BD.
@@ -492,9 +494,32 @@ export default function Matches() {
   // Resultados en vivo de SportScore (auto-refresco cada 30s), { matchId → liveResult }
   const liveResults = useLiveResults(matches);
 
-  const liveMatches = matches.filter(m => m.status === 'live');
+  // ¿El partido ya empezó (según su horario) y sigue dentro de la ventana de
+  // juego (~3.5h)? Sirve para auto-pasarlo a EN VIVO sin intervención manual.
+  const LIVE_WINDOW_H = 3.5;
+  const hasStartedNow = (match) => {
+    const kickoff = getMatchDate(match.match_date, match.match_time);
+    if (!kickoff) return false;
+    const elapsedH = (Date.now() - kickoff.getTime()) / 3.6e6;
+    return elapsedH >= 0 && elapsedH <= LIVE_WINDOW_H;
+  };
+
+  // EN VIVO = marcado 'live' por el admin, O abierto/cerrado cuyo horario de
+  // inicio ya pasó (auto). Se excluye lo ya finalizado en la BD.
+  const liveMatches = matches.filter(m =>
+    m.status === 'live' ||
+    ((m.status === 'open' || m.status === 'closed') && hasStartedNow(m))
+  );
+  const liveIds = new Set(liveMatches.map(m => m.id));
+
+  // PRÓXIMOS = pendientes/abiertos visibles cuyo horario de inicio AÚN no
+  // llegó (now < kickoff). Si ya empezó, pasa a EN VIVO (liveIds).
+  const notStartedYet = (m) => {
+    const kickoff = getMatchDate(m.match_date, m.match_time);
+    return kickoff ? Date.now() < kickoff.getTime() : true;
+  };
   const upcomingMatches = matches
-    .filter(m => (m.status === 'pending' || m.status === 'open') && isWithinVisibilityWindow(m))
+    .filter(m => (m.status === 'pending' || m.status === 'open') && isWithinVisibilityWindow(m) && !liveIds.has(m.id) && notStartedYet(m))
     .sort((a, b) => {
       if (a.status === 'open' && b.status !== 'open') return -1;
       if (a.status !== 'open' && b.status === 'open') return 1;
@@ -505,7 +530,7 @@ export default function Matches() {
   // resultado y scoring). Antes aparecían juntos y era confuso. Ahora
   // closed tiene su propia categoría "CERRADOS SIN RESULTADO".
   const finishedMatches = matches.filter(m => m.status === 'finished');
-  const closedMatches = matches.filter(m => m.status === 'closed');
+  const closedMatches = matches.filter(m => m.status === 'closed' && !liveIds.has(m.id));
 
   if (isLoading) {
     return (
@@ -573,6 +598,7 @@ export default function Matches() {
                   handlePredict={handlePredict}
                   handleSubmit={handleSubmit}
                   liveResult={liveResults[match.id]}
+                  live
                 />
               ))}
             </div>

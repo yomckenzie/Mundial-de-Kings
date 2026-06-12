@@ -18,8 +18,8 @@ const POLL_MS = 30000;
 
 function isInPlayWindow(match) {
   if (match.status === 'live') return true;
-  if (match.status !== 'open') return false;
-  // open + ya empezó (hasta ~3.5h después del inicio) = probablemente en juego
+  if (match.status !== 'open' && match.status !== 'closed') return false;
+  // open/closed + ya empezó (hasta ~3.5h después del inicio) = probablemente en juego
   if (!match.match_date) return false;
   const kickoff = new Date(`${match.match_date.slice(0, 10)}T${match.match_time || '00:00'}:00`);
   if (isNaN(kickoff.getTime())) return false;
