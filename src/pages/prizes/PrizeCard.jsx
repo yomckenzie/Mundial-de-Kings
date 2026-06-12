@@ -92,7 +92,6 @@ export default function PrizeCard({ prize }) {
         prize_name: prize.name,
         points_spent: pointsCost,
         status: 'pending',
-        selected_size: hasSizes ? selectedSize : null,
       };
       return api.entities.Redemption.create(payload);
     },
