@@ -12,6 +12,8 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import CompleteProfile from './pages/CompleteProfile';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Matches from './pages/Matches';
 import Ranking from './pages/Ranking';
 import Prizes from './pages/Prizes';
@@ -53,6 +55,8 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/complete-profile" element={<CompleteProfile />} />
       <Route element={<AppLayout />}>
         <Route path="/" element={<Home />} />
