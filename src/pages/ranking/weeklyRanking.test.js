@@ -33,6 +33,15 @@ describe('getTournamentWeeks', () => {
   it('sin partidos retorna []', () => {
     expect(getTournamentWeeks([], NOW)).toEqual([]);
   });
+  it('las semanas empiezan en lunes (lun-dom)', () => {
+    const weeks = getTournamentWeeks(matches, NOW);
+    for (const w of weeks) {
+      expect(new Date(w.start).getDay()).toBe(1); // 1 = lunes
+      expect(w.end - w.start).toBe(7 * 24 * 60 * 60 * 1000);
+    }
+    // El primer partido (mar 9 jun) cae en la semana del lun 8 jun
+    expect(new Date(weeks[0].start).getDate()).toBe(8);
+  });
 });
 
 describe('computeWeeklyRanking', () => {

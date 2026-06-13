@@ -10,9 +10,9 @@ el ranking **por semana del torneo**, para todos los usuarios.
 
 ## Decisiones
 
-- **Semana = bloque de 7 días desde el primer partido** (Sem 1 = 9–15 jun, Sem 2 =
-  16–22 jun, …). Se derivan de las fechas de los partidos. Solo se muestran las
-  semanas que ya empezaron (no semanas futuras vacías).
+- **Semana = lunes a domingo** (calendario). Las semanas se numeran (Sem 1, 2, …)
+  desde la semana que contiene al primer partido, ancladas al lunes. Solo se
+  muestran las semanas que ya empezaron (no semanas futuras vacías).
 - **Visible para todos los usuarios.**
 - **Puntos semanales** = aciertos cuyos partidos se jugaron en esa semana × 100. El
   bono de bienvenida y los puntos de referido NO cuentan (no son semanales).

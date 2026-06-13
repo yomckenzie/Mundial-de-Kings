@@ -1,9 +1,9 @@
-// Ranking por semana del torneo, calculado en el cliente desde el caché local
+// Ranking por semana, calculado en el cliente desde el caché local
 // (users + predictions + matches). Sin dependencias de React.
 //
-// Semana = bloque de 7 días desde el primer partido. Los puntos semanales de un
-// usuario = aciertos (is_correct + scored) cuyos partidos se jugaron en esa
-// semana × 100, deduplicando por (user_email, match_id).
+// Semana = lunes a domingo (calendario). Los puntos semanales de un usuario =
+// aciertos (is_correct + scored) cuyos partidos se jugaron en esa semana × 100,
+// deduplicando por (user_email, match_id).
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const POINTS_PER_CORRECT = 100;
@@ -16,6 +16,13 @@ function matchDateMs(match) {
   const [y, mo, d] = datePart.split('-').map(Number);
   if ([y, mo, d].some(Number.isNaN)) return null;
   return new Date(y, mo - 1, d, 0, 0, 0).getTime();
+}
+
+// Lunes (00:00 local) de la semana que contiene a `ms`. getDay(): 0=dom..6=sáb.
+function mondayOf(ms) {
+  const d = new Date(ms);
+  const offset = (d.getDay() + 6) % 7; // días desde el lunes
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset, 0, 0, 0).getTime();
 }
 
 function formatRange(startMs, endInclusiveMs) {
@@ -38,7 +45,8 @@ export function getTournamentWeeks(matches, nowMs = Date.now()) {
 
   const weeks = [];
   let n = 1;
-  for (let start = min; start <= max; start += WEEK_MS) {
+  // Anclar al lunes de la semana del primer partido; avanzar de lunes a lunes.
+  for (let start = mondayOf(min); start <= max; start += WEEK_MS) {
     weeks.push({
       n,
       start,
