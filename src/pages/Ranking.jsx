@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
@@ -6,10 +6,14 @@ import { useOutletContext } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Medal, Award, ChevronLeft, ChevronRight, Download,
-  Crown, TrendingUp, Users, RefreshCw
+  Crown, TrendingUp, Users, RefreshCw, Search, X
 } from 'lucide-react';
+
+// Normaliza para búsqueda insensible a mayúsculas y acentos
+const norm = (s) => (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import RankingExportCard from '@/components/RankingExportCard';
@@ -81,6 +85,7 @@ export default function Ranking() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [query, setQuery] = useState(''); // buscador admin
 
   const { data: allUsers = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['ranking'],
@@ -108,8 +113,30 @@ export default function Ranking() {
     }
   };
 
-  const totalPages = Math.ceil(allUsers.length / PAGE_SIZE);
-  const pagedUsers = allUsers.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // Ranking real (posición + diferencia con el de arriba) calculado una sola vez
+  // sobre la lista completa, para que el puesto se mantenga aunque el admin filtre.
+  const rankedUsers = useMemo(() =>
+    allUsers.map((u, i) => ({
+      ...u,
+      rank: i + 1,
+      gapToPrev: i > 0
+        ? Math.max(0, (allUsers[i - 1].prediction_points || 0) - (u.prediction_points || 0))
+        : 0,
+    })), [allUsers]);
+
+  // Filtro solo-admin: por Instagram o email (insensible a mayúsculas/acentos)
+  const isFiltering = isAdmin && query.trim() !== '';
+  const filteredUsers = useMemo(() => {
+    if (!isFiltering) return rankedUsers;
+    const q = norm(query.trim());
+    return rankedUsers.filter(u => norm(u.instagram).includes(q) || norm(u.email).includes(q));
+  }, [rankedUsers, query, isFiltering]);
+
+  // Al filtrar se muestran TODAS las coincidencias (sin paginar)
+  const totalPages = isFiltering ? 1 : Math.ceil(filteredUsers.length / PAGE_SIZE);
+  const pagedUsers = isFiltering
+    ? filteredUsers
+    : filteredUsers.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const myRank = allUsers.findIndex(u => u.email === user?.email) + 1;
   const top3 = allUsers.slice(0, 3);
   const myUser = allUsers.find(u => u.email === user?.email);
@@ -204,6 +231,36 @@ export default function Ranking() {
         )}
       </m.div>
 
+      {/* ─── Buscador (solo admin) ─── */}
+      {isAdmin && (
+        <m.div variants={itemVariants}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setPage(0); }}
+              placeholder="Buscar usuario por Instagram o email…"
+              className="pl-9 pr-9"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => { setQuery(''); setPage(0); }}
+                aria-label="Limpiar búsqueda"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {isFiltering && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {filteredUsers.length} coincidencia{filteredUsers.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </m.div>
+      )}
+
       {/* ─── Podium ─── */}
       <RankingPodium top3={top3} />
 
@@ -218,13 +275,13 @@ export default function Ranking() {
               </div>
               <span>Tabla General</span>
               <span className="text-xs font-normal text-muted-foreground ml-auto">
-                Pág. {page + 1} de {Math.max(1, totalPages)}
+                {isFiltering ? 'Resultados de búsqueda' : `Pág. ${page + 1} de ${Math.max(1, totalPages)}`}
               </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <AnimatePresence mode="wait">
-              <RankingTable pagedUsers={pagedUsers} page={page} pageSize={PAGE_SIZE} user={user} />
+              <RankingTable pagedUsers={pagedUsers} page={page} pageSize={PAGE_SIZE} user={user} isFiltering={isFiltering} />
             </AnimatePresence>
           </CardContent>
         </Card>

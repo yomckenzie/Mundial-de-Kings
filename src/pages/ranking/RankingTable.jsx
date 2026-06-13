@@ -28,22 +28,24 @@ function getRowStyle(pos) {
   return `${base} border-l-[3px] border-l-transparent hover:border-l-border`;
 }
 
-function getPointGap(currentPoints, previousPoints) {
-  if (previousPoints == null || currentPoints == null) return null;
-  const diff = previousPoints - currentPoints;
-  if (diff <= 0) return null;
-  return diff;
-}
-
-export default function RankingTable({ pagedUsers, page, pageSize, user }) {
+export default function RankingTable({ pagedUsers, page, pageSize, user, isFiltering = false }) {
   if (pagedUsers.length === 0) {
     return (
       <m.div key="empty" className="py-16 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
         <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto mb-4">
           <Target className="w-8 h-8 text-muted-foreground/40" />
         </div>
-        <p className="text-muted-foreground font-medium">No hay usuarios registrados aún.</p>
-        <p className="text-sm text-muted-foreground/60 mt-1">¡Sé el primero en participar!</p>
+        {isFiltering ? (
+          <>
+            <p className="text-muted-foreground font-medium">No se encontró ningún usuario con ese criterio.</p>
+            <p className="text-sm text-muted-foreground/60 mt-1">Probá con otro Instagram o email.</p>
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground font-medium">No hay usuarios registrados aún.</p>
+            <p className="text-sm text-muted-foreground/60 mt-1">¡Sé el primero en participar!</p>
+          </>
+        )}
       </m.div>
     );
   }
@@ -58,10 +60,11 @@ export default function RankingTable({ pagedUsers, page, pageSize, user }) {
       </div>
 
       {pagedUsers.map((u, i) => {
-        const pos = page * pageSize + i + 1;
+        // u.rank = posición real en el ranking completo (se mantiene al filtrar).
+        // Fallback al cálculo por página si no viene rank.
+        const pos = u.rank ?? (page * pageSize + i + 1);
         const isMe = u.email === user?.email;
-        const prevUser = i > 0 ? pagedUsers[i - 1] : null;
-        const gap = getPointGap(u.prediction_points, prevUser?.prediction_points);
+        const gap = u.gapToPrev > 0 ? u.gapToPrev : null;
         const badge = getRankBadge(pos);
         const RankIcon = badge.icon;
 
