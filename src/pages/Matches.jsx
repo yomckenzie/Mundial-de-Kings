@@ -33,11 +33,11 @@ const formatMatchDate = (dateStr) => {
 };
 
 const statusMap = {
-  pending: { label: 'Próximamente', class: 'bg-muted text-muted-foreground' },
+  pending: { label: 'Próximamente', class: 'bg-muted text-foreground/70' },
   open: { label: 'Abierto', class: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
   live: { label: 'EN VIVO', class: 'bg-red-600 text-white animate-pulse' },
   closed: { label: 'Cerrado', class: 'bg-secondary/50 text-secondary-foreground' },
-  finished: { label: 'Finalizado', class: 'bg-muted text-muted-foreground' },
+  finished: { label: 'Finalizado', class: 'bg-muted text-foreground/70' },
 };
 
 const getMatchDate = (match_date, match_time) => {
@@ -344,7 +344,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                         type="number"
                         inputMode="numeric"
                         min="0"
-                        className="w-11 sm:w-12 h-10 sm:h-11 text-center text-base font-bold px-1"
+                        className="w-11 sm:w-12 h-11 sm:h-12 text-center text-base font-bold px-1"
                         placeholder="0"
                         value={predictions[match.id]?.team1 ?? ''}
                         onChange={(e) => handlePredict(match.id, 'team1', e.target.value)}
@@ -354,7 +354,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                         type="number"
                         inputMode="numeric"
                         min="0"
-                        className="w-11 sm:w-12 h-10 sm:h-11 text-center text-base font-bold px-1"
+                        className="w-11 sm:w-12 h-11 sm:h-12 text-center text-base font-bold px-1"
                         placeholder="0"
                         value={predictions[match.id]?.team2 ?? ''}
                         onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
