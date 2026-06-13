@@ -7,6 +7,7 @@ import { m, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Medal, Award, ChevronLeft, ChevronRight, Download,
   Crown, TrendingUp, Users, RefreshCw, Search, X, Calendar
@@ -255,32 +256,24 @@ export default function Ranking() {
         )}
       </m.div>
 
-      {/* ─── Selector de semana (todos los usuarios) ─── */}
+      {/* ─── Selector de semana (desplegable, todos los usuarios) ─── */}
       {weeks.length > 0 && (
-        <m.div variants={itemVariants} className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <m.div variants={itemVariants} className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
-          <button
-            type="button"
-            onClick={() => { setSelectedWeekN(null); setPage(0); }}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
-              !isWeekly ? 'bg-foreground text-background' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-            }`}
+          <Select
+            value={isWeekly ? String(selectedWeekN) : 'general'}
+            onValueChange={(v) => { setSelectedWeekN(v === 'general' ? null : Number(v)); setPage(0); }}
           >
-            General
-          </button>
-          {weeks.map(w => (
-            <button
-              key={w.n}
-              type="button"
-              title={w.dateLabel}
-              onClick={() => { setSelectedWeekN(w.n); setPage(0); }}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
-                selectedWeekN === w.n ? 'bg-foreground text-background' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {w.label}
-            </button>
-          ))}
+            <SelectTrigger className="w-auto min-w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="general">General</SelectItem>
+              {weeks.map(w => (
+                <SelectItem key={w.n} value={String(w.n)}>{w.label} · {w.dateLabel}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </m.div>
       )}
 
