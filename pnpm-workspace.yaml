@@ -1,5 +1,13 @@
 allowBuilds:
+  core-js: false
   esbuild: true
 minimumReleaseAge: 10080
 trustLockfile: true
 trustPolicy: no-downgrade
+# Exención puntual: undici-types es un paquete de SOLO TIPOS (transitivo de
+# @types/node). Su 6.21.0 no trae provenance attestation aunque una versión
+# anterior sí, lo que dispara ERR_PNPM_TRUST_DOWNGRADE. Bajo riesgo; se exime
+# solo este paquete y se mantiene la política para el resto.
+trustPolicyExclude:
+  - 'undici-types@6.21.0'
+  - 'semver@6.3.1'

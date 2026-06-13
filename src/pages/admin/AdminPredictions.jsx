@@ -4,13 +4,19 @@ import { api } from '@/api/client';
 import { db } from '@/lib/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, X, Layers, Download } from 'lucide-react';
+import { CheckCircle2, X, Layers, Download, FileText, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { usersByEmailMap, buildMatchReport, buildStandings, buildGlobalStats, statusOf } from '@/lib/predictionsReport';
+import { exportMatchPdf, exportTotalPdf } from '@/lib/predictionsPdf';
 
 export default function AdminPredictions() {
   const [selectedMatch, setSelectedMatch] = useState('all');
+  const [mode, setMode] = useState('match');               // 'match' | 'user'
+  const [statusFilter, setStatusFilter] = useState('all'); // all | ganó | perdió | pendiente
+  const [search, setSearch] = useState('');
   const [deduping, setDeduping] = useState(false);
   const queryClient = useQueryClient();
 
@@ -18,74 +24,57 @@ export default function AdminPredictions() {
     queryKey: ['admin-matches-pred'],
     queryFn: () => api.entities.Match.list('-match_date'),
   });
-
-  const { data: predictions = [], isLoading } = useQuery({
-    queryKey: ['admin-predictions', selectedMatch],
-    queryFn: () => {
-      if (selectedMatch === 'all') return api.entities.Prediction.list('-created_date', 100);
-      return api.entities.Prediction.filter({ match_id: selectedMatch }, '-created_date');
-    },
+  const { data: allPredictions = [], isLoading } = useQuery({
+    queryKey: ['admin-predictions-all'],
+    queryFn: () => api.entities.Prediction.list(),
+  });
+  const { data: users = [] } = useQuery({
+    queryKey: ['admin-users-pred'],
+    queryFn: () => api.entities.User.list(),
   });
 
-  const matchMap = {};
-  matches.forEach(m => { matchMap[m.id] = m; });
+  const matchMap = React.useMemo(() => {
+    const m = {}; matches.forEach(x => { m[x.id] = x; }); return m;
+  }, [matches]);
+  const usersMap = React.useMemo(() => usersByEmailMap(users), [users]);
 
-  // Escapa un valor para CSV: entrecomilla si tiene coma, comilla o salto de línea.
-  const csvCell = (v) => {
-    const s = String(v ?? '');
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
+  const matchPredictions = React.useMemo(() => (
+    selectedMatch === 'all' ? allPredictions : allPredictions.filter(p => p.match_id === selectedMatch)
+  ), [allPredictions, selectedMatch]);
 
-  // Exporta los pronósticos actualmente filtrados a un CSV (correo, pronóstico,
-  // resultado real, ganó/perdió, puntos). Pensado para usar con un partido
-  // seleccionado, para saber quién ganó y quién perdió.
-  const handleExportCsv = () => {
-    if (predictions.length === 0) {
-      toast.error('No hay pronósticos para exportar');
-      return;
-    }
-    const headers = ['Partido', 'Correo', 'Pronóstico', 'Resultado', 'Estado', 'Puntos'];
-    const rows = predictions.map((pred) => {
-      const match = matchMap[pred.match_id];
-      const partido = match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido';
-      const pronostico = `${pred.pred_team1} - ${pred.pred_team2}`;
-      const resultado = match && match.result_team1 != null && match.result_team2 != null
-        ? `${match.result_team1} - ${match.result_team2}`
-        : 'Sin publicar';
-      const estado = pred.scored ? (pred.is_correct ? 'Ganó' : 'Perdió') : 'Pendiente';
-      const puntos = pred.scored ? (pred.points_earned ?? (pred.is_correct ? 100 : 0)) : '';
-      return [partido, pred.user_email, pronostico, resultado, estado, puntos];
-    });
-    const csv = [headers, ...rows]
-      .map((row) => row.map(csvCell).join(','))
-      .join('\r\n');
-    // BOM (﻿) para que Excel abra el archivo como UTF-8 (acentos y ñ).
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const nombre = selectedMatch !== 'all' && matchMap[selectedMatch]
-      ? `${matchMap[selectedMatch].team1}_vs_${matchMap[selectedMatch].team2}`.replace(/\s+/g, '')
-      : 'todos';
-    a.href = url;
-    a.download = `pronosticos_${nombre}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success(`Exportados ${predictions.length} pronósticos`);
-  };
+  const matchesText = React.useCallback((email) => {
+    const u = usersMap.get(email) || {};
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (u.instagram || '').toLowerCase().includes(q)
+      || (u.name || '').toLowerCase().includes(q)
+      || email.toLowerCase().includes(q);
+  }, [usersMap, search]);
+
+  const filteredRows = React.useMemo(() => {
+    return matchPredictions
+      .filter(p => matchesText(p.user_email))
+      .map(p => {
+        const match = matchMap[p.match_id];
+        const st = match ? statusOf(p, match) : 'pendiente';
+        return { p, match, st };
+      })
+      .filter(({ st }) => statusFilter === 'all' || st === statusFilter)
+      .sort((a, b) => (a.p.created_date || '').localeCompare(b.p.created_date || ''));
+  }, [matchPredictions, statusFilter, matchMap, matchesText]);
+
+  const standings = React.useMemo(
+    () => buildStandings(allPredictions, matches, usersMap).filter(s => matchesText(s.email)),
+    [allPredictions, matches, usersMap, matchesText]
+  );
 
   const handleDedupe = async () => {
     if (!window.confirm('¿Eliminar pronósticos duplicados (mismo usuario + mismo partido)?\n\nSe conservará la versión con más información (scored + puntos).')) return;
     setDeduping(true);
     try {
       const result = await db.predictions.deduplicate();
-      if (result.deleted === 0) {
-        toast.success('No se encontraron pronósticos duplicados ✅');
-      } else {
-        toast.success(`🧹 ${result.deleted} pronósticos duplicados eliminados (de ${result.scanned} revisados)`);
-      }
-      queryClient.invalidateQueries({ queryKey: ['admin-predictions'] });
+      toast.success(result.deleted === 0 ? 'No se encontraron duplicados ✅' : `🧹 ${result.deleted} duplicados eliminados (de ${result.scanned})`);
+      queryClient.invalidateQueries({ queryKey: ['admin-predictions-all'] });
       queryClient.invalidateQueries({ queryKey: ['ranking'] });
     } catch (e) {
       toast.error('Error al deduplicar: ' + e.message);
@@ -94,62 +83,151 @@ export default function AdminPredictions() {
     }
   };
 
+  const handleExportCsv = () => {
+    if (filteredRows.length === 0) { toast.error('No hay pronósticos para exportar'); return; }
+    const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const headers = ['Partido', 'Instagram', 'Nombre', 'Correo', 'Pronóstico', 'Estado', 'Puntos'];
+    const rows = filteredRows.map(({ p, match, st }) => {
+      const u = usersMap.get(p.user_email) || {};
+      const partido = match ? `${match.team1} vs ${match.team2}` : 'Desconocido';
+      const puntos = p.scored ? (p.points_earned ?? (p.is_correct ? 100 : 0)) : (st === 'ganó' ? 100 : 0);
+      return [partido, u.instagram ? '@' + u.instagram : '', u.name || '', p.user_email, `${p.pred_team1} - ${p.pred_team2}`, st, puntos];
+    });
+    const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const nombre = selectedMatch !== 'all' && matchMap[selectedMatch]
+      ? `${matchMap[selectedMatch].team1}_vs_${matchMap[selectedMatch].team2}`.replace(/\s+/g, '') : 'todos';
+    a.href = url; a.download = `pronosticos_${nombre}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Exportados ${filteredRows.length} pronósticos`);
+  };
+
+  const handleMatchPdf = () => {
+    const match = matchMap[selectedMatch];
+    if (!match) { toast.error('Selecciona un partido para el PDF'); return; }
+    const report = buildMatchReport(match, allPredictions, usersMap);
+    if (report.rows.length === 0) { toast.error('Ese partido no tiene pronósticos'); return; }
+    exportMatchPdf(report);
+    toast.success('PDF del partido generado');
+  };
+
+  const handleTotalPdf = () => {
+    const finished = matches.filter(m => m.status === 'finished' && m.result_team1 != null && m.result_team2 != null);
+    if (finished.length === 0) { toast.error('No hay partidos finalizados todavía'); return; }
+    const globalStats = buildGlobalStats(allPredictions, finished, usersMap);
+    const matchReports = finished.map(m => buildMatchReport(m, allPredictions, usersMap));
+    const standingsAll = buildStandings(allPredictions, matches, usersMap);
+    exportTotalPdf({ globalStats, matchReports, standings: standingsAll });
+    toast.success('PDF total generado');
+  };
+
+  const userLabel = (email) => {
+    const u = usersMap.get(email) || {};
+    return u.instagram ? '@' + u.instagram : (u.name || email);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={selectedMatch} onValueChange={setSelectedMatch}>
-          <SelectTrigger className="w-full max-w-sm">
-            <SelectValue placeholder="Filtrar por partido" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los partidos</SelectItem>
-            {matches.map(m => (
-              <SelectItem key={m.id} value={m.id}>{m.team1} vs {m.team2}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="inline-flex rounded-lg border p-0.5">
+          <button onClick={() => setMode('match')} className={`px-3 py-1 text-sm rounded-md ${mode === 'match' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por partido</button>
+          <button onClick={() => setMode('user')} className={`px-3 py-1 text-sm rounded-md ${mode === 'user' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por usuario</button>
+        </div>
         <Button variant="secondary" size="sm" onClick={handleDedupe} disabled={deduping} className="gap-2">
-          <Layers className="w-4 h-4" /> {deduping ? 'Deduplicando...' : 'Deduplicar pronósticos'}
+          <Layers className="w-4 h-4" /> {deduping ? 'Deduplicando...' : 'Deduplicar'}
         </Button>
-        <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={predictions.length === 0} className="gap-2">
-          <Download className="w-4 h-4" /> Exportar CSV
+        <Button variant="outline" size="sm" onClick={handleTotalPdf} className="gap-2">
+          <FileText className="w-4 h-4" /> PDF total
         </Button>
       </div>
 
-      <p className="text-sm text-muted-foreground">{predictions.length} pronósticos</p>
+      <div className="relative max-w-sm">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input className="pl-9" placeholder="Buscar por @instagram, nombre o correo" value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
 
-      {isLoading ? (
-        <p className="text-muted-foreground">Cargando...</p>
+      {mode === 'match' ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={selectedMatch} onValueChange={setSelectedMatch}>
+              <SelectTrigger className="w-full max-w-xs"><SelectValue placeholder="Filtrar por partido" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los partidos</SelectItem>
+                {matches.map(m => <SelectItem key={m.id} value={m.id}>{m.team1} vs {m.team2}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="ganó">Acertados</SelectItem>
+                <SelectItem value="perdió">Perdidos</SelectItem>
+                <SelectItem value="pendiente">Pendientes</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={filteredRows.length === 0} className="gap-2">
+              <Download className="w-4 h-4" /> CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleMatchPdf} disabled={selectedMatch === 'all'} className="gap-2">
+              <FileText className="w-4 h-4" /> PDF de este partido
+            </Button>
+          </div>
+
+          <p className="text-sm text-muted-foreground">{filteredRows.length} pronósticos</p>
+
+          {isLoading ? <p className="text-muted-foreground">Cargando...</p> : (
+            <div className="space-y-2">
+              {filteredRows.map(({ p, match, st }) => (
+                <Card key={p.id}>
+                  <CardContent className="p-3 text-sm flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{userLabel(p.user_email)}</p>
+                      <p className="text-muted-foreground text-xs">{p.user_email}</p>
+                      <p className="text-muted-foreground">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
+                      <p>Pronóstico: <strong>{p.pred_team1} - {p.pred_team2}</strong></p>
+                    </div>
+                    {st === 'pendiente' ? (
+                      <Badge variant="outline">Pendiente</Badge>
+                    ) : (
+                      <Badge className={st === 'ganó' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}>
+                        {st === 'ganó'
+                          ? <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />+100</span>
+                          : <span className="flex items-center gap-1"><X className="w-3 h-3" />0</span>}
+                      </Badge>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="space-y-2">
-          {predictions.map(pred => {
-            const match = matchMap[pred.match_id];
-            return (
-              <Card key={pred.id}>
-                <CardContent className="p-3 text-sm flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{pred.user_email}</p>
-                    <p className="text-muted-foreground">
-                      {match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}
-                    </p>
-                    <p>Pronóstico: <strong>{pred.pred_team1} - {pred.pred_team2}</strong></p>
-                  </div>
-                  {pred.scored ? (
-                    <Badge className={pred.is_correct ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}>
-                      {pred.is_correct ? (
-                        <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />+100</span>
-                      ) : (
-                        <span className="flex items-center gap-1"><X className="w-3 h-3" />0</span>
-                      )}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Pendiente</Badge>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <>
+          <p className="text-sm text-muted-foreground">{standings.length} participantes</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-2 pr-2">#</th><th className="pr-2">Usuario</th><th className="pr-2">Correo</th><th className="pr-2">Aciertos</th><th className="pr-2 text-right">Puntos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {standings.map(s => (
+                  <tr key={s.email} className="border-b last:border-0">
+                    <td className="py-2 pr-2 text-muted-foreground">{s.rank}</td>
+                    <td className="pr-2 font-medium">{s.instagram ? '@' + s.instagram : s.name}</td>
+                    <td className="pr-2 text-muted-foreground">{s.email}</td>
+                    <td className="pr-2">{s.hits}/{s.total}</td>
+                    <td className="pr-2 text-right font-bold">{s.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
