@@ -100,7 +100,6 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
     ? { t1: liveResult.team1Score, t2: liveResult.team2Score }
     : null;
   const liveLabel = liveResult?.label; // "67'", "HT", "Finalizado"...
-  const liveState = liveResult?.state;  // 'live' | 'finished' | 'upcoming'
 
   // Resultado conocido: partido finalizado con marcador publicado.
   // El veredicto (acertó/no acertó) se calcula localmente con la misma regla
@@ -132,8 +131,13 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               <Clock className="w-4 h-4 ml-1" />
               {formatTime12h(match.match_time)}
             </div>
-            <Badge className={`${st.class} border-0`}>
-              {isLive ? 'EN VIVO' : st.label}
+            <Badge className={`${st.class} border-0 flex items-center gap-1.5`}>
+              {isLive ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/90" />
+                  {liveLabel ? `EN VIVO · ${liveLabel}` : 'EN VIVO'}
+                </>
+              ) : st.label}
             </Badge>
           </div>
 
@@ -169,15 +173,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       {' - '}
                       {liveScore ? liveScore.t2 : (match.result_team2 != null ? match.result_team2 : '-')}
                     </m.div>
-                    {/* Minuto/estado en vivo desde SportScore */}
-                    {isLive && liveLabel && (
-                      <span className={`text-[11px] font-bold flex items-center gap-1 ${
-                        liveState === 'finished' ? 'text-muted-foreground' : 'text-red-600'
-                      }`}>
-                        {liveState !== 'finished' && <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
-                        {liveState === 'finished' ? 'Finalizado' : liveLabel}
-                      </span>
-                    )}
+                    {/* El minuto en vivo ahora se muestra arriba, en el badge EN VIVO. */}
                     {/* Finalizado en SportScore, pendiente de que el admin confirme/publique */}
                     {pendingConfirm && (
                       <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
