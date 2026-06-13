@@ -32,6 +32,8 @@ export default function AdminMatches() {
   const { data: rawMatches = [], isLoading } = useQuery({
     queryKey: ['admin-matches-sorted'],
     queryFn: () => api.entities.Match.list(),
+    // Reflejar los cambios de estado que hace el cron server-side sin recargar.
+    refetchInterval: 60000,
   });
 
   // Predicciones (para mostrar conteo y advertencia al eliminar)

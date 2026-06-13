@@ -15,6 +15,7 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { formatTime12h } from '@/lib/utils';
 import { useLiveResults } from './matches/useLiveResults';
+import { isLiveMatch as isLiveByTime } from './matches/matchTiming';
 
 // Referencia fija para parsear fechas en hora LOCAL (igual que el panel admin
 // en MatchGroupList.jsx). Evita el desfase de zona horaria que ocurre al usar
@@ -512,23 +513,12 @@ export default function Matches() {
       .map(m => m.id)
   );
 
-  // ¿El partido ya empezó (según su horario) y sigue dentro de la ventana de
-  // juego (~3.5h)? Sirve para auto-pasarlo a EN VIVO sin intervención manual.
-  const LIVE_WINDOW_H = 3.5;
-  const hasStartedNow = (match) => {
-    const kickoff = getMatchDate(match.match_date, match.match_time);
-    if (!kickoff) return false;
-    const elapsedH = (Date.now() - kickoff.getTime()) / 3.6e6;
-    return elapsedH >= 0 && elapsedH <= LIVE_WINDOW_H;
-  };
-
-  // EN VIVO = marcado 'live' por el admin, O abierto/cerrado cuyo horario de
-  // inicio ya pasó (auto). Se excluye lo ya finalizado en la BD.
+  // EN VIVO = 'live' en la BD, o (open/closed/pending) cuyo horario de inicio ya
+  // pasó (ver isLiveByTime). Incluir 'pending' es la red de seguridad: entre
+  // ticks del cron (máx 5 min) un partido recién empezado se muestra acá en vez
+  // de desaparecer. Se excluye lo ya finalizado/por-confirmar.
   const liveMatches = matches.filter(m =>
-    !pendingConfirmIds.has(m.id) && (
-      m.status === 'live' ||
-      ((m.status === 'open' || m.status === 'closed') && hasStartedNow(m))
-    )
+    !pendingConfirmIds.has(m.id) && isLiveByTime(m)
   );
   const liveIds = new Set(liveMatches.map(m => m.id));
 
