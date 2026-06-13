@@ -143,6 +143,15 @@ export default function Login() {
                   </div>
                 </div>
 
+                <div className="text-right -mt-1">
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm text-muted-foreground hover:text-foreground transition"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                </div>
+
                 <m.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
                   <Button type="submit" className="w-full glow-sm" disabled={isLoading}>
                     {isLoading ? (
