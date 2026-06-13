@@ -28,14 +28,16 @@ function getRowStyle(pos) {
   return `${base} border-l-[3px] border-l-transparent hover:border-l-border`;
 }
 
-export default function RankingTable({ pagedUsers, page, pageSize, user, isFiltering = false }) {
+export default function RankingTable({ pagedUsers, page, pageSize, user, isFiltering = false, emptyMessage }) {
   if (pagedUsers.length === 0) {
     return (
       <m.div key="empty" className="py-16 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
         <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto mb-4">
           <Target className="w-8 h-8 text-muted-foreground/40" />
         </div>
-        {isFiltering ? (
+        {emptyMessage ? (
+          <p className="text-muted-foreground font-medium">{emptyMessage}</p>
+        ) : isFiltering ? (
           <>
             <p className="text-muted-foreground font-medium">No se encontró ningún usuario con ese criterio.</p>
             <p className="text-sm text-muted-foreground/60 mt-1">Probá con otro Instagram o email.</p>

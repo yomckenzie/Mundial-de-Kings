@@ -9,17 +9,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Medal, Award, ChevronLeft, ChevronRight, Download,
-  Crown, TrendingUp, Users, RefreshCw, Search, X
+  Crown, TrendingUp, Users, RefreshCw, Search, X, Calendar
 } from 'lucide-react';
-
-// Normaliza para búsqueda insensible a mayúsculas y acentos
-const norm = (s) => (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import RankingExportCard from '@/components/RankingExportCard';
 import RankingPodium from './ranking/RankingPodium';
 import MyRankCard from './ranking/MyRankCard';
 import RankingTable from './ranking/RankingTable';
+import { getTournamentWeeks, computeWeeklyRanking } from './ranking/weeklyRanking';
+
+// Normaliza para búsqueda insensible a mayúsculas y acentos
+const norm = (s) => (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 const PAGE_SIZE = 20;
 
@@ -86,6 +87,7 @@ export default function Ranking() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [query, setQuery] = useState(''); // buscador admin
+  const [selectedWeekN, setSelectedWeekN] = useState(null); // null = General
 
   const { data: allUsers = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['ranking'],
@@ -93,6 +95,16 @@ export default function Ranking() {
       const res = await api.functions.invoke('getRanking', {});
       return res.data?.ranking || [];
     },
+  });
+
+  // Partidos y predicciones (del caché local) para el ranking semanal
+  const { data: matchesData = [] } = useQuery({
+    queryKey: ['ranking-matches'],
+    queryFn: () => api.entities.Match.list(),
+  });
+  const { data: predictionsData = [] } = useQuery({
+    queryKey: ['ranking-predictions'],
+    queryFn: () => api.entities.Prediction.list(),
   });
 
   // Forzar sync desde Supabase → actualiza prediction_points y total_points
@@ -113,8 +125,7 @@ export default function Ranking() {
     }
   };
 
-  // Ranking real (posición + diferencia con el de arriba) calculado una sola vez
-  // sobre la lista completa, para que el puesto se mantenga aunque el admin filtre.
+  // Ranking general (posición + diferencia con el de arriba), calculado una sola vez.
   const rankedUsers = useMemo(() =>
     allUsers.map((u, i) => ({
       ...u,
@@ -124,22 +135,35 @@ export default function Ranking() {
         : 0,
     })), [allUsers]);
 
+  // Semanas del torneo (solo las ya empezadas) y semana seleccionada.
+  const weeks = useMemo(() => getTournamentWeeks(matchesData, Date.now()), [matchesData]);
+  const selectedWeek = selectedWeekN != null ? weeks.find(w => w.n === selectedWeekN) || null : null;
+  const isWeekly = !!selectedWeek;
+
+  // Ranking de la semana seleccionada (puntos = aciertos de esa semana × 100).
+  const weeklyRanked = useMemo(() =>
+    selectedWeek ? computeWeeklyRanking(allUsers, predictionsData, matchesData, selectedWeek) : [],
+    [selectedWeek, allUsers, predictionsData, matchesData]);
+
+  // Vista activa: semanal o general.
+  const baseRanked = isWeekly ? weeklyRanked : rankedUsers;
+
   // Filtro solo-admin: por Instagram o email (insensible a mayúsculas/acentos)
   const isFiltering = isAdmin && query.trim() !== '';
   const filteredUsers = useMemo(() => {
-    if (!isFiltering) return rankedUsers;
+    if (!isFiltering) return baseRanked;
     const q = norm(query.trim());
-    return rankedUsers.filter(u => norm(u.instagram).includes(q) || norm(u.email).includes(q));
-  }, [rankedUsers, query, isFiltering]);
+    return baseRanked.filter(u => norm(u.instagram).includes(q) || norm(u.email).includes(q));
+  }, [baseRanked, query, isFiltering]);
 
   // Al filtrar se muestran TODAS las coincidencias (sin paginar)
   const totalPages = isFiltering ? 1 : Math.ceil(filteredUsers.length / PAGE_SIZE);
   const pagedUsers = isFiltering
     ? filteredUsers
     : filteredUsers.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const myRank = allUsers.findIndex(u => u.email === user?.email) + 1;
-  const top3 = allUsers.slice(0, 3);
-  const myUser = allUsers.find(u => u.email === user?.email);
+  const myRank = baseRanked.findIndex(u => u.email === user?.email) + 1;
+  const top3 = baseRanked.slice(0, 3);
+  const myUser = baseRanked.find(u => u.email === user?.email);
 
   const handleExportTop10 = async () => {
     setShowExportTop10(true);
@@ -231,6 +255,35 @@ export default function Ranking() {
         )}
       </m.div>
 
+      {/* ─── Selector de semana (todos los usuarios) ─── */}
+      {weeks.length > 0 && (
+        <m.div variants={itemVariants} className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
+          <button
+            type="button"
+            onClick={() => { setSelectedWeekN(null); setPage(0); }}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+              !isWeekly ? 'bg-foreground text-background' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            General
+          </button>
+          {weeks.map(w => (
+            <button
+              key={w.n}
+              type="button"
+              title={w.dateLabel}
+              onClick={() => { setSelectedWeekN(w.n); setPage(0); }}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+                selectedWeekN === w.n ? 'bg-foreground text-background' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {w.label}
+            </button>
+          ))}
+        </m.div>
+      )}
+
       {/* ─── Buscador (solo admin) ─── */}
       {isAdmin && (
         <m.div variants={itemVariants}>
@@ -265,7 +318,7 @@ export default function Ranking() {
       <RankingPodium top3={top3} />
 
       {/* ─── My Position Card ─── */}
-      <MyRankCard myUser={myUser} myRank={myRank} allUsers={allUsers} />      {/* ─── Table ─── */}
+      <MyRankCard myUser={myUser} myRank={myRank} allUsers={baseRanked} />      {/* ─── Table ─── */}
       <m.div variants={itemVariants}>
         <Card className="overflow-hidden shadow-lg">
           <CardHeader className="pb-3 border-b border-border/50 bg-muted/10">
@@ -273,7 +326,7 @@ export default function Ranking() {
               <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
                 <TrendingUp className="w-4 h-4 text-muted-foreground" />
               </div>
-              <span>Tabla General</span>
+              <span>{isWeekly ? `${selectedWeek.label} · ${selectedWeek.dateLabel}` : 'Tabla General'}</span>
               <span className="text-xs font-normal text-muted-foreground ml-auto">
                 {isFiltering ? 'Resultados de búsqueda' : `Pág. ${page + 1} de ${Math.max(1, totalPages)}`}
               </span>
@@ -281,7 +334,14 @@ export default function Ranking() {
           </CardHeader>
           <CardContent className="p-0">
             <AnimatePresence mode="wait">
-              <RankingTable pagedUsers={pagedUsers} page={page} pageSize={PAGE_SIZE} user={user} isFiltering={isFiltering} />
+              <RankingTable
+                pagedUsers={pagedUsers}
+                page={page}
+                pageSize={PAGE_SIZE}
+                user={user}
+                isFiltering={isFiltering}
+                emptyMessage={isWeekly && !isFiltering ? 'Nadie acertó en esta semana todavía.' : undefined}
+              />
             </AnimatePresence>
           </CardContent>
         </Card>
