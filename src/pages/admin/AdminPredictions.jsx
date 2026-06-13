@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { db } from '@/lib/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, X, Layers, Download, FileText, Search } from 'lucide-react';
+import { CheckCircle2, X, Download, FileText, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { usersByEmailMap, buildMatchReport, buildStandings, buildGlobalStats, statusOf } from '@/lib/predictionsReport';
 import { exportMatchPdf, exportTotalPdf } from '@/lib/predictionsPdf';
@@ -17,8 +16,6 @@ export default function AdminPredictions() {
   const [mode, setMode] = useState('match');               // 'match' | 'user'
   const [statusFilter, setStatusFilter] = useState('all'); // all | ganó | perdió | pendiente
   const [search, setSearch] = useState('');
-  const [deduping, setDeduping] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data: matches = [] } = useQuery({
     queryKey: ['admin-matches-pred'],
@@ -67,21 +64,6 @@ export default function AdminPredictions() {
     () => buildStandings(allPredictions, matches, usersMap).filter(s => matchesText(s.email)),
     [allPredictions, matches, usersMap, matchesText]
   );
-
-  const handleDedupe = async () => {
-    if (!window.confirm('¿Eliminar pronósticos duplicados (mismo usuario + mismo partido)?\n\nSe conservará la versión con más información (scored + puntos).')) return;
-    setDeduping(true);
-    try {
-      const result = await db.predictions.deduplicate();
-      toast.success(result.deleted === 0 ? 'No se encontraron duplicados ✅' : `🧹 ${result.deleted} duplicados eliminados (de ${result.scanned})`);
-      queryClient.invalidateQueries({ queryKey: ['admin-predictions-all'] });
-      queryClient.invalidateQueries({ queryKey: ['ranking'] });
-    } catch (e) {
-      toast.error('Error al deduplicar: ' + e.message);
-    } finally {
-      setDeduping(false);
-    }
-  };
 
   const handleExportCsv = () => {
     if (filteredRows.length === 0) { toast.error('No hay pronósticos para exportar'); return; }
@@ -136,9 +118,6 @@ export default function AdminPredictions() {
           <button onClick={() => setMode('match')} className={`px-3 py-1 text-sm rounded-md ${mode === 'match' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por partido</button>
           <button onClick={() => setMode('user')} className={`px-3 py-1 text-sm rounded-md ${mode === 'user' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por usuario</button>
         </div>
-        <Button variant="secondary" size="sm" onClick={handleDedupe} disabled={deduping} className="gap-2">
-          <Layers className="w-4 h-4" /> {deduping ? 'Deduplicando...' : 'Deduplicar'}
-        </Button>
         <Button variant="outline" size="sm" onClick={handleTotalPdf} className="gap-2">
           <FileText className="w-4 h-4" /> PDF total
         </Button>
