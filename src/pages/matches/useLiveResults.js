@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getLiveResultForMatch } from '@/lib/sportscore';
 import { isRealTeam } from '@/lib/worldCupTeams';
+import { loadLiveCache, saveLiveCache } from './liveResultsCache';
 
 // ─────────────────────────────────────────────────────────────────
 // Sondea SportScore en bucle para los partidos que están (o podrían
@@ -21,7 +22,7 @@ import { isRealTeam } from '@/lib/worldCupTeams';
 // marcado todavía como En Vivo).
 // ─────────────────────────────────────────────────────────────────
 
-const POLL_MS = 30000;
+const POLL_MS = 15000;
 
 function isInPlayWindow(match) {
   if (match.status === 'live') return true;
@@ -36,7 +37,11 @@ function isInPlayWindow(match) {
 }
 
 export function useLiveResults(matches) {
-  const [results, setResults] = useState({});
+  // Hidratar con el último marcador/minuto conocido (localStorage) para que al
+  // recargar se vea al instante en vez de "---" hasta el primer poll.
+  const [results, setResults] = useState(() => loadLiveCache());
+  // Ref con el último mapa para hacer merge sin depender del estado en el closure.
+  const resultsRef = useRef(results);
   const timerRef = useRef(null);
 
   // Lista estable de IDs relevantes para no recrear el efecto en cada render
@@ -46,10 +51,9 @@ export function useLiveResults(matches) {
   const key = relevant.map(m => m.id).sort().join(',');
 
   useEffect(() => {
-    if (!relevant.length) {
-      setResults({});
-      return;
-    }
+    // Sin partidos relevantes: NO limpiamos (puede ser que `matches` aún esté
+    // cargando tras un reload). Conservamos el último valor conocido.
+    if (!relevant.length) return;
     let cancelled = false;
 
     const poll = async () => {
@@ -64,16 +68,26 @@ export function useLiveResults(matches) {
         })
       );
       if (cancelled) return;
-      const next = {};
+      // Merge sobre lo conocido + persistir, para no perder valores al recargar.
+      const next = { ...resultsRef.current };
       for (const [id, r] of entries) if (r) next[id] = r;
+      resultsRef.current = next;
       setResults(next);
+      saveLiveCache(next);
     };
+
+    // Re-poll inmediato al volver a la pestaña (no esperar el intervalo).
+    const onVisible = () => { if (!document.hidden) poll(); };
 
     poll();
     timerRef.current = setInterval(poll, POLL_MS);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
     return () => {
       cancelled = true;
       if (timerRef.current) clearInterval(timerRef.current);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
   }, [key]);
 

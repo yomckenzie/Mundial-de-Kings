@@ -19,6 +19,7 @@ const COMPETITION_SLUG = 'fifa-world-cup';
 let _slugMapCache = null;
 let _slugMapAt = 0;
 const SLUG_TTL_MS = 6 * 60 * 60 * 1000; // 6h: los equipos no cambian durante el torneo
+const SLUG_LS_KEY = 'chessking_sportscore_slugmap'; // persiste el mapa entre recargas
 
 async function _getJson(path) {
   const res = await fetch(`${BASE}${path}`);
@@ -29,7 +30,25 @@ async function _getJson(path) {
 // Construye {englishKey → slug} a partir de la tabla de posiciones de la Copa.
 export async function getTeamSlugMap() {
   const now = Date.now();
+  // 1) Cache en memoria (sesión actual)
   if (_slugMapCache && (now - _slugMapAt) < SLUG_TTL_MS) return _slugMapCache;
+
+  // 2) Cache en localStorage (sobrevive recargas → arranque en frío más rápido)
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(SLUG_LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.at === 'number' && (now - parsed.at) < SLUG_TTL_MS && parsed.map) {
+          _slugMapCache = parsed.map;
+          _slugMapAt = parsed.at;
+          return _slugMapCache;
+        }
+      }
+    }
+  } catch { /* ignorar localStorage roto */ }
+
+  // 3) Pedir a SportScore y cachear (memoria + localStorage)
   const data = await _getJson(`/api/widget/standings/?sport=${SPORT}&slug=${COMPETITION_SLUG}`);
   const map = {};
   for (const table of (data.tables || [])) {
@@ -39,6 +58,11 @@ export async function getTeamSlugMap() {
   }
   _slugMapCache = map;
   _slugMapAt = now;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SLUG_LS_KEY, JSON.stringify({ at: now, map }));
+    }
+  } catch { /* ignorar (cuota/SSR) */ }
   return map;
 }
 
