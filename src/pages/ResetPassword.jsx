@@ -23,25 +23,47 @@ export default function ResetPassword() {
       setSessionState('invalid');
       return;
     }
-    let resolved = false;
 
-    // 1. Si supabase-js ya estableció la sesión (token procesado al cargar).
+    // 0. Si el enlace regresó con un error en el hash (p. ej. el token de
+    //    {{ .ConfirmationURL }} fue consumido por el escáner del proveedor de
+    //    correo), el enlace ya no sirve: mostrar "enlace inválido".
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    if (hashParams.get('error')) {
+      setSessionState('invalid');
+      return;
+    }
+
+    // 1. Flujo recomendado: token_hash en la query → verificar en el cliente.
+    //    La verificación ocurre vía JS, así que el pre-cargado del correo
+    //    (Gmail, Outlook Safe Links) NO consume el token (los escáneres no
+    //    ejecutan JS). Requiere que la plantilla del correo use:
+    //    {{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=recovery
+    const params = new URLSearchParams(window.location.search);
+    const tokenHash = params.get('token_hash');
+    const type = params.get('type');
+    if (tokenHash) {
+      supabase.auth
+        .verifyOtp({ token_hash: tokenHash, type: type || 'recovery' })
+        .then(({ error }) => setSessionState(error ? 'invalid' : 'ready'))
+        .catch(() => setSessionState('invalid'));
+      return;
+    }
+
+    // 2. Compatibilidad: sesión ya establecida (flujo implícito) o el usuario
+    //    ya tiene sesión activa.
+    let resolved = false;
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         resolved = true;
         setSessionState('ready');
       }
     });
-
-    // 2. Escuchar el evento de recuperación (se dispara al procesar el token).
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY' || session) {
         resolved = true;
         setSessionState('ready');
       }
     });
-
-    // 3. Si tras unos segundos no hay sesión, el enlace no es válido/expiró.
     const timer = setTimeout(() => {
       if (!resolved) setSessionState('invalid');
     }, 4000);
