@@ -12,6 +12,7 @@ import QuickActions from './QuickActions';
 import StatusLegend from './StatusLegend';
 import MatchGroupList from './MatchGroupList';
 import useMatchHandlers from './useMatchHandlers';
+import { useLiveResults } from '@/pages/matches/useLiveResults';
 
 
 
@@ -52,6 +53,34 @@ export default function AdminMatches() {
       if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
       return (a.match_time || '').localeCompare(b.match_time || '');
     }), [rawMatches]);
+
+  // Estado en vivo de SportScore para los partidos visibles (solo lectura).
+  const liveResults = useLiveResults(matches);
+
+  // IDs de partidos que SportScore da por finalizados y que el admin AÚN no ha
+  // publicado en la BD. Se resaltan como "Resultado por confirmar".
+  const pendingConfirmIds = React.useMemo(() => new Set(
+    matches
+      .filter(m => liveResults[m.id]?.state === 'finished' && m.status !== 'finished')
+      .map(m => m.id)
+  ), [matches, liveResults]);
+
+  // Precargar el marcador sugerido de SportScore en el formulario, una sola vez
+  // por partido (si el admin aún no escribió nada en ese campo).
+  useEffect(() => {
+    setResults(prev => {
+      let changed = false;
+      const next = { ...prev.form };
+      for (const m of matches) {
+        const lr = liveResults[m.id];
+        if (lr?.state === 'finished' && lr.team1Score != null && lr.team2Score != null && !next[m.id]) {
+          next[m.id] = { team1: String(lr.team1Score), team2: String(lr.team2Score) };
+          changed = true;
+        }
+      }
+      return changed ? { ...prev, form: next } : prev;
+    });
+  }, [matches, liveResults]);
 
   // Pre-fill results.form con resultados existentes
   useEffect(() => {
@@ -171,6 +200,7 @@ export default function AdminMatches() {
         editMatch={editMatch}
         deleteMatch={deleteMatch}
         predictionCountByMatchId={predictionCountByMatchId}
+        pendingConfirmIds={pendingConfirmIds}
       />
     </div>
   );

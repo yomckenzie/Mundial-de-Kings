@@ -17,7 +17,7 @@ function formatDate(dateStr) {
   }
 }
 
-export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, predictionCountByMatchId }) {
+export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, predictionCountByMatchId, pendingConfirmIds }) {
   if (sortedDates.length === 0) {
     return (
       <div className="text-center py-12 space-y-3">
@@ -49,6 +49,7 @@ export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedM
             handlePublishResult={handlePublishResult}
             editMatch={editMatch}
             deleteMatch={deleteMatch}
+            pendingConfirm={pendingConfirmIds?.has(match.id)}
           />
         );
       })}

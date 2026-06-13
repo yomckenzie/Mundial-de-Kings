@@ -173,8 +173,8 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     }
   };
 
-  const handlePublishResult = async (match) => {
-    if (!canPublishResult(match)) {
+  const handlePublishResult = async (match, forceFinish = false) => {
+    if (!canPublishResult(match) && !forceFinish) {
       toast.error('El partido debe estar EN VIVO o FINALIZADO para actualizar el marcador.');
       return;
     }
@@ -195,7 +195,10 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     const resultTeam1 = Number(r.team1);
     const resultTeam2 = Number(r.team2);
 
-    if (match.status === 'live') {
+    // Solo actualizar marcador en vivo (sin finalizar) cuando NO se fuerza el
+    // final. Con forceFinish (botón "Publicar resultado" de un partido por
+    // confirmar) se salta esta rama y se finaliza + evalúa directamente.
+    if (match.status === 'live' && !forceFinish) {
       await api.entities.Match.update(match.id, { result_team1: resultTeam1, result_team2: resultTeam2 });
       setResults(prev => {
         const { [match.id]: _, ...rest } = prev.form;
