@@ -149,7 +149,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
             </div>
 
             {/* Center column: Score + Prediction */}
-            <div className="flex flex-col items-center gap-3 w-[130px] sm:w-[150px] md:min-w-[170px]">
+            <div className="flex flex-col items-center gap-3 w-[140px] sm:w-[160px] md:min-w-[180px]">
               {/* Score / VS */}
               <div className="flex flex-col items-center gap-1">
                 {match.status === 'finished' || isLive || pendingConfirm ? (
@@ -371,10 +371,10 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       })}
                       disabled={submitPrediction.isPending}
                       size="sm"
-                      className="w-full gap-1.5 h-9 text-xs sm:text-sm font-semibold"
+                      className="w-full min-w-0 gap-1.5 h-9 px-2 text-xs sm:text-sm font-semibold"
                     >
-                      <Send className="w-3.5 h-3.5" />
-                      {submitPrediction.isPending ? 'Enviando...' : 'Enviar Pronóstico'}
+                      <Send className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{submitPrediction.isPending ? 'Enviando...' : 'Enviar'}</span>
                     </Button>
 
                     {/* Info */}
