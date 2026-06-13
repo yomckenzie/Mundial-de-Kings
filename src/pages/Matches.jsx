@@ -131,13 +131,8 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               <Clock className="w-4 h-4 ml-1" />
               {formatTime12h(match.match_time)}
             </div>
-            <Badge className={`${st.class} border-0 flex items-center gap-1.5`}>
-              {isLive ? (
-                <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-white/90" />
-                  {liveLabel ? `EN VIVO · ${liveLabel}` : 'EN VIVO'}
-                </>
-              ) : st.label}
+            <Badge className={`${st.class} border-0`}>
+              {isLive ? 'EN VIVO' : st.label}
             </Badge>
           </div>
 
@@ -159,6 +154,13 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
               <div className="flex flex-col items-center gap-1">
                 {match.status === 'finished' || isLive || pendingConfirm ? (
                   <>
+                    {/* Minuto en vivo — ARRIBA del marcador */}
+                    {isLive && liveLabel && (
+                      <span className="text-[11px] font-bold flex items-center gap-1 text-red-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                        {liveLabel}
+                      </span>
+                    )}
                     <m.div
                       className={`font-bold px-4 py-2 rounded-xl text-base min-w-[80px] text-center ${
                         isLive ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground'
@@ -173,7 +175,6 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                       {' - '}
                       {liveScore ? liveScore.t2 : (match.result_team2 != null ? match.result_team2 : '-')}
                     </m.div>
-                    {/* El minuto en vivo ahora se muestra arriba, en el badge EN VIVO. */}
                     {/* Finalizado en SportScore, pendiente de que el admin confirme/publique */}
                     {pendingConfirm && (
                       <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
