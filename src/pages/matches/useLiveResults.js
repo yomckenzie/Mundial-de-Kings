@@ -5,8 +5,15 @@ import { isRealTeam } from '@/lib/worldCupTeams';
 // ─────────────────────────────────────────────────────────────────
 // Sondea SportScore en bucle para los partidos que están (o podrían
 // estar) en curso, y devuelve un mapa { matchId → liveResult } con el
-// marcador y el minuto en vivo. Refresca cada 30s mientras haya algún
-// partido en vivo; si no hay ninguno, no consulta nada.
+// marcador y el minuto en vivo REAL (live_minute de SportScore).
+// Refresca cada 30s mientras haya algún partido en vivo; si no hay
+// ninguno, no consulta nada.
+//
+// SOLO LECTURA: este hook nunca escribe en la base de datos. Cuando
+// SportScore reporta el partido como finalizado, el resultado se muestra
+// como "Por confirmar" y es el ADMIN quien lo publica oficialmente
+// (evaluando pronósticos y notificando a los usuarios). Las políticas RLS
+// de Supabase solo permiten al admin modificar la tabla `matches`.
 //
 // Solo mira partidos con equipos REALES (los placeholders de
 // eliminatoria no se pueden emparejar) y que estén "live" o "open" con
@@ -68,7 +75,6 @@ export function useLiveResults(matches) {
       cancelled = true;
       if (timerRef.current) clearInterval(timerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   return results;
