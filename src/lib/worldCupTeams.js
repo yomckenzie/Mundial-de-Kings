@@ -73,10 +73,15 @@ export function normalizeTeam(name) {
 }
 
 // Devuelve el nombre en inglés normalizado para un equipo en español.
-// Si no está en el mapa (placeholder de eliminatoria), devuelve null.
+// Si no está en el mapa (placeholder de eliminatoria), intenta devolver
+// el nombre normalizado directamente (por si ya está en inglés en la BD).
 export function toEnglishKey(spanishName) {
-  const en = ES_TO_EN[(spanishName || '').trim()];
-  return en ? normalizeTeam(en) : null;
+  const trimmed = (spanishName || '').trim();
+  const en = ES_TO_EN[trimmed];
+  if (en) return normalizeTeam(en);
+  // Si no está en el mapa, asumir que ya está en inglés
+  // (útil si la BD tiene "USA" en lugar de "Estados Unidos")
+  return normalizeTeam(trimmed);
 }
 
 // ¿Es un equipo real (mapeable) o un placeholder de eliminatoria?

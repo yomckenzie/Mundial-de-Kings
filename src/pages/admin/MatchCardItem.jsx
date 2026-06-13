@@ -67,7 +67,7 @@ function canPublishResult(match) {
 // reconstruirlo en cada render desperdicia trabajo y rompe memoización de hijos.
 const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
 
-export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch }) {
+export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, pendingConfirm }) {
   const [fetchingScore, setFetchingScore] = useState(false);
   const mappable = isRealTeam(match.team1) && isRealTeam(match.team2);
 
@@ -108,7 +108,7 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
   const selectableStatuses = ALL_STATUSES.filter(s => s === match.status || allowedNext.has(s));
 
   return (
-    <Card className={`mb-2 ${match.status === 'live' ? 'ring-2 ring-red-500/50' : ''}`}>
+    <Card className={`mb-2 ${match.status === 'live' && !pendingConfirm ? 'ring-2 ring-red-500/50' : ''} ${pendingConfirm ? 'ring-2 ring-amber-400/70 bg-amber-50/40 dark:bg-amber-950/20' : ''}`}>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground flex items-center gap-2">
@@ -124,6 +124,9 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
             </Badge>
             {!VISIBLE_STATUSES.has(match.status) && (
               <span className="text-[10px] text-muted-foreground/70 italic">(oculto)</span>
+            )}
+            {pendingConfirm && (
+              <Badge className="bg-amber-500 text-white border-0">Resultado por confirmar</Badge>
             )}
           </div>
         </div>
@@ -179,7 +182,7 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
           {deleteMatch && <DeleteMatchDialog match={match} onDelete={deleteMatch} />}
 
           <div className="flex items-center gap-1.5 ml-auto">
-            {canPublishResult(match) ? (
+            {(canPublishResult(match) || pendingConfirm) ? (
               <>
                 <Input
                   name={`result_${match.id}_t1`}
@@ -206,10 +209,23 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                     form: { ...prev.form, [match.id]: { ...prev.form[match.id], team2: e.target.value } }
                   }))}
                 />
-                <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">
-                  <Save className="w-3 h-3 mr-1" />
-                  Actualizar
-                </Button>
+                {pendingConfirm ? (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => handlePublishResult(match, true)}
+                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                    title="Finaliza el partido, evalúa pronósticos y notifica a los usuarios"
+                  >
+                    <Save className="w-3 h-3 mr-1" />
+                    Publicar resultado
+                  </Button>
+                ) : (
+                  <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">
+                    <Save className="w-3 h-3 mr-1" />
+                    Actualizar
+                  </Button>
+                )}
                 {mappable && (
                   <Button
                     size="sm"

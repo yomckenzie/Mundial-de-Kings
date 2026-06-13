@@ -84,12 +84,14 @@ const isMatchOpenForPredictions = (match) => {
   return now >= openFrom && now < matchDateTime;
 };
 
-function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult, live }) {
+function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult, live, pendingConfirm }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   // 'live' (prop) lo fuerza el horario: aunque la BD diga 'open', si el
   // partido ya empezó se trata como en vivo (sección EN VIVO + marcador).
-  const isLive = match.status === 'live' || !!live;
+  // 'pendingConfirm' lo anula: SportScore ya lo dio por finalizado, así que
+  // se muestra en FINALIZADOS (no en vivo) aunque la BD aún diga 'live'.
+  const isLive = (match.status === 'live' || !!live) && !pendingConfirm;
 
   // Datos en vivo de SportScore (se refrescan solos cada 30s vía useLiveResults).
   // Si hay marcador en vivo, lo mostramos en lugar del estático de la BD.
@@ -150,7 +152,7 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
             <div className="flex flex-col items-center gap-3 w-[130px] sm:w-[150px] md:min-w-[170px]">
               {/* Score / VS */}
               <div className="flex flex-col items-center gap-1">
-                {match.status === 'finished' || isLive ? (
+                {match.status === 'finished' || isLive || pendingConfirm ? (
                   <>
                     <m.div
                       className={`font-bold px-4 py-2 rounded-xl text-base min-w-[80px] text-center ${
@@ -172,7 +174,14 @@ function MatchCard({ match, user, existing, predictions, submitPrediction, handl
                         liveState === 'finished' ? 'text-muted-foreground' : 'text-red-600'
                       }`}>
                         {liveState !== 'finished' && <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
-                        {liveState === 'finished' ? 'Final (por confirmar)' : liveLabel}
+                        {liveState === 'finished' ? 'Finalizado' : liveLabel}
+                      </span>
+                    )}
+                    {/* Finalizado en SportScore, pendiente de que el admin confirme/publique */}
+                    {pendingConfirm && (
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Por confirmar
                       </span>
                     )}
                   </>
@@ -494,6 +503,15 @@ export default function Matches() {
   // Resultados en vivo de SportScore (auto-refresco cada 30s), { matchId → liveResult }
   const liveResults = useLiveResults(matches);
 
+  // Partidos que SportScore reporta como finalizados pero que el admin AÚN no
+  // ha publicado en la BD. Override visual: salen de EN VIVO y entran a
+  // FINALIZADOS con etiqueta "Por confirmar" (sin veredicto del pronóstico).
+  const pendingConfirmIds = new Set(
+    matches
+      .filter(m => liveResults[m.id]?.state === 'finished' && m.status !== 'finished')
+      .map(m => m.id)
+  );
+
   // ¿El partido ya empezó (según su horario) y sigue dentro de la ventana de
   // juego (~3.5h)? Sirve para auto-pasarlo a EN VIVO sin intervención manual.
   const LIVE_WINDOW_H = 3.5;
@@ -507,8 +525,10 @@ export default function Matches() {
   // EN VIVO = marcado 'live' por el admin, O abierto/cerrado cuyo horario de
   // inicio ya pasó (auto). Se excluye lo ya finalizado en la BD.
   const liveMatches = matches.filter(m =>
-    m.status === 'live' ||
-    ((m.status === 'open' || m.status === 'closed') && hasStartedNow(m))
+    !pendingConfirmIds.has(m.id) && (
+      m.status === 'live' ||
+      ((m.status === 'open' || m.status === 'closed') && hasStartedNow(m))
+    )
   );
   const liveIds = new Set(liveMatches.map(m => m.id));
 
@@ -529,8 +549,10 @@ export default function Matches() {
   // FIX UX: separar 'closed' (sin resultado publicado) de 'finished' (con
   // resultado y scoring). Antes aparecían juntos y era confuso. Ahora
   // closed tiene su propia categoría "CERRADOS SIN RESULTADO".
-  const finishedMatches = matches.filter(m => m.status === 'finished');
-  const closedMatches = matches.filter(m => m.status === 'closed' && !liveIds.has(m.id));
+  const dbFinishedMatches = matches.filter(m => m.status === 'finished');
+  const pendingConfirmMatches = matches.filter(m => pendingConfirmIds.has(m.id));
+  const finishedMatches = [...pendingConfirmMatches, ...dbFinishedMatches];
+  const closedMatches = matches.filter(m => m.status === 'closed' && !liveIds.has(m.id) && !pendingConfirmIds.has(m.id));
 
   if (isLoading) {
     return (
@@ -634,7 +656,7 @@ export default function Matches() {
       {/* Finished Matches */}
       {finishedMatches.length > 0 && (
         <div>
-          <details className="group">
+          <details className="group" open={pendingConfirmMatches.length > 0}>
             <summary className="font-display text-2xl tracking-wide mb-3 cursor-pointer hover:text-secondary transition flex items-center gap-2">
               FINALIZADOS
               <span className="text-sm font-sans font-normal text-muted-foreground">({finishedMatches.length})</span>
@@ -651,6 +673,8 @@ export default function Matches() {
                     submitPrediction={submitPrediction}
                     handlePredict={handlePredict}
                     handleSubmit={handleSubmit}
+                    liveResult={liveResults[match.id]}
+                    pendingConfirm={pendingConfirmIds.has(match.id)}
                   />
                 ))}
               </AnimatePresence>
