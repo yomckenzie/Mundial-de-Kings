@@ -3,6 +3,7 @@ import {
   isSupabaseAvailable,
   TABLES,
   setupRealtimeSubscriptions,
+  fetchAll,
 } from './supabase.js';
 
 // --- Mapeo de jsKey (camelCase en _data) → tableName (snake_case en Supabase) ---
@@ -118,8 +119,8 @@ function _loadAllFromCloud() {
       const results = await Promise.all(
         tables.map(async (jsKey) => {
           const tableName = tableNameToSupabase(jsKey);
-          const { data, error } = await supabase.from(tableName).select('*');
-          return { jsKey, data: error ? [] : (data || []) };
+          const data = await fetchAll(tableName); // paginado: trae TODAS las filas (no tope 1000)
+          return { jsKey, data: data || [] };
         })
       );
       for (const { jsKey, data } of results) {
@@ -142,8 +143,8 @@ function _loadAllFromCloud() {
 async function _refreshTableFromCloud(jsKey) {
   if (!isSupabaseAvailable() || !supabase) return;
   const tableName = tableNameToSupabase(jsKey);
-  const { data, error } = await supabase.from(tableName).select('*');
-  if (!error && data) {
+  const data = await fetchAll(tableName); // paginado: trae TODAS las filas
+  if (data) {
     _data[jsKey].length = 0;
     _data[jsKey].push(...data);
     notifyReactComponents();
@@ -191,8 +192,8 @@ const syncTableFromSupabaseFn = async (jsKey, localRecords) => {
   const tableName = tableNameToSupabase(jsKey);
   if (!tableName || !isSupabaseAvailable()) return localRecords;
   try {
-    const { data, error } = await supabase.from(tableName).select('*');
-    if (!error && data) return data;
+    const data = await fetchAll(tableName); // paginado: trae TODAS las filas (no tope 1000)
+    if (data) return data;
   } catch {}
   return localRecords;
 };
