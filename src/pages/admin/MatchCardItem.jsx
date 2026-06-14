@@ -5,11 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Clock, Save, RotateCcw, Pencil, Trash2, Zap } from 'lucide-react';
+import { Clock, Save, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { formatTime12h } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getLiveResultForMatch } from '@/lib/sportscore';
-import { isRealTeam } from '@/lib/worldCupTeams';
 
 const STATUS_COLORS = {
   pending: 'bg-muted text-muted-foreground',
@@ -68,39 +66,9 @@ function canPublishResult(match) {
 const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
 
 export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, pendingConfirm }) {
-  const [fetchingScore, setFetchingScore] = useState(false);
-  const mappable = isRealTeam(match.team1) && isRealTeam(match.team2);
-
   const handleReopen = () => {
     if (window.confirm('¿Reabrir este partido? Se limpiará el resultado y los usuarios podrán volver a pronosticar.')) {
       handleStatusChange(match, 'open');
-    }
-  };
-
-  // Trae el marcador de SportScore y PRE-LLENA los inputs (no guarda).
-  // El admin revisa y pulsa "Actualizar" para confirmar y calificar.
-  const handleFetchScore = async () => {
-    setFetchingScore(true);
-    try {
-      const r = await getLiveResultForMatch(match);
-      if (!r) {
-        toast.info('SportScore no tiene aún este partido (o los nombres no coinciden).');
-        return;
-      }
-      if (r.team1Score == null || r.team2Score == null) {
-        toast.info(`SportScore: ${r.label}. Todavía sin marcador.`);
-        return;
-      }
-      setResults(prev => ({
-        ...prev,
-        form: { ...prev.form, [match.id]: { team1: String(r.team1Score), team2: String(r.team2Score) } }
-      }));
-      const estado = r.state === 'finished' ? 'Finalizado' : r.state === 'live' ? `En vivo (${r.label})` : r.label;
-      toast.success(`Sugerido: ${r.team1Score}-${r.team2Score} · ${estado}. Revisa y pulsa "Actualizar" para confirmar.`);
-    } catch (err) {
-      toast.error('Error consultando SportScore: ' + (err?.message || 'desconocido'));
-    } finally {
-      setFetchingScore(false);
     }
   };
 
@@ -224,19 +192,6 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                   <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">
                     <Save className="w-3 h-3 mr-1" />
                     Actualizar
-                  </Button>
-                )}
-                {mappable && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleFetchScore}
-                    disabled={fetchingScore}
-                    className="h-8 text-xs gap-1 text-blue-600 hover:text-blue-700"
-                    title="Traer marcador de SportScore (no guarda; tú confirmas con Actualizar)"
-                  >
-                    <Zap className="w-3 h-3" />
-                    {fetchingScore ? '...' : 'SportScore'}
                   </Button>
                 )}
               </>
