@@ -12,7 +12,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Medal, Award, ChevronLeft, ChevronRight, Download,
   Crown, TrendingUp, Users, RefreshCw, Search, X, Calendar
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import RankingExportCard from '@/components/RankingExportCard';
 import RankingPodium from './ranking/RankingPodium';
@@ -169,6 +168,7 @@ export default function Ranking() {
   const handleExportTop10 = async () => {
     setShowExportTop10(true);
     await new Promise(r => setTimeout(r, 300));
+    const html2canvas = (await import('html2canvas')).default; // carga bajo demanda
     const canvas = await html2canvas(exportTop10Ref.current, { backgroundColor: null, scale: 2 });
     const link = document.createElement('a');
     link.download = `ranking-top10-${new Date().toISOString().slice(0, 10)}.png`;

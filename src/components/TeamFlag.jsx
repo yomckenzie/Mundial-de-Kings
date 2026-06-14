@@ -58,6 +58,8 @@ export default function TeamFlag({ team, size = 'sm', isLive = false }) {
           alt={`Bandera de ${team}`}
           className="w-full h-full block"
           style={{ objectFit: 'cover' }}
+          width="144"
+          height="144"
           loading="lazy"
           draggable={false}
         />

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Toaster } from "sonner"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -9,26 +10,36 @@ import { ThemeProvider } from '@/hooks/useTheme';
 
 import AppLayout from './components/layout/AppLayout';
 import Home from './pages/Home';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import CompleteProfile from './pages/CompleteProfile';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import Matches from './pages/Matches';
-import Ranking from './pages/Ranking';
-import Prizes from './pages/Prizes';
-import Profile from './pages/Profile';
-import AdminLayout from './pages/admin/AdminLayout';
-import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminUsers from './pages/admin/AdminUsers';
-import AdminMatches from './pages/admin/AdminMatches';
-import AdminPredictions from './pages/admin/AdminPredictions';
-import AdminPrizes from './pages/admin/AdminPrizes';
-import AdminRedemptions from './pages/admin/AdminRedemptions';
-import AdminSupport from './pages/admin/AdminSupport';
-import AdminAuditLog from './pages/admin/AdminAuditLog';
-import Info from './pages/Info';
-import Support from './pages/Support';
+
+// Code-splitting: solo Home (+ layout) se cargan al inicio. El resto —y sobre
+// todo el admin (recharts) y las páginas con jspdf/html2canvas— se cargan bajo
+// demanda, recortando ~400 KiB del bundle inicial.
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const CompleteProfile = lazy(() => import('./pages/CompleteProfile'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const Matches = lazy(() => import('./pages/Matches'));
+const Ranking = lazy(() => import('./pages/Ranking'));
+const Prizes = lazy(() => import('./pages/Prizes'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Info = lazy(() => import('./pages/Info'));
+const Support = lazy(() => import('./pages/Support'));
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
+const AdminMatches = lazy(() => import('./pages/admin/AdminMatches'));
+const AdminPredictions = lazy(() => import('./pages/admin/AdminPredictions'));
+const AdminPrizes = lazy(() => import('./pages/admin/AdminPrizes'));
+const AdminRedemptions = lazy(() => import('./pages/admin/AdminRedemptions'));
+const AdminSupport = lazy(() => import('./pages/admin/AdminSupport'));
+const AdminAuditLog = lazy(() => import('./pages/admin/AdminAuditLog'));
+
+const PageSpinner = () => (
+  <div className="flex items-center justify-center py-24">
+    <div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" />
+  </div>
+);
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
@@ -52,6 +63,7 @@ const AuthenticatedApp = () => {
 
   // Render the main app - public access allowed
   return (
+    <Suspense fallback={<PageSpinner />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -79,6 +91,7 @@ const AuthenticatedApp = () => {
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
+    </Suspense>
   );
 };
 

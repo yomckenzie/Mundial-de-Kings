@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap');
+/* Las fuentes se cargan en index.html de forma NO bloqueante (preconnect +
+   media=print onload). No usar @import acá: bloquea el render y empeora el FCP. */
 
 @tailwind base;
 @tailwind components;
