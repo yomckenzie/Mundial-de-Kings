@@ -4,9 +4,23 @@ Esta carpeta contiene las **Edge Functions** desplegadas en Supabase.
 
 ## `enviar-bienvenida`
 
-Envía un correo de bienvenida (HTML con branding ChessKing) a cada usuario nuevo.
+Por cada usuario nuevo hace **dos cosas**:
 
-**Estrategia dual-provider**: intenta primero con **Resend**; si falla (status no-200, key inválida, cuota agotada), hace fallback automático a **Brevo**.
+1. **Correo de bienvenida** (HTML con branding ChessKing). Estrategia dual-provider:
+   intenta primero con **Resend**; si falla, hace fallback automático a **Brevo**.
+2. **Sincroniza el contacto a una lista de Brevo** (email + nombre + teléfono),
+   con `updateEnabled: true` (upsert por email). Así podés enviarles campañas y
+   newsletters **desde el panel de Brevo**. Si el teléfono no tiene formato válido
+   (E.164), se omite el SMS y el contacto igual se crea con email + nombre.
+
+### Sincronizar los usuarios ACTUALES (backfill, una vez)
+
+La función solo agrega a los usuarios **nuevos**. Para los que ya existen:
+
+1. Supabase → Table Editor → tabla `users` → **Export** → CSV.
+2. Brevo → Contactos → tu lista → **Importar contactos** → subí el CSV
+   (mapeá `email` → EMAIL, `full_name` → NOMBRE, `phone` → SMS). Brevo deduplica
+   por email, así que es seguro re-importar.
 
 ### Despliegue
 
@@ -22,6 +36,7 @@ Envía un correo de bienvenida (HTML con branding ChessKing) a cada usuario nuev
    supabase secrets set MI_BREVO_API_KEY=xkeysib-xxxxxxxxxxxx
    supabase secrets set REMITENTE_NOMBRE="ChessKing"
    supabase secrets set REMITENTE_EMAIL="no-reply@chessking.la"
+   supabase secrets set BREVO_LIST_ID=3   # ID de tu lista en Brevo (Contactos → Listas)
    ```
 
 3. Desplegar la función:

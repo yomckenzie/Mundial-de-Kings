@@ -1,7 +1,9 @@
 // Supabase Edge Function: enviar-bienvenida
 // Disparada por un Database Webhook sobre INSERT en la tabla `users`.
-// Intenta enviar el email primero con Resend; si falla (status no-200),
-// hace fallback automático a Brevo.
+// Hace dos cosas con cada usuario nuevo:
+//   1) Envía el email de bienvenida (Resend; si falla, fallback a Brevo).
+//   2) Sincroniza el contacto a una lista de Brevo (email + nombre + teléfono),
+//      para poder enviarle campañas/newsletters desde el panel de Brevo.
 //
 // Secrets requeridos (configurar con `supabase secrets set ...`):
 //   - MI_RESEND_API_KEY   (string)  API key de Resend
@@ -9,6 +11,10 @@
 //   - REMITENTE_NOMBRE    (string)  Nombre del remitente, ej: "ChessKing"
 //   - REMITENTE_EMAIL     (string)  Email remitente (debe estar verificado
 //                                    en ambos proveedores), ej: "no-reply@chessking.la"
+//   - BREVO_LIST_ID       (number)  ID de la lista de Brevo donde se agregan los
+//                                    contactos (Brevo → Contactos → Listas).
+//                                    Si no se configura, el contacto igual se
+//                                    crea/actualiza pero sin asignar lista.
 //
 // URL pública de la función (la entrega `supabase functions deploy`):
 //   https://<project-ref>.supabase.co/functions/v1/enviar-bienvenida
@@ -27,6 +33,8 @@ interface WebhookPayload {
     email?: string;
     full_name?: string;
     role?: string;
+    phone?: string;
+    whatsapp?: string;
   };
 }
 
@@ -146,6 +154,62 @@ async function enviarConBrevo(email: string, html: string): Promise<{ ok: boolea
   return { ok: false, detalle: `Brevo status ${resp.status}: ${text.slice(0, 200)}` };
 }
 
+// Normaliza un teléfono a formato E.164 (+<código><dígitos>) para el atributo
+// SMS de Brevo. Devuelve null si no parece válido (así NO bloquea la creación
+// del contacto). Asume Panamá (+507) para números locales de 7-8 dígitos.
+function normalizarTelefono(raw?: string): string | null {
+  if (!raw) return null;
+  let s = String(raw).trim().replace(/[\s\-().]/g, "");
+  if (!s.startsWith("+")) {
+    if (/^\d{7,8}$/.test(s)) s = "+507" + s;       // local de Panamá
+    else if (/^\d{9,15}$/.test(s)) s = "+" + s;    // ya trae código de país
+    else return null;
+  }
+  return /^\+\d{8,15}$/.test(s) ? s : null;
+}
+
+// Crea o actualiza (upsert) el contacto en la lista de Brevo. No bloquea el
+// flujo de bienvenida: si falla, solo se loguea.
+async function sincronizarContactoBrevo(record: WebhookPayload["record"]): Promise<{ ok: boolean; detalle: string }> {
+  const apiKey = Deno.env.get("MI_BREVO_API_KEY");
+  if (!apiKey) return { ok: false, detalle: "MI_BREVO_API_KEY no configurada" };
+  if (!record.email) return { ok: false, detalle: "sin email" };
+
+  const listIdRaw = Deno.env.get("BREVO_LIST_ID");
+  const listId = listIdRaw && /^\d+$/.test(listIdRaw) ? Number(listIdRaw) : null;
+
+  const attributes: Record<string, string> = {};
+  if (record.full_name) attributes.NOMBRE = record.full_name;
+  const tel = normalizarTelefono(record.phone || record.whatsapp);
+  if (tel) attributes.SMS = tel;
+
+  async function post(withSms: boolean): Promise<Response> {
+    const attrs = withSms ? attributes : { ...attributes, SMS: undefined };
+    if (!withSms) delete (attrs as Record<string, unknown>).SMS;
+    const body: Record<string, unknown> = {
+      email: record.email,
+      attributes: attrs,
+      updateEnabled: true, // upsert: crea o actualiza por email
+    };
+    if (listId) body.listIds = [listId];
+    return fetch("https://api.brevo.com/v3/contacts", {
+      method: "POST",
+      headers: { "accept": "application/json", "api-key": apiKey, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  let resp = await post(true);
+  // Si falló por el SMS (formato o duplicado), reintentar sin SMS para no
+  // perder el contacto (email + nombre siempre deben sincronizarse).
+  if (!resp.ok && resp.status === 400 && attributes.SMS) {
+    resp = await post(false);
+  }
+  if (resp.ok || resp.status === 204) return { ok: true, detalle: `Brevo contacto ${resp.status}` };
+  const text = await resp.text().catch(() => "");
+  return { ok: false, detalle: `Brevo contacto ${resp.status}: ${text.slice(0, 200)}` };
+}
+
 serve(async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
@@ -190,32 +254,33 @@ serve(async (req) => {
 
     const html = plantillaHTML(record.full_name || "");
 
-    // Intento 1: Resend
-    console.log(`[bienvenida] Intentando Resend → ${record.email}`);
+    // 1) Email de bienvenida (Resend → fallback Brevo)
+    let emailProvider: string | null = null;
     const r1 = await enviarConResend(record.email, html);
     if (r1.ok) {
-      console.log(`[bienvenida] Resend OK: ${r1.detalle}`);
-      return new Response(
-        JSON.stringify({ success: true, provider: "resend", email: record.email }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
+      emailProvider = "resend";
+    } else {
+      console.warn(`[bienvenida] Resend falló: ${r1.detalle} → fallback Brevo`);
+      const r2 = await enviarConBrevo(record.email, html);
+      if (r2.ok) emailProvider = "brevo";
+      else console.error(`[bienvenida] Email falló. Resend: ${r1.detalle} | Brevo: ${r2.detalle}`);
     }
-    console.warn(`[bienvenida] Resend falló: ${r1.detalle} → fallback Brevo`);
 
-    // Intento 2: Brevo
-    const r2 = await enviarConBrevo(record.email, html);
-    if (r2.ok) {
-      console.log(`[bienvenida] Brevo OK (fallback): ${r2.detalle}`);
-      return new Response(
-        JSON.stringify({ success: true, provider: "brevo", email: record.email, resend_error: r1.detalle }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    console.error(`[bienvenida] Ambos proveedores fallaron. Resend: ${r1.detalle} | Brevo: ${r2.detalle}`);
+    // 2) Sincronizar contacto a la lista de Brevo (no bloquea el email)
+    const contacto = await sincronizarContactoBrevo(record);
+    if (contacto.ok) console.log(`[bienvenida] Contacto Brevo OK: ${contacto.detalle}`);
+    else console.warn(`[bienvenida] Sync contacto Brevo: ${contacto.detalle}`);
 
+    const ok = emailProvider !== null || contacto.ok;
     return new Response(
-      JSON.stringify({ success: false, resend: r1.detalle, brevo: r2.detalle }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({
+        success: ok,
+        email_provider: emailProvider,
+        brevo_contact: contacto.ok,
+        brevo_contact_detail: contacto.detalle,
+        email: record.email,
+      }),
+      { status: ok ? 200 : 502, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
