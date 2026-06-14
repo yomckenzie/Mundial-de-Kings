@@ -53,15 +53,33 @@ export const TABLES = {
 export async function fetchAll(tableName, options = {}) {
   if (!supabase) return null
   try {
-    let query = supabase.from(tableName).select('*')
+    // PostgREST devuelve máx 1000 filas por consulta. Paginamos en bloques con
+    // .range() para traer TODAS las filas (ej: predictions ya pasa de 1000).
+    // Sin esto, el dashboard y el caché local se quedaban "congelados" en 1000.
+    const PAGE = 1000
+    // Orden estable obligatorio para paginar sin saltos ni duplicados.
+    let orderField = 'id'
+    let ascending = true
     if (options.order) {
-      const field = options.order.startsWith('-') ? options.order.slice(1) : options.order
-      const ascending = !options.order.startsWith('-')
-      query = query.order(field, { ascending })
+      orderField = options.order.startsWith('-') ? options.order.slice(1) : options.order
+      ascending = !options.order.startsWith('-')
     }
-    const { data, error } = await query
-    if (error) throw error
-    return data
+    const all = []
+    let from = 0
+    // Tope de seguridad (50k filas) por si algo sale mal, para no loopear infinito.
+    while (from < 50000) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .order(orderField, { ascending })
+        .range(from, from + PAGE - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      all.push(...data)
+      if (data.length < PAGE) break
+      from += PAGE
+    }
+    return all
   } catch {
     return null
   }
