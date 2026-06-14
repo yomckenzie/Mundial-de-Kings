@@ -214,6 +214,37 @@ export function stripLocalFields(records) {
  * Maneja: nuevos registros remotos, actualizaciones a existentes.
  * RETORNA SIEMPRE UN NUEVO ARRAY si hubo cambios (no muta localRecords).
  */
+/**
+ * Decide el registro resultante cuando la copia local y la remota difieren.
+ * Función pura (testeable) extraída de syncTableFromSupabase.
+ *
+ * - ADMIN_TABLES (matches, prizes, users): la NUBE manda, salvo que el local
+ *   se haya editado hace <30s (guarda anti race-condition con Realtime).
+ * - `predictions`: el usuario es dueño de su pronóstico (pred_team1/2), PERO la
+ *   evaluación (scored / is_correct / points_earned) la escribe el admin en la
+ *   nube. Si dejáramos ganar al local, un cliente con caché vieja (scored=null)
+ *   revertiría la evaluación al sincronizar. Por eso esos campos SIEMPRE vienen
+ *   de la nube. (Causa del incidente de ranking del 14 jun 2026.)
+ * - Resto de tablas de usuario: el local manda (puede tener datos no subidos).
+ */
+export function resolveSyncedRecord(tableName, local, remote, nowMs = Date.now()) {
+  if (ADMIN_TABLES.has(tableName)) {
+    const localUpdated = local.updated_at ? new Date(local.updated_at).getTime() : 0
+    const isRecentUpdate = (nowMs - localUpdated) < 30 * 1000
+    return isRecentUpdate ? local : { ...local, ...remote }
+  }
+  if (tableName === 'predictions') {
+    return {
+      ...remote,
+      ...local,
+      scored: remote.scored,
+      is_correct: remote.is_correct,
+      points_earned: remote.points_earned,
+    }
+  }
+  return { ...remote, ...local }
+}
+
 export async function syncTableFromSupabase(tableName, localRecords = [], options = {}) {
   if (!supabase) return null
   try {
@@ -239,30 +270,8 @@ export async function syncTableFromSupabase(tableName, localRecords = [], option
         const contentChanged = JSON.stringify(a) !== JSON.stringify(b)
         
         if (contentChanged) {
-          // Para tablas de admin (matches, prizes), la nube manda
-          // Para tablas de usuario (predictions, redemptions, etc.), el local manda
-          if (ADMIN_TABLES.has(tableName)) {
-            // 🐛 FIX RACE CONDITION: Si el registro local fue modificado hace
-            // menos de 30 segundos, preservar la versión local aunque la tabla
-            // sea admin-authoritative. Esto evita que un sync FROM (disparado
-            // por Realtime u otro mecanismo) revierta cambios admin recientes
-            // antes de que el sync TO tenga oportunidad de subirlos a Supabase.
-            // Ejemplo: admin cambia status → 'live', sync TO programado (800ms),
-            // pero llega un evento Realtime ANTES → sync FROM lee 'open' de
-            // Supabase (stale) y lo sobreescribe si no hacemos esta guarda.
-            const localUpdated = local.updated_at ? new Date(local.updated_at).getTime() : 0
-            const isRecentUpdate = (Date.now() - localUpdated) < 30 * 1000
-            if (isRecentUpdate) {
-              // Cambio local reciente — preservar hasta que sync TO propague
-              result.push(local)
-            } else {
-              // Sin cambios recientes — la nube es la autoridad
-              result.push({ ...local, ...remote })
-            }
-          } else {
-            // El usuario local puede tener datos no subidos aún
-            result.push({ ...remote, ...local })
-          }
+          // Resolución de conflicto local↔nube (ver resolveSyncedRecord).
+          result.push(resolveSyncedRecord(tableName, local, remote))
           changed = true
         } else {
           result.push(local)

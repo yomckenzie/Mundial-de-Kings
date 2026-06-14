@@ -3,7 +3,53 @@
  * Solo prueba funciones exportadas que no hacen llamadas de red.
  */
 import { describe, it, expect } from 'vitest';
-import { stripLocalFields } from './supabase.js';
+import { stripLocalFields, resolveSyncedRecord } from './supabase.js';
+
+describe('resolveSyncedRecord', () => {
+  // El bug del 14 jun: un cliente con caché vieja (scored=null) revertía la
+  // evaluación de la nube. Ahora la nube manda en los campos de evaluación.
+  it('predictions: conserva el pick local pero toma la evaluación de la nube', () => {
+    const local = { id: 'p1', user_email: 'a@x.com', pred_team1: 2, pred_team2: 1, scored: null, is_correct: null, points_earned: null };
+    const remote = { id: 'p1', user_email: 'a@x.com', pred_team1: 2, pred_team2: 1, scored: true, is_correct: true, points_earned: 100 };
+    const r = resolveSyncedRecord('predictions', local, remote);
+    expect(r.scored).toBe(true);
+    expect(r.is_correct).toBe(true);
+    expect(r.points_earned).toBe(100);
+    expect(r.pred_team1).toBe(2); // el pick del usuario se conserva
+    expect(r.pred_team2).toBe(1);
+  });
+
+  it('predictions: un cliente viejo NO puede revertir scored=true a null', () => {
+    const local = { id: 'p1', scored: null, is_correct: null, pred_team1: 0, pred_team2: 0 };
+    const remote = { id: 'p1', scored: true, is_correct: false, pred_team1: 0, pred_team2: 0 };
+    const r = resolveSyncedRecord('predictions', local, remote);
+    expect(r.scored).toBe(true);
+    expect(r.is_correct).toBe(false);
+  });
+
+  it('redemptions (otra tabla de usuario): gana el local', () => {
+    const local = { id: 'r1', status: 'pending', note: 'local' };
+    const remote = { id: 'r1', status: 'approved', note: 'remoto' };
+    const r = resolveSyncedRecord('redemptions', local, remote);
+    expect(r.note).toBe('local');
+    expect(r.status).toBe('pending');
+  });
+
+  it('matches (admin): sin edición reciente, gana la nube', () => {
+    const local = { id: 'm1', status: 'open', updated_at: '2020-01-01T00:00:00Z' };
+    const remote = { id: 'm1', status: 'live' };
+    const r = resolveSyncedRecord('matches', local, remote, Date.now());
+    expect(r.status).toBe('live');
+  });
+
+  it('matches (admin): con edición local hace <30s, se preserva el local', () => {
+    const now = 1_000_000_000_000;
+    const local = { id: 'm1', status: 'live', updated_at: new Date(now - 5000).toISOString() };
+    const remote = { id: 'm1', status: 'open' };
+    const r = resolveSyncedRecord('matches', local, remote, now);
+    expect(r.status).toBe('live'); // cambio admin reciente no se pisa
+  });
+});
 
 describe('stripLocalFields', () => {
   it('elimina campos locales de control', () => {
