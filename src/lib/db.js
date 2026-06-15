@@ -2286,6 +2286,28 @@ export const db = {
    */
   async awardReferralBonus(referralCode, referredEmail) {
     if (!referralCode) return null;
+
+    // Camino confiable: función SQL server-side (idempotente, ignora RLS y NO
+    // depende del caché local del navegador del nuevo usuario, que solía estar
+    // vacío/parcial → el bono de +10 casi nunca se acreditaba). Ver
+    // reconciliar-referidos-completo.sql.
+    if (isSupabaseAvailable() && supabase) {
+      const { data, error } = await supabase.rpc('award_referral_bonus', {
+        p_referrer_code: referralCode,
+        p_referred_email: referredEmail,
+      });
+      if (!error) return data;
+      const msg = error.message || '';
+      const notInstalled = error.code === 'PGRST202' ||
+        (/award_referral_bonus/i.test(msg) && /not exist|could not find/i.test(msg));
+      if (!notInstalled) {
+        console.warn('[DB] award_referral_bonus error:', msg);
+        return null;
+      }
+      console.warn('[DB] award_referral_bonus RPC no instalada — usando flujo local de respaldo. Corre reconciliar-referidos-completo.sql.');
+    }
+
+    // ── Fallback legacy (poco confiable; solo si la función no está instalada) ──
     const referrer = _data.users.find(u => u.referral_code === referralCode);
     if (!referrer) return null;
     const bonusAmount = referrer.referral_bonus_amount || 10;
