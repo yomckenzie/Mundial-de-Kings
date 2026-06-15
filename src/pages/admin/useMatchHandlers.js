@@ -47,24 +47,9 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
   const lockedMatches = matches.filter(m => isMatchLocked(m, liveNow));
   const hasLockedMatches = lockedMatches.length > 0;
 
-  const resetAllMatches = useMutation({
-    mutationFn: () => api.entities.Match.resetAll(),
-    onSuccess: () => {
-      setResults(prev => ({ ...prev, form: {} }));
-      queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
-      queryClient.invalidateQueries({ queryKey: ['ranking'] });
-      toast.success('✅ Todos los partidos reiniciados a Pendiente');
-    },
-  });
-
-  const handleClearAll = () => {
-    const msg = hasLockedMatches
-      ? `Hay ${lockedMatches.length} partido${lockedMatches.length > 1 ? 's' : ''} con más de 24h. ¿Reiniciar TODOS a Pendiente de todas formas?`
-      : '¿Reiniciar TODOS los partidos a Pendiente?\n\nSe borrarán resultados, tiempos en vivo y pronósticos de usuarios. Los partidos NO se eliminan.';
-    if (window.confirm(msg)) {
-      resetAllMatches.mutate();
-    }
-  };
+  // NOTA: el reinicio masivo de partidos (resetAllMatches / handleClearAll) se
+  // retiró del panel por seguridad — borraba resultados, tiempos en vivo y
+  // pronósticos de todos los partidos de un solo clic.
 
   const createMatch = useMutation({
     mutationFn: (data) => api.entities.Match.create(data),
@@ -293,8 +278,6 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
 
   return {
     hasLockedMatches,
-    resetAllMatches,
-    handleClearAll,
     createMatch,
     editMatch,
     deleteMatch,

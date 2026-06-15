@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
-import { Layers, RefreshCw, Plus } from 'lucide-react';
+import { Layers, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { TEAM_FLAGS } from '@/lib/teamFlags';
 
@@ -19,7 +19,7 @@ const SORTED_TEAMS = Object.entries(TEAM_FLAGS)
   .sort((a, b) => a[0].localeCompare(b[0], 'es'))
   .map(([name, info]) => ({ name, ...info }));
 
-export default function QuickActions({ hasLocked, onDedupe, deduping, matchCount, onClear, clearing, onCreateMatch, creating }) {
+export default function QuickActions({ hasLocked, onDedupe, deduping, matchCount, onCreateMatch, creating }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ team1: '', team2: '', match_date: '', match_time: '', group_stage: '' });
 
@@ -45,9 +45,6 @@ export default function QuickActions({ hasLocked, onDedupe, deduping, matchCount
     <div className="flex flex-wrap gap-2">
       <Button variant="secondary" size="sm" onClick={onDedupe} disabled={deduping || matchCount === 0} className="gap-2">
         <Layers className="w-4 h-4" /> {deduping ? 'Deduplicando...' : 'Deduplicar partidos'}
-      </Button>
-      <Button variant="destructive" size="sm" onClick={onClear} disabled={clearing || matchCount === 0} className="gap-2">
-        <RefreshCw className={`w-4 h-4 ${clearing ? 'animate-spin' : ''}`} /> {clearing ? 'Reiniciando...' : 'Limpiar todos'}
       </Button>
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogTrigger asChild>

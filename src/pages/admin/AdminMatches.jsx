@@ -106,7 +106,7 @@ export default function AdminMatches() {
 
   const {
     hasLockedMatches,
-    resetAllMatches, handleClearAll, createMatch,
+    createMatch,
     editMatch, deleteMatch,
     handleStatusChange, handlePublishResult, handleBatchPublish,
     suggestedToOpen,
@@ -146,8 +146,6 @@ export default function AdminMatches() {
         }}
         deduping={sourceState.deduping}
         matchCount={matches.length}
-        onClear={handleClearAll}
-        clearing={resetAllMatches.isPending}
         onCreateMatch={(form) => createMatch.mutate(form)}
         creating={createMatch.isPending}
       />
