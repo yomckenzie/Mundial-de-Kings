@@ -47,6 +47,9 @@ Thumbs.db
 # Playwright test artifacts
 .playwright-mcp/
 admin-matches*.png
+
+# Unlighthouse (reportes de auditoría Lighthouse generados — no es código)
+.unlighthouse/
 .claude/
 nul
 nul
