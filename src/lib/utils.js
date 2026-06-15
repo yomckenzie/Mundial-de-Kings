@@ -23,6 +23,18 @@ export function formatTime12h(time24) {
 }
 
 /**
+ * Normaliza un documento de identidad (cédula o pasaporte) para comparar:
+ * quita espacios y guiones, recorta y pasa a minúsculas. Así "8-123-456",
+ * "8123456" y "8 123 456" se consideran iguales. Lo usan tanto el registro
+ * (anti-duplicados) como la verificación al canjear premios.
+ * @param {string} v
+ * @returns {string}
+ */
+export function normalizeDoc(v) {
+  return (v || '').replace(/[\s-]/g, '').trim().toLowerCase();
+}
+
+/**
  * Sanea un destino de redirección leído de la URL.
  * Solo acepta rutas internas relativas ("/algo"). Rechaza URLs absolutas
  * (https://...), protocol-relative (//evil.com), javascript:, y backslashes

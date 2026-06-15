@@ -7,9 +7,9 @@ import { toast } from 'sonner';
 import RegisterHeader from './register/RegisterHeader';
 import RegisterForm from './register/RegisterForm';
 import { DEFAULT_DIAL_CODE, PHONE_DIGITS } from '@/lib/countryCodes';
-import { sanitizeRedirect } from '@/lib/utils';
+import { sanitizeRedirect, normalizeDoc } from '@/lib/utils';
 
-const normalizeCedula = (v) => (v || '').replace(/[\s-]/g, '').trim().toLowerCase();
+const normalizeCedula = normalizeDoc;
 
 // Quita prefijos duplicados (e.g. si el usuario tipea "+5076000-0000"
 // con el code "+507" ya seleccionado, no queremos "+507+5076000-0000")

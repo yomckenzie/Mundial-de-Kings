@@ -8,11 +8,15 @@ import { api } from '@/api/client';
 import { useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import RedemptionSuccessDialog from './RedemptionSuccessDialog';
+import RedemptionVerifyDialog from './RedemptionVerifyDialog';
 
 export default function PrizeCard({ prize, availablePoints = 0 }) {
   const { user } = useOutletContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [successPrize, setSuccessPrize] = useState(null);
   const hasSizes = prize.sizes && typeof prize.sizes === 'object' && Object.keys(prize.sizes).length > 0;
   const [imgError, setImgError] = useState(false);
   const [selectedSize, setSelectedSize] = useState(null);
@@ -113,7 +117,8 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
       queryClient.invalidateQueries({ queryKey: ['my-redemptions', user?.email] });
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });
       queryClient.invalidateQueries({ queryKey: ['admin-prizes-redemptions'] });
-      toast.success(`🎁 Solicitud enviada. Pendiente de aprobación.`);
+      setVerifyOpen(false);
+      setSuccessPrize(prize.name);
       setSelectedSize(null);
     },
     onError: (err) => toast.error('Error al canjear: ' + (err.message || 'Error')),
@@ -303,9 +308,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                 if (!user) { navigate('/login'); return; }
                 if (needsSize) { toast.error('Selecciona una talla'); return; }
                 if (!canAfford) { toast.error(`Te faltan ${prize.points_cost - userPoints} pts`); return; }
-                if (window.confirm(`¿Canjear "${prize.name}" por ${prize.points_cost} pts?`)) {
-                  redeemMutation.mutate();
-                }
+                setVerifyOpen(true);
               }}
               title={!user ? 'Inicia sesión para canjear' : needsSize ? 'Selecciona una talla' : !canAfford ? 'No tienes suficientes puntos' : 'Canjear premio'}
             >
@@ -326,6 +329,21 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
           );
         })()}
       </CardContent>
+
+      <RedemptionVerifyDialog
+        open={verifyOpen}
+        prize={prize}
+        user={user}
+        isPending={redeemMutation.isPending}
+        onConfirm={() => redeemMutation.mutate()}
+        onClose={() => setVerifyOpen(false)}
+      />
+
+      <RedemptionSuccessDialog
+        open={!!successPrize}
+        prizeName={successPrize}
+        onClose={() => setSuccessPrize(null)}
+      />
     </Card>
   );
 }
