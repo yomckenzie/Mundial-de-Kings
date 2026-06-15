@@ -60,6 +60,57 @@ RIGHT JOIN public.users uu ON uu.email = c.user_email
 WHERE u.email = uu.email
   AND (uu.role <> 'admin' OR uu.role IS NULL);
 
+-- ─── 2b) Reconciliar comisiones de referido por acierto (idempotente) ───
+-- IMPORTANTE: re-evaluar por SQL no creaba las comisiones de 5 pts al referente
+-- (eso solo ocurría en el navegador). Esto las crea para todo acierto de un
+-- referido que aún no tenga su comisión, y suma los 5 pts a referral_points.
+-- Regla: 5 pts por CADA referido que acierta (aunque varios acierten el mismo
+-- partido). Se corrige la restricción única vieja que lo impedía.
+ALTER TABLE public.referral_commissions DROP CONSTRAINT IF EXISTS uq_referral_commissions_target;
+ALTER TABLE public.referral_commissions DROP CONSTRAINT IF EXISTS uq_referral_commissions;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_referral_commissions_per_referral') THEN
+    ALTER TABLE public.referral_commissions
+      ADD CONSTRAINT uq_referral_commissions_per_referral
+      UNIQUE (from_email, to_email, match_id, level);
+  END IF;
+END $$;
+
+WITH should_have AS (
+  SELECT DISTINCT p.user_email AS from_email, r.email AS to_email, p.match_id
+  FROM public.predictions p
+  JOIN public.users predictor ON predictor.email = p.user_email
+  JOIN public.users r ON r.referral_code = predictor.referred_by
+  WHERE p.scored = true AND p.is_correct = true AND p.match_id IS NOT NULL
+    AND predictor.referred_by IS NOT NULL AND predictor.email <> r.email
+    AND (predictor.role <> 'admin' OR predictor.role IS NULL)
+),
+missing AS (
+  SELECT s.* FROM should_have s
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.referral_commissions c
+    WHERE c.from_email = s.from_email AND c.to_email = s.to_email AND c.match_id = s.match_id
+  )
+),
+inserted AS (
+  INSERT INTO public.referral_commissions
+    (id, from_email, to_email, match_id, level, points_earned, created_date)
+  SELECT
+    (extract(epoch FROM clock_timestamp()) * 1000)::bigint::text
+      || '_' || substr(md5(random()::text || m.from_email || m.match_id), 1, 6),
+    m.from_email, m.to_email, m.match_id, 1, 5, now()
+  FROM missing m
+  RETURNING to_email, points_earned
+)
+UPDATE public.users u
+SET referral_points = COALESCE(u.referral_points, 0) + agg.pts,
+    total_points    = COALESCE(u.prediction_points, 0) + COALESCE(u.bonus_points, 0)
+                      + COALESCE(u.referral_points, 0) + agg.pts,
+    updated_at      = now()
+FROM (SELECT to_email, SUM(points_earned)::int AS pts FROM inserted GROUP BY to_email) agg
+WHERE u.email = agg.to_email;
+
 -- ─── VERIFICACIÓN ───
 
 -- 3a) Deben quedar 0 sin evaluar en partidos terminados

@@ -2294,7 +2294,10 @@ export const db = {
     referrer.referral_points = newRefPoints;
     referrer.total_points = newTotal;
     referrer.updated_at = getNow();
-    // Registrar la comisión para que aparezca en el historial
+    // Registrar la comisión para que aparezca en el historial.
+    // NO incluir 'type': esa columna no existe en la tabla referral_commissions
+    // y rompía el upsert (las comisiones de registro nunca se guardaban). El
+    // historial ya distingue registro vs acierto por match_id (null = registro).
     _data.referralCommissions.push({
       id: makeId(),
       from_email: referredEmail || 'desconocido',
@@ -2302,7 +2305,6 @@ export const db = {
       match_id: null,
       level: 1,
       points_earned: bonusAmount,
-      type: 'registration',
       created_date: getNow(),
     });
     save(d);
