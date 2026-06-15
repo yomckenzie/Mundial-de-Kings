@@ -128,6 +128,27 @@ main [style*="opacity:0"] {
   }
 }
 
+/* ──────────────────────────────────────────────
+   Preloader CK in-app (componente <Preloader/>):
+   la corona se dibuja UNA sola vez y se queda.
+   Usa currentColor (--foreground) para contraste
+   correcto en claro y oscuro. pathLength="1" en
+   los <path> normaliza el trazo (sin medir en JS).
+   ────────────────────────────────────────────── */
+.ck-mini { color: hsl(var(--foreground)); }
+.ck-mini .ck-mini-outline path {
+  fill: none; stroke: currentColor; stroke-width: 1.5;
+  stroke-linejoin: round; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: ck-mini-draw 2.3s ease-in-out forwards;
+}
+.ck-mini .ck-mini-fillg path {
+  fill: currentColor; opacity: 0;
+  animation: ck-mini-fill 2.3s ease-in-out forwards;
+}
+@keyframes ck-mini-draw { 0% { stroke-dashoffset: 1; } 70%, 100% { stroke-dashoffset: 0; } }
+@keyframes ck-mini-fill { 0%, 55% { opacity: 0; } 100% { opacity: 1; } }
+
 @layer utilities {
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-secondary via-yellow-400 to-amber-500;

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Toaster } from "sonner"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -7,6 +7,8 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { ThemeProvider } from '@/hooks/useTheme';
+import { db } from '@/lib/db';
+import Preloader from './components/Preloader';
 
 import AppLayout from './components/layout/AppLayout';
 import Home from './pages/Home';
@@ -35,22 +37,31 @@ const AdminRedemptions = lazy(() => import('./pages/admin/AdminRedemptions'));
 const AdminSupport = lazy(() => import('./pages/admin/AdminSupport'));
 const AdminAuditLog = lazy(() => import('./pages/admin/AdminAuditLog'));
 
-const PageSpinner = () => (
-  <div className="flex items-center justify-center py-24">
-    <div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" />
-  </div>
-);
-
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
 
-  // Show loading spinner while checking app public settings or auth
+  // Ocultar el preloader CK (index.html) cuando la app cargó de verdad:
+  // 1) db.whenReady() → toda la data está en memoria (incluye partidos y sus
+  //    resultados, para que la página de Partidos no aparezca a medias), y
+  // 2) window 'load' → las imágenes iniciales ya bajaron.
+  // No se ata al sondeo en vivo de SportScore (API externa) para no colgarse;
+  // ese marcador se hidrata desde caché y se refresca solo. Si algo se traba,
+  // la red de seguridad de index.html (timeout) lo oculta igual.
+  useEffect(() => {
+    let done = false;
+    const hide = () => { if (done) return; done = true; window.hideCKLoader?.(); };
+    const afterData = () => {
+      if (document.readyState === 'complete') hide();
+      else window.addEventListener('load', hide, { once: true });
+    };
+    Promise.resolve(db.whenReady()).then(afterData).catch(afterData);
+    return () => window.removeEventListener('load', hide);
+  }, []);
+
+  // Mientras carga la auth, no renderizamos nada: el preloader CG de index.html
+  // (z-index alto) cubre la pantalla hasta que hideCKLoader() se dispara arriba.
   if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-      </div>
-    );
+    return null;
   }
 
   // Handle authentication errors
@@ -63,7 +74,7 @@ const AuthenticatedApp = () => {
 
   // Render the main app - public access allowed
   return (
-    <Suspense fallback={<PageSpinner />}>
+    <Suspense fallback={<Preloader />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />

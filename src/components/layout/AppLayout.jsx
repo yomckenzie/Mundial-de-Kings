@@ -6,6 +6,7 @@ import Navbar from './Navbar';
 import PanamaClockWidget from '@/components/PanamaClockWidget';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/AuthContext';
+import Preloader from '@/components/Preloader';
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -28,10 +29,7 @@ export default function AppLayout() {
   if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-[3px] border-muted border-t-primary rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground animate-pulse">Cargando...</p>
-        </div>
+        <Preloader />
       </div>
     );
   }
