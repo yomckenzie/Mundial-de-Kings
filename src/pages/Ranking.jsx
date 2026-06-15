@@ -17,6 +17,7 @@ import RankingExportCard from '@/components/RankingExportCard';
 import RankingPodium from './ranking/RankingPodium';
 import MyRankCard from './ranking/MyRankCard';
 import RankingTable from './ranking/RankingTable';
+import UserProfileCard from '@/components/admin/UserProfileCard';
 import { getTournamentWeeks, computeWeeklyRanking } from './ranking/weeklyRanking';
 
 // Normaliza para búsqueda insensible a mayúsculas y acentos
@@ -88,6 +89,23 @@ export default function Ranking() {
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [query, setQuery] = useState(''); // buscador admin
   const [selectedWeekN, setSelectedWeekN] = useState(null); // null = General
+  const [profileUser, setProfileUser] = useState(null); // admin: usuario abierto en el perfil completo
+
+  // Solo admin: lista completa de usuarios (con cédula, teléfono, etc.) para
+  // mostrar el perfil detallado al tocar una fila del ranking. Las filas del
+  // ranking traen un subconjunto público, así que buscamos el registro completo.
+  const { data: fullUsers = [] } = useQuery({
+    queryKey: ['ranking-full-users'],
+    queryFn: () => api.entities.User.list(),
+    enabled: isAdmin,
+  });
+
+  // Abre el perfil completo (solo admin). Empareja por email con el registro
+  // completo; si no aparece, usa la fila tal cual (igual trae email para las
+  // sub-consultas de pronósticos/canjes).
+  const openProfile = isAdmin
+    ? (rowUser) => setProfileUser(fullUsers.find(fu => fu.email === rowUser.email) || rowUser)
+    : undefined;
 
   const { data: allUsers = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['ranking'],
@@ -308,7 +326,7 @@ export default function Ranking() {
       )}
 
       {/* ─── Podium ─── */}
-      <RankingPodium top3={top3} />
+      <RankingPodium top3={top3} onUserClick={openProfile} />
 
       {/* ─── My Position Card ─── */}
       <MyRankCard myUser={myUser} myRank={myRank} allUsers={baseRanked} />      {/* ─── Table ─── */}
@@ -333,6 +351,7 @@ export default function Ranking() {
                 pageSize={PAGE_SIZE}
                 user={user}
                 isFiltering={isFiltering}
+                onUserClick={openProfile}
                 emptyMessage={isWeekly && !isFiltering ? 'Nadie acertó en esta semana todavía.' : undefined}
               />
             </AnimatePresence>
@@ -399,6 +418,15 @@ export default function Ranking() {
       )}
 
       {exportCards}
+
+      {/* Perfil completo del usuario (solo admin, al tocar una fila/podio) */}
+      {isAdmin && (
+        <UserProfileCard
+          user={profileUser}
+          open={!!profileUser}
+          onClose={() => setProfileUser(null)}
+        />
+      )}
     </m.div>
   );
 }

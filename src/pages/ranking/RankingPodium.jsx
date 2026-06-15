@@ -11,8 +11,9 @@ const podiumVariants = {
   hover: { y: -6, transition: { duration: 0.25 } }
 };
 
-export default function RankingPodium({ top3 }) {
+export default function RankingPodium({ top3, onUserClick }) {
   if (top3.length < 3) return null;
+  const clickable = typeof onUserClick === 'function';
 
   const items = [
     { user: top3[1], pos: 2, label: '2º' },
@@ -33,7 +34,14 @@ export default function RankingPodium({ top3 }) {
           {item.pos === 1 && (
             <div className="absolute -inset-4 bg-foreground/5 rounded-full blur-3xl animate-pulse" />
           )}
-          <Card className={`relative overflow-hidden ${item.pos === 1 ? 'ring-2 ring-foreground/20 shadow-xl shadow-foreground/10' : 'shadow-lg'}`}>
+          <Card
+            onClick={clickable ? () => onUserClick(item.user) : undefined}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onUserClick(item.user); } } : undefined}
+            title={clickable ? 'Ver información completa' : undefined}
+            className={`relative overflow-hidden ${clickable ? 'cursor-pointer' : ''} ${item.pos === 1 ? 'ring-2 ring-foreground/20 shadow-xl shadow-foreground/10' : 'shadow-lg'}`}
+          >
             <div className="h-2 bg-gradient-to-r from-foreground to-foreground" />
             <CardContent className={`p-4 md:p-5 text-center ${item.pos === 1 ? 'pt-5 md:pt-6' : ''}`}>
               <m.div

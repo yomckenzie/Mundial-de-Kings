@@ -28,7 +28,9 @@ function getRowStyle(pos) {
   return `${base} border-l-[3px] border-l-transparent hover:border-l-border`;
 }
 
-export default function RankingTable({ pagedUsers, page, pageSize, user, isFiltering = false, emptyMessage }) {
+export default function RankingTable({ pagedUsers, page, pageSize, user, isFiltering = false, onUserClick, emptyMessage }) {
+  const clickable = typeof onUserClick === 'function';
+
   if (pagedUsers.length === 0) {
     return (
       <m.div key="empty" className="py-16 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -76,7 +78,12 @@ export default function RankingTable({ pagedUsers, page, pageSize, user, isFilte
             custom={i}
             variants={itemVariants}
             layout
-            className={`${getRowStyle(pos)} ${isMe ? 'bg-primary/[0.04] border-l-primary border-l-[3px]' : ''}`}
+            onClick={clickable ? () => onUserClick(u) : undefined}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onUserClick(u); } } : undefined}
+            title={clickable ? 'Ver información completa' : undefined}
+            className={`${getRowStyle(pos)} ${isMe ? 'bg-primary/[0.04] border-l-primary border-l-[3px]' : ''} ${clickable ? 'cursor-pointer' : ''}`}
           >
             <div className="flex items-center justify-between md:hidden px-4 py-3">
               <div className="flex items-center gap-3 min-w-0 flex-1">
