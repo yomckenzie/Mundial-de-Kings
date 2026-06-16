@@ -2,6 +2,7 @@ import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';
+import { isValidTransition } from './matchTransitions';
 import { toast } from 'sonner';
 
 const LOCK_HOURS = 24;
@@ -9,25 +10,6 @@ const PREDICTION_WINDOW_HOURS = 24;
 
 // Estados que mantienen resultado y tiempo en vivo
 const STATUS_KEEPS_RESULT = new Set(['live', 'finished']);
-
-// Matriz de transiciones legales.
-// pending → open, closed
-// open → live, closed, pending
-// live → finished, closed
-// closed → live, finished
-// finished → live, open
-const VALID_TRANSITIONS = {
-  pending:  new Set(['open', 'closed']),
-  open:     new Set(['live', 'closed', 'pending']),
-  live:     new Set(['finished', 'closed']),
-  closed:   new Set(['live', 'finished']),
-  finished: new Set(['live', 'open']),
-};
-
-function isValidTransition(from, to) {
-  if (from === to) return true;
-  return VALID_TRANSITIONS[from]?.has(to) ?? false;
-}
 
 function isMatchLocked(match, nowMs = Date.now()) {
   if (!match.match_date) return false;

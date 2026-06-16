@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Clock, Save, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { formatTime12h } from '@/lib/utils';
+import { VALID_TRANSITIONS, isValidTransition } from './matchTransitions';
 import { toast } from 'sonner';
 
 const STATUS_COLORS = {
@@ -34,19 +35,6 @@ const STATUS_HINTS = {
 };
 
 const VISIBLE_STATUSES = new Set(['open', 'live', 'closed', 'finished']);
-
-const VALID_TRANSITIONS = {
-  pending:  new Set(['open', 'closed']),
-  open:     new Set(['live', 'closed', 'pending']),
-  live:     new Set(['finished', 'closed']),
-  closed:   new Set(['live', 'finished']),
-  finished: new Set(['live', 'open']),
-};
-
-function isValidTransition(from, to) {
-  if (from === to) return true;
-  return VALID_TRANSITIONS[from]?.has(to) ?? false;
-}
 
 function isMatchLocked(match, nowMs = Date.now()) {
   const LOCK_HOURS = 24;
