@@ -13,7 +13,7 @@ import { Medal, Award, ChevronLeft, ChevronRight, Download,
   Crown, TrendingUp, Users, RefreshCw, Search, X, Calendar
 } from 'lucide-react';
 import { toast } from 'sonner';
-import RankingExportCard from '@/components/RankingExportCard';
+import RankingExportTemplate from '@/components/RankingExportTemplate';
 import RankingPodium from './ranking/RankingPodium';
 import MyRankCard from './ranking/MyRankCard';
 import RankingTable from './ranking/RankingTable';
@@ -185,21 +185,33 @@ export default function Ranking() {
 
   const handleExportTop10 = async () => {
     setShowExportTop10(true);
-    await new Promise(r => setTimeout(r, 300));
-    const html2canvas = (await import('html2canvas')).default; // carga bajo demanda
-    const canvas = await html2canvas(exportTop10Ref.current, { backgroundColor: null, scale: 2 });
-    const link = document.createElement('a');
-    link.download = `ranking-top10-${new Date().toISOString().slice(0, 10)}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    setShowExportTop10(false);
+    // Esperar a que monte la tarjeta y, sobre todo, a que la imagen de fondo
+    // (plantilla) termine de cargar — si no, html2canvas captura sin fondo.
+    await new Promise(r => setTimeout(r, 60));
+    const imgEl = exportTop10Ref.current?.querySelector('img');
+    if (imgEl && !imgEl.complete) {
+      await new Promise((res) => { imgEl.onload = res; imgEl.onerror = res; });
+    }
+    await new Promise(r => setTimeout(r, 120)); // settle de layout
+    try {
+      const html2canvas = (await import('html2canvas')).default; // carga bajo demanda
+      const canvas = await html2canvas(exportTop10Ref.current, { backgroundColor: null, scale: 2, useCORS: true });
+      const link = document.createElement('a');
+      link.download = `ranking-top10-${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) {
+      toast.error('Error al exportar: ' + (e?.message || e));
+    } finally {
+      setShowExportTop10(false);
+    }
   };
 
   const exportCards = (
     <>
       {showExportTop10 && (
         <div className="fixed top-0 left-[-9999px]">
-          <RankingExportCard ref={exportTop10Ref} topUsers={allUsers.slice(0, 10)} title="Top 10 General" />
+          <RankingExportTemplate ref={exportTop10Ref} topUsers={allUsers.slice(0, 10)} title="TOP 10" />
         </div>
       )}
     </>
