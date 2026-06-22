@@ -299,7 +299,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                     key={size}
                     type="button"
                     disabled={!inStock}
-                    onClick={() => setSelectedSize(size)}
+                    onClick={() => setSelectedSize(isSelected ? null : size)}
                     className={`text-xs px-2.5 py-1 rounded-md border transition-colors flex items-center gap-1 ${
                       isSelected
                         ? 'bg-foreground text-background border-foreground'
@@ -307,7 +307,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                         ? 'bg-background border-border hover:border-foreground'
                         : 'opacity-40 cursor-not-allowed border-border line-through'
                     }`}
-                    title={inStock ? `Talla ${size} disponible` : `Talla ${size} agotada`}
+                    title={inStock ? (isSelected ? `Click para deseleccionar ${size}` : `Talla ${size} disponible`) : `Talla ${size} agotada`}
                   >
                     <span className="font-medium">{size}</span>
                     {isSelected && (
