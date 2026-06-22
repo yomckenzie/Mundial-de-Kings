@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Ruler, Sparkles, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Package, Ruler, Sparkles, Loader2, ChevronLeft, ChevronRight, Maximize2, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useOutletContext } from 'react-router-dom';
@@ -20,6 +21,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
   const hasSizes = prize.sizes && typeof prize.sizes === 'object' && Object.keys(prize.sizes).length > 0;
   const [imgError, setImgError] = useState(false);
   const [selectedSize, setSelectedSize] = useState(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const gradient = prize.gradient || 'from-slate-600 to-slate-800';
 
   // Lista de imágenes: preferir image_urls (nuevo formato) y caer a image_url (legacy)
@@ -65,20 +67,39 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
   const prevImg = () => setActiveImg(i => (i - 1 + totalImgs) % totalImgs);
   const nextImg = () => setActiveImg(i => (i + 1) % totalImgs);
 
+  // Distingue click de drag: si el cursor se movió menos de 5px entre
+  // pointerdown y pointerup, es un click → abrir lightbox. Si se movió más,
+  // fue un drag → cambiar de imagen del carrusel.
+  const clickIntentRef = useRef({ startX: 0, startY: 0, isClick: true });
   const onPointerDown = (e) => {
     if (totalImgs <= 1) return;
     setIsDragging(true);
-    startXRef.current = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+    startXRef.current = x;
+    clickIntentRef.current = { startX: x, startY: y, isClick: true };
   };
   const onPointerMove = (e) => {
     if (!isDragging) return;
     const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+    const dx = Math.abs(x - clickIntentRef.current.startX);
+    const dy = Math.abs(y - clickIntentRef.current.startY);
+    if (dx > 5 || dy > 5) {
+      clickIntentRef.current.isClick = false;
+    }
     setDragOffset(Math.max(-200, Math.min(200, x - startXRef.current)));
   };
   const onPointerUp = () => {
     if (!isDragging) return;
     setIsDragging(false);
-    if (Math.abs(dragOffset) > 50) {
+    if (clickIntentRef.current.isClick) {
+      // No fue drag → es un click → abrir lightbox con la imagen actual
+      if (hasRealImage && imageList[activeImg]) {
+        setLightboxOpen(true);
+      }
+    } else if (Math.abs(dragOffset) > 50) {
+      // Fue drag → cambiar imagen
       if (dragOffset < 0) nextImg();
       else prevImg();
     }
@@ -205,6 +226,18 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                     />
                   ))}
                 </div>
+                {/* Botón maximizar — abre lightbox con la imagen actual */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (hasRealImage && imageList[activeImg]) setLightboxOpen(true);
+                  }}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                  aria-label="Ver imagen en grande"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
               </>
             )}
           </>
@@ -345,6 +378,62 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
         prizeName={successPrize}
         onClose={() => setSuccessPrize(null)}
       />
+
+      {/* Lightbox: imagen a pantalla completa al click */}
+      <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-0">
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-3 right-3 z-50 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+            aria-label="Cerrar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          {hasRealImage && imageList[activeImg] && (
+            <div className="flex items-center justify-center min-h-[60vh] p-4">
+              <img
+                src={imageList[activeImg]}
+                alt={prize.name}
+                className="max-w-full max-h-[85vh] object-contain"
+              />
+            </div>
+          )}
+          {totalImgs > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={prevImg}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"
+                aria-label="Imagen anterior"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={nextImg}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"
+                aria-label="Siguiente imagen"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {imageList.map((_, i) => (
+                  <button
+                    key={`ld-${i}`}
+                    type="button"
+                    onClick={() => setActiveImg(i)}
+                    className={`h-1.5 rounded-full transition-all ${
+                      i === activeImg ? 'bg-white w-6' : 'bg-white/40 w-1.5 hover:bg-white/70'
+                    }`}
+                    aria-label={`Ir a imagen ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
