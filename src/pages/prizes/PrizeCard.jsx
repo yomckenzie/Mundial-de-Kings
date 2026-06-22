@@ -283,7 +283,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
           </p>
         )}
 
-        {/* Tallas disponibles (clickeables) */}
+        {/* Tallas disponibles (clickeables) — user ve solo "Disponible"/"Agotado", sin stock */}
         {hasSizes && (
           <div className="mb-3">
             <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
@@ -300,16 +300,19 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                     type="button"
                     disabled={!inStock}
                     onClick={() => setSelectedSize(size)}
-                    className={`text-xs px-2 py-0.5 rounded-md border transition-colors ${
+                    className={`text-xs px-2.5 py-1 rounded-md border transition-colors flex items-center gap-1 ${
                       isSelected
                         ? 'bg-foreground text-background border-foreground'
                         : inStock
                         ? 'bg-background border-border hover:border-foreground'
-                        : 'opacity-50 cursor-not-allowed border-border'
+                        : 'opacity-40 cursor-not-allowed border-border line-through'
                     }`}
+                    title={inStock ? `Talla ${size} disponible` : `Talla ${size} agotada`}
                   >
-                    {size}
-                    <span className="ml-1 font-normal opacity-70">({stock})</span>
+                    <span className="font-medium">{size}</span>
+                    {isSelected && (
+                      <span className="text-[10px] opacity-80">· Seleccionada</span>
+                    )}
                   </button>
                 );
               })}
@@ -317,11 +320,11 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
           </div>
         )}
 
-        {/* Disponibilidad */}
+        {/* Disponibilidad general (sin numero, solo "Disponible"/"Agotado") */}
         <div className="flex items-center gap-2 mb-3">
           <Package className="w-3.5 h-3.5 text-muted-foreground" />
           <div className="text-xs text-muted-foreground">
-            {prize.units_available} {prize.units_available === 1 ? 'disponible' : 'disponibles'}
+            {(prize.units_available || 0) > 0 ? 'Disponible para canje' : 'Agotado'}
           </div>
         </div>
 
