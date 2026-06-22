@@ -105,6 +105,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
       return api.entities.Redemption.redeem({
         prizeId: prize.id,
         userEmail: user.email,
+        selectedSize: hasSizes ? selectedSize : null,
       });
     },
     onSuccess: () => {

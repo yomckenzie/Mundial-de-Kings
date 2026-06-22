@@ -53,6 +53,14 @@ export default function AdminRedemptions() {
     return map;
   }, [users]);
 
+  // Mapa de premios por id, para mostrar la foto del premio canjeado.
+  // El canje solo guarda prize_id/prize_name; la imagen vive en la tabla prizes.
+  const prizeMap = React.useMemo(() => {
+    const map = {};
+    prizes.forEach(p => { map[p.id] = p; });
+    return map;
+  }, [prizes]);
+
   const updateStatus = useMutation({
     mutationFn: ({ id, status }) => api.entities.Redemption.update(id, { status }),
     onSuccess: () => {
@@ -115,6 +123,7 @@ export default function AdminRedemptions() {
             key={r.id}
             redemption={r}
             user={userMap[r.user_email]}
+            prize={prizeMap[r.prize_id]}
             onOpenProfile={setSelectedUser}
             onApprove={() => updateStatus.mutate({ id: r.id, status: 'approved' })}
             onDeliver={() => updateStatus.mutate({ id: r.id, status: 'delivered' })}

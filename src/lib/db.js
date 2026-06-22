@@ -48,6 +48,14 @@ let _data = {
 let _loaded = false;
 let _loading = false;
 
+// Carga PRIORITARIA de partidos: la sección EN VIVO solo necesita la tabla
+// `matches` (~49 KB). Cargándola antes que las pesadas (predicciones ~600 KB,
+// usuarios), el sondeo en vivo arranca de inmediato — clave en móvil, donde
+// esperar TODA la BD dejaba el marcador en "---" varios segundos.
+let _matchesReady = false;
+let _matchesReadyPromise = null;
+let _resolveMatchesReady = null;
+
 // Flags de control de sincronización. Se declaran a nivel de módulo para
 // que múltiples funciones (create/update/remove/deduplicate) puedan
 // bloquear el polling desde Supabase durante operaciones admin y evitar
@@ -109,15 +117,42 @@ async function _deleteBatchFromCloud(tableName, ids) {
 // y mostrar un falso "no hay datos" que luego se reemplaza de golpe.
 let _loadPromise = null;
 
+// Marca los partidos como listos y desbloquea a quien espere whenMatchesReady().
+function _markMatchesReady() {
+  _matchesReady = true;
+  if (_resolveMatchesReady) { _resolveMatchesReady(); _resolveMatchesReady = null; }
+}
+
 function _loadAllFromCloud() {
-  if (!isSupabaseAvailable()) { _loaded = true; return Promise.resolve(); }
+  if (!isSupabaseAvailable()) { _loaded = true; _markMatchesReady(); return Promise.resolve(); }
   if (_loading && _loadPromise) return _loadPromise;
   _loading = true;
+  // Crear la promesa de "partidos listos" ANTES de empezar para que
+  // whenMatchesReady() pueda await-la aunque se llame en paralelo.
+  if (!_matchesReadyPromise) {
+    _matchesReadyPromise = new Promise((resolve) => { _resolveMatchesReady = resolve; });
+  }
   _loadPromise = (async () => {
     try {
-      const tables = Object.keys(TABLE_MAP);
+      // ── 1) PRIORIDAD: partidos primero ──
+      // Así la página de Partidos y el sondeo en vivo (SportScore) arrancan
+      // sin esperar las tablas pesadas. En cuanto está en memoria, se notifica
+      // a React para que la sección EN VIVO se pinte ya.
+      try {
+        const matchesData = await fetchAll(tableNameToSupabase('matches')); // paginado
+        _data.matches.length = 0;
+        _data.matches.push(...(matchesData || []));
+      } catch (e) {
+        console.warn('[DB] carga prioritaria de matches falló:', e);
+      } finally {
+        _markMatchesReady();
+        notifyReactComponents();
+      }
+
+      // ── 2) El resto de tablas en paralelo, en segundo plano ──
+      const rest = Object.keys(TABLE_MAP).filter((jsKey) => jsKey !== 'matches');
       const results = await Promise.all(
-        tables.map(async (jsKey) => {
+        rest.map(async (jsKey) => {
           const tableName = tableNameToSupabase(jsKey);
           const data = await fetchAll(tableName); // paginado: trae TODAS las filas (no tope 1000)
           return { jsKey, data: data || [] };
@@ -134,6 +169,7 @@ function _loadAllFromCloud() {
       console.warn('[DB] loadAll error:', err);
       _loaded = true;
     } finally {
+      _markMatchesReady(); // red de seguridad: nunca dejar el live esperando
       _loading = false;
     }
   })();
@@ -246,6 +282,19 @@ export const db = {
     this._init();
     if (_loaded || !isSupabaseAvailable()) return;
     if (_loadPromise) await _loadPromise;
+  },
+
+  /**
+   * Resuelve apenas la tabla `matches` está en memoria (carga prioritaria),
+   * SIN esperar predicciones/usuarios. La usan las lecturas de partidos
+   * (client.js) para que la página de Partidos y el sondeo en vivo arranquen
+   * de inmediato — sobre todo en móvil, donde esperar toda la BD dejaba el
+   * marcador en "---" varios segundos. Tras la carga inicial resuelve al instante.
+   */
+  async whenMatchesReady() {
+    this._init();
+    if (_matchesReady || _loaded || !isSupabaseAvailable()) return;
+    if (_matchesReadyPromise) await _matchesReadyPromise;
   },
 
   async _persist(changedTable) {
@@ -1947,7 +1996,7 @@ export const db = {
      * Fallback: si la función aún no está instalada en Supabase (migración
      * 2026-06-12-001 pendiente), usa el flujo local original.
      */
-    async redeem({ prizeId, userEmail }) {
+    async redeem({ prizeId, userEmail, selectedSize }) {
       const id = makeId();
       const createdDate = getNow();
       if (isSupabaseAvailable() && supabase) {
@@ -1960,6 +2009,17 @@ export const db = {
         if (!error) {
           if (data && !_data.redemptions.some(r => r.id === data.id)) {
             _data.redemptions.push(data);
+          }
+          // Guardar la talla seleccionada en un paso aparte (no es parte de
+          // la transacción atómica de stock/puntos — es solo metadato).
+          // Envuelto en try/catch: si falla, el canje sigue válido sin talla.
+          if (selectedSize && data?.id) {
+            try {
+              await db.redemptions.update(data.id, { selected_size: selectedSize });
+              data.selected_size = selectedSize;
+            } catch (e) {
+              console.warn('[DB] No se pudo guardar la talla del canje:', e?.message);
+            }
           }
           return data;
         }
@@ -1986,6 +2046,7 @@ export const db = {
         prize_name: prize.name,
         points_spent: Number(prize.points_cost) || 0,
         status: 'pending',
+        ...(selectedSize ? { selected_size: selectedSize } : {}),
       });
     },
     async update(id, data) {

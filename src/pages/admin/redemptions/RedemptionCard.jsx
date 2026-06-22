@@ -14,6 +14,7 @@ import { es } from 'date-fns/locale/es';
 export default function RedemptionCard({
   redemption: r,
   user,
+  prize,
   onOpenProfile,
   onApprove,
   onDeliver,
@@ -24,6 +25,17 @@ export default function RedemptionCard({
   const canReject = r.status === 'pending' || r.status === 'approved';
 
   const openProfile = () => onOpenProfile(user);
+
+  // Imagen del premio: soportar image_urls (array, nuevo) y image_url (legacy)
+  const prizeImage = (Array.isArray(prize?.image_urls) && prize.image_urls.length > 0)
+    ? prize.image_urls[0]
+    : (prize?.image_url || null);
+
+  // ¿El premio tiene tallas? (para saber si debíamos haber capturado una)
+  const prizeHasSizes = prize && (
+    (prize.original_sizes && Object.keys(prize.original_sizes).length > 0) ||
+    (prize.sizes && Object.keys(prize.sizes).length > 0)
+  );
 
   return (
     <Card>
@@ -67,18 +79,50 @@ export default function RedemptionCard({
           </button>
           <Badge className={statusColors[r.status]}>{statusLabels[r.status]}</Badge>
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Package className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm">
-              {r.prize_name} · {r.points_spent} pts
-              {r.selected_size && (
-                <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 align-middle">
+        {/* Producto canjeado: foto + nombre + talla */}
+        <div className="flex items-center gap-3 mb-2 p-2 rounded-lg bg-muted/40">
+          {prizeImage ? (
+            <a
+              href={prizeImage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 w-16 h-16 rounded-md overflow-hidden border border-border bg-white"
+              title="Abrir imagen del premio"
+            >
+              <img
+                src={prizeImage}
+                alt={r.prize_name}
+                loading="lazy"
+                className="w-full h-full object-cover"
+              />
+            </a>
+          ) : (
+            <div className="shrink-0 w-16 h-16 rounded-md bg-muted flex items-center justify-center">
+              <Package className="w-6 h-6 text-muted-foreground" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-sm truncate">{r.prize_name}</p>
+            <p className="text-xs text-muted-foreground">{r.points_spent} pts</p>
+            <div className="mt-1">
+              {r.selected_size ? (
+                <Badge className="bg-foreground text-background text-[11px] px-2 py-0.5">
                   Talla: {r.selected_size}
                 </Badge>
+              ) : prizeHasSizes ? (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-600">
+                  Talla no registrada — confirmar con usuario
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                  Talla única
+                </Badge>
               )}
-            </span>
+            </div>
           </div>
+        </div>
+
+        <div className="flex items-center justify-end">
           <div className="flex gap-1 flex-wrap justify-end">
             <Button
               size="sm"
