@@ -70,9 +70,9 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
   // Distingue click de drag: si el cursor se movió menos de 5px entre
   // pointerdown y pointerup, es un click → abrir lightbox. Si se movió más,
   // fue un drag → cambiar de imagen del carrusel.
+  // Para imágenes únicas (sin carrusel), siempre es click → lightbox.
   const clickIntentRef = useRef({ startX: 0, startY: 0, isClick: true });
   const onPointerDown = (e) => {
-    if (totalImgs <= 1) return;
     setIsDragging(true);
     const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
     const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
@@ -98,8 +98,8 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
       if (hasRealImage && imageList[activeImg]) {
         setLightboxOpen(true);
       }
-    } else if (Math.abs(dragOffset) > 50) {
-      // Fue drag → cambiar imagen
+    } else if (totalImgs > 1 && Math.abs(dragOffset) > 50) {
+      // Fue drag → cambiar imagen (solo si hay carrusel)
       if (dragOffset < 0) nextImg();
       else prevImg();
     }
@@ -226,19 +226,21 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                     />
                   ))}
                 </div>
-                {/* Botón maximizar — abre lightbox con la imagen actual */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (hasRealImage && imageList[activeImg]) setLightboxOpen(true);
-                  }}
-                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
-                  aria-label="Ver imagen en grande"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
               </>
+            )}
+            {/* Botón maximizar — abre lightbox (funciona para 1 o varias imagenes) */}
+            {hasRealImage && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (imageList[activeImg]) setLightboxOpen(true);
+                }}
+                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                aria-label="Ver imagen en grande"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
             )}
           </>
         ) : (
