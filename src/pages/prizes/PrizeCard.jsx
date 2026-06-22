@@ -154,7 +154,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
         ref={setViewportRef}
         className={`relative aspect-video w-full overflow-hidden ${
           !hasRealImage ? `bg-gradient-to-br ${gradient} flex items-center justify-center` : ''
-        }`}
+        } ${hasRealImage ? 'cursor-zoom-in' : ''}`}
         onMouseDown={onPointerDown}
         onMouseMove={onPointerMove}
         onMouseUp={onPointerUp}
@@ -236,7 +236,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                   e.stopPropagation();
                   if (imageList[activeImg]) setLightboxOpen(true);
                 }}
-                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                className="absolute top-2 left-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
                 aria-label="Ver imagen en grande"
               >
                 <Maximize2 className="w-4 h-4" />
@@ -393,11 +393,19 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
             <X className="w-5 h-5" />
           </button>
           {hasRealImage && imageList[activeImg] && (
-            <div className="flex items-center justify-center min-h-[60vh] p-4">
+            <div className="flex items-center justify-center min-h-[60vh] p-4 relative">
+              {/* Skeleton mientras carga la imagen grande */}
+              <div className="absolute inset-4 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full border-4 border-white/20 border-t-white/80 animate-spin" />
+              </div>
               <img
                 src={imageList[activeImg]}
                 alt={prize.name}
-                className="max-w-full max-h-[85vh] object-contain"
+                loading="eager"
+                decoding="sync"
+                className="max-w-full max-h-[85vh] object-contain relative z-10"
+                onLoad={(e) => { e.currentTarget.style.opacity = '1'; }}
+                style={{ opacity: 0, transition: 'opacity 250ms' }}
               />
             </div>
           )}
