@@ -80,6 +80,27 @@ export default function AdminRedemptions() {
       await api.entities.Redemption.update(redemption.id, {
         status: 'rejected',
       });
+
+      // Crear una notificación efímera para que el usuario sepa al volver a la app.
+      // NO bloqueamos el reject si la notification falla — el rechazo ya quedó.
+      const reasonLabel = {
+        producto_danado: 'producto dañado',
+        sin_stock: 'sin stock',
+        datos_incorrectos: 'datos incorrectos',
+        fraude: 'posible fraude',
+      }[reason] || (reason.startsWith('otro') ? reason.replace(/^otro:\s*/, '') : reason);
+
+      try {
+        await api.entities.UserNotification.create({
+          user_email: redemption.user_email,
+          type: 'redemption_rejected',
+          title: `Tu canje de "${redemption.prize_name}" fue rechazado`,
+          body: `Motivo: ${reasonLabel}. Tus ${redemption.points_spent} pts fueron devueltos y la unidad volvió al stock. Vuelve a hacer el canje si querés.`,
+          related_id: redemption.id,
+        });
+      } catch (e) {
+        console.warn('[AdminRedemptions] No se pudo crear la notification:', e?.message);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });

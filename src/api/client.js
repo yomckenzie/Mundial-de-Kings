@@ -9,6 +9,14 @@ const P = (fn) => async (...args) => {
   return fn(...args);
 };
 
+// Lecturas de PARTIDOS: esperan solo a que cargue la tabla `matches`
+// (carga prioritaria), no a las tablas pesadas (predicciones/usuarios). Así la
+// página de Partidos y el sondeo en vivo arrancan de inmediato — clave en móvil.
+const PMatch = (fn) => async (...args) => {
+  await db.whenMatchesReady();
+  return fn(...args);
+};
+
 const client = {
   auth: {
     me: async () => {
@@ -39,8 +47,8 @@ const client = {
       delete: P((id) => db.users.remove(id)),
     },
     Match: {
-      list: P((order) => db.matches.list(order)),
-      filter: P((fields, order) => db.matches.filter(fields, order)),
+      list: PMatch((order) => db.matches.list(order)),
+      filter: PMatch((fields, order) => db.matches.filter(fields, order)),
       create: P((data) => db.matches.create(data)),
       update: P((id, data) => db.matches.update(id, data)),
       delete: P((id) => db.matches.remove(id)),
@@ -73,6 +81,13 @@ const client = {
       filter: P((fields, order) => db.supportTickets.filter(fields, order)),
       create: P((data) => db.supportTickets.create(data)),
       update: P((id, data) => db.supportTickets.update(id, data)),
+    },
+    UserNotification: {
+      list: P((order) => db.userNotifications.list(order)),
+      filter: P((fields, order) => db.userNotifications.filter(fields, order)),
+      create: P((data) => db.userNotifications.create(data)),
+      update: P((id, data) => db.userNotifications.update(id, data)),
+      markRead: P((id) => db.userNotifications.markRead(id)),
     },
     PointsBonus: {
       list: P((order) => db.pointsBonuses.list(order)),

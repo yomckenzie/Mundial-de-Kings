@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { m } from 'framer-motion';
-import { Trophy, Target, Gift, Award, TrendingUp, Star } from 'lucide-react';
+import { Trophy, Target, Gift, Award, TrendingUp, Star, Bell, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import SocialFollow from '@/components/SocialFollow';
 import HomeBanner from '@/components/HomeBanner';
 import { api } from '@/api/client';
@@ -34,6 +35,7 @@ const cardVariants = {
 
 export default function Home() {
   const { user } = useOutletContext();
+  const queryClient = useQueryClient();
 
   const userEmail = user?.email || '';
 
@@ -42,6 +44,55 @@ export default function Home() {
     queryFn: () => api.entities.Prediction.filter({ user_email: userEmail }, '-created_date'),
     enabled: !!userEmail,
   });
+
+  // Notificaciones no leídas del user (toast efímero al cargar la home)
+  const { data: unreadNotifs = [] } = useQuery({
+    queryKey: ['user-unread-notifications', userEmail],
+    queryFn: () => api.entities.UserNotification.filter({ user_email: userEmail, read_at: null }, '-created_date'),
+    enabled: !!userEmail,
+    staleTime: 0,
+  });
+
+  // Mostrar toast por cada notification no leída. Se marca como leída al
+  // aparecer o al hacer click en el botón cerrar.
+  const shownNotifsRef = useRef(new Set());
+  useEffect(() => {
+    if (!unreadNotifs.length) return;
+    unreadNotifs.forEach(n => {
+      if (shownNotifsRef.current.has(n.id)) return;
+      shownNotifsRef.current.add(n.id);
+      const toastId = toast(
+        (toastDelete) => (
+          <div className="flex items-start gap-2 pr-2">
+            <Bell className="w-4 h-4 mt-0.5 text-amber-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">{n.title}</p>
+              {n.body && <p className="text-xs text-muted-foreground mt-0.5">{n.body}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={() => toast.dismiss(toastId)}
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label="Cerrar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ),
+        {
+          duration: 10000,
+          onDismiss: () => {
+            api.entities.UserNotification.markRead(n.id).catch(() => {});
+            queryClient.invalidateQueries({ queryKey: ['user-unread-notifications', userEmail] });
+          },
+          onAutoClose: () => {
+            api.entities.UserNotification.markRead(n.id).catch(() => {});
+            queryClient.invalidateQueries({ queryKey: ['user-unread-notifications', userEmail] });
+          },
+        }
+      );
+    });
+  }, [unreadNotifs, userEmail, queryClient]);
 
   const correctPreds = user?.role === 'admin' ? [] : predictions.filter(p => p.is_correct);
 

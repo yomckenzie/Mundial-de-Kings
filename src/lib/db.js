@@ -22,6 +22,7 @@ const TABLE_MAP = {
   auditLogs:           'audit_logs',
   referrals:           'referrals',
   referralCommissions: 'referral_commissions',
+  userNotifications:   'user_notifications',
 };
 
 // Helper: convierte la jsKey de _data al nombre real de la tabla en Supabase.
@@ -42,6 +43,7 @@ let _data = {
   auditLogs: [],
   referrals: [],
   referralCommissions: [],
+  userNotifications: [],
   currentUserEmail: null,
 };
 
@@ -371,7 +373,7 @@ export const db = {
         } catch {}
       }
 
-      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions', 'userNotifications'];
       let changed = false;
 
       const syncResults = await Promise.all(
@@ -512,7 +514,7 @@ export const db = {
   async _syncBatchToSupabase() {
     _syncToSupabaseInProgress = true;
     try {
-      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions', 'userNotifications'];
       const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
         const records = this._data[jsKey] || [];
         if (records.length === 0) return acc;
@@ -2055,6 +2057,61 @@ export const db = {
       _data.redemptions[idx] = { ..._data.redemptions[idx], ...data, updated_at: getNow() };
       await db._persist('redemptions');
       return _data.redemptions[idx];
+    },
+  },
+
+  // --- UserNotifications ---
+  // Mensajes efímeros que el admin manda al user (ej: "tu canje fue rechazado").
+  // El user los ve como toast al entrar a la app. Se marcan como leídos al cerrar.
+  userNotifications: {
+    list(order) {
+      const d = db._init().userNotifications;
+      return sortBy(d, order);
+    },
+    filter(fields, order) {
+      let d = db._init().userNotifications.filter(n =>
+        Object.entries(fields).every(([k, v]) => n[k] === v)
+      );
+      if (order) {
+        const field = order.startsWith('-') ? order.slice(1) : order;
+        const dir = order.startsWith('-') ? -1 : 1;
+        d.sort((a, b) => ((a[field] || '') > (b[field] || '') ? 1 : -1) * dir);
+      }
+      return d;
+    },
+    create(data) {
+      const record = {
+        id: makeId(),
+        created_date: getNow(),
+        read_at: null,
+        ...data,
+      };
+      _data.userNotifications.push(record);
+      db._persist('userNotifications');
+      return record;
+    },
+    async update(id, data) {
+      const idx = _data.userNotifications.findIndex(n => n.id === id);
+      if (idx === -1) throw new Error('Notification not found');
+      _data.userNotifications[idx] = { ..._data.userNotifications[idx], ...data, updated_at: getNow() };
+      await db._persist('userNotifications');
+      return _data.userNotifications[idx];
+    },
+    async markRead(id) {
+      const now = getNow();
+      // Update directo en BD — si falla, igual marcamos local para no spamear.
+      if (isSupabaseAvailable() && supabase) {
+        try {
+          await supabase.from('user_notifications').update({ read_at: now }).eq('id', id);
+        } catch (e) { /* noop */ }
+      }
+      const idx = _data.userNotifications.findIndex(n => n.id === id);
+      if (idx !== -1) {
+        _data.userNotifications[idx].read_at = now;
+        await db._persist('userNotifications');
+        return _data.userNotifications[idx];
+      }
+      return null;
     },
   },
 
