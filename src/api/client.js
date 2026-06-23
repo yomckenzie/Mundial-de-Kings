@@ -133,25 +133,12 @@ const client = {
         case 'getRanking': {
           // Criterio de orden:
           //   1. prediction_points (desc) — quien acertó más gana
-          //   2. Desempate: el que LLEVA MÁS TIEMPO en el ranking gana, es decir,
-          //      el que tuvo su PRIMER ACIERTO antes (no quien se registró antes).
-          //      Para esto calculamos, por usuario, la fecha del primer
-          //      prediction scored=true con points_earned > 0 (cuando empezó
-          //      a sumar puntos). Quien empezó antes gana el empate.
+          //   2. Desempate: el que LLEVA MÁS TIEMPO en el ranking gana.
+          //      Usamos created_date del user (cuándo se registró) porque
+          //      es estable y NO se sobreescribe. La idea: el usuario que
+          //      "está desde antes" gana el empate.
           const users = db.users.list()
             .filter(u => u.profile_complete && u.role !== 'admin');
-          const predictions = db.predictions.list();
-          const firstScoredAt = {};
-          for (const p of predictions) {
-            if (!p.scored || (p.points_earned || 0) <= 0) continue;
-            const t = new Date(p.updated_at || p.created_date || 0).getTime();
-            const email = p.user_email;
-            if (!email || isNaN(t)) continue;
-            if (!(email in firstScoredAt) || t < firstScoredAt[email]) {
-              firstScoredAt[email] = t;
-            }
-          }
-          // Fallback: si no tiene predictions scored, usar created_date del user
           const fallbackTs = (u) => {
             const c = new Date(u.created_date || 0).getTime();
             return isNaN(c) ? Infinity : c;
@@ -160,9 +147,9 @@ const client = {
             const pa = a.prediction_points || 0;
             const pb = b.prediction_points || 0;
             if (pb !== pa) return pb - pa; // 1° criterio: puntos desc
-            // 2° criterio: el que empezó a sumar puntos antes gana
-            const ta = firstScoredAt[a.email] ?? fallbackTs(a);
-            const tb = firstScoredAt[b.email] ?? fallbackTs(b);
+            // 2° criterio: el más antiguo (created_date) gana
+            const ta = fallbackTs(a);
+            const tb = fallbackTs(b);
             if (ta !== tb) return ta - tb; // menor = más antiguo = gana
             // 3° criterio (desempate final): total_points
             return (b.total_points || 0) - (a.total_points || 0);
