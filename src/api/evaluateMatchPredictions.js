@@ -117,7 +117,7 @@ export async function evaluateMatchPredictions(
   // 1. Cargar pronósticos del partido
   const { data: allPredictions, error: predErr } = await supabase
     .from('predictions')
-    .select('id, user_email, pred_winner, pred_method, pred_penalty_team1, pred_penalty_team2')
+    .select('id, user_email, pred_winner, pred_method, pred_penalty_team1, pred_penalty_team2, pred_score_team1, pred_score_team2, pred_pen_team1, pred_pen_team2')
     .eq('match_id', matchId);
 
   if (predErr) {
@@ -137,7 +137,7 @@ export async function evaluateMatchPredictions(
   const predictions = allPredictions.filter(p => !adminEmails.has(p.user_email));
   if (predictions.length === 0) return { evaluated: 0, correct: 0 };
 
-  // 3. Puntuar — 3 componentes independientes
+  // 3. Puntuar — branch v1 vs v2
   const winner = deriveWinner(resultTeam1, resultTeam2, resultMethod, penaltyScoreT1, penaltyScoreT2);
   const correctEmails = new Set();
   const allEmails = new Set();
@@ -146,32 +146,55 @@ export async function evaluateMatchPredictions(
   for (const pred of predictions) {
     allEmails.add(pred.user_email);
 
-    // Componente 1: ganador (null si pred_winner es null — predicción legacy)
-    let winnerCorrect = null;
-    if (pred.pred_winner != null) {
-      winnerCorrect = winner != null && pred.pred_winner === winner;
-    }
+    let winnerCorrect, methodCorrect, scoreCorrect, prePenCorrect, penCorrect, penaltyCorrect, pointsEarned;
 
-    // Componente 2: método (null si resultMethod es null o pred_method es null)
-    let methodCorrect = null;
-    if (resultMethod != null && pred.pred_method != null) {
-      methodCorrect = pred.pred_method === resultMethod;
-    }
+    if (isV2Prediction(pred)) {
+      // v2: usa scoreV2 puro
+      const r = scoreV2(pred, {
+        team1: resultTeam1, team2: resultTeam2,
+        method: resultMethod, penaltyT1: penaltyScoreT1, penaltyT2: penaltyScoreT2,
+      });
+      winnerCorrect = r.winnerCorrect;
+      methodCorrect = r.methodCorrect;
+      scoreCorrect = r.scoreCorrect;
+      prePenCorrect = r.prePenCorrect;
+      penCorrect = r.penCorrect;
+      penaltyCorrect = null; // v2 no usa penalty_correct
+      pointsEarned = r.points;
+    } else {
+      // v1 legacy: reglas del modelo anterior (50 winner + 50 method + 50 penalty)
+      // Componente 1: ganador (null si pred_winner es null)
+      winnerCorrect = null;
+      if (pred.pred_winner != null) {
+        winnerCorrect = winner != null && pred.pred_winner === winner;
+      }
 
-    // Componente 3: penal (solo si ambos lados apostaron a pen)
-    let penaltyCorrect = null;
-    if (resultMethod === 'pen' && pred.pred_method === 'pen') {
-      penaltyCorrect =
-        pred.pred_penalty_team1 != null &&
-        pred.pred_penalty_team2 != null &&
-        pred.pred_penalty_team1 === penaltyScoreT1 &&
-        pred.pred_penalty_team2 === penaltyScoreT2;
-    }
+      // Componente 2: método (null si alguno es null)
+      methodCorrect = null;
+      if (resultMethod != null && pred.pred_method != null) {
+        methodCorrect = pred.pred_method === resultMethod;
+      }
 
-    const pointsEarned =
-      (winnerCorrect === true ? POINTS_WINNER : 0) +
-      (methodCorrect === true ? POINTS_METHOD : 0) +
-      (penaltyCorrect === true ? POINTS_PENALTY_LEGACY : 0);
+      // Componente 3: penal (solo si ambos lados apostaron a pen)
+      penaltyCorrect = null;
+      if (resultMethod === 'pen' && pred.pred_method === 'pen') {
+        penaltyCorrect =
+          pred.pred_penalty_team1 != null &&
+          pred.pred_penalty_team2 != null &&
+          pred.pred_penalty_team1 === penaltyScoreT1 &&
+          pred.pred_penalty_team2 === penaltyScoreT2;
+      }
+
+      pointsEarned =
+        (winnerCorrect === true ? POINTS_WINNER : 0) +
+        (methodCorrect === true ? POINTS_METHOD : 0) +
+        (penaltyCorrect === true ? POINTS_PENALTY_LEGACY : 0);
+
+      // Para v1, scoreCorrect = winner && method && penalty (legacy simplification)
+      scoreCorrect = null;
+      prePenCorrect = null;
+      penCorrect = null;
+    }
 
     if (pointsEarned > 0) correctEmails.add(pred.user_email);
 
@@ -181,7 +204,10 @@ export async function evaluateMatchPredictions(
       points_earned: pointsEarned,
       winner_correct: winnerCorrect,
       method_correct: methodCorrect,
-      penalty_correct: penaltyCorrect,
+      score_correct: scoreCorrect,
+      pre_pen_correct: prePenCorrect,
+      pen_correct: penCorrect,
+      penalty_correct: penaltyCorrect, // null para v2, bool para v1
       scored: true,
     });
   }
