@@ -19,6 +19,12 @@ import {
 // Task 6: predicción 3 pasos (ganador + método + penales).
 // Hasta 150 pts si aciertas los 3.
 
+// v2 (metodología 3 picks con marcador exacto) se activa a partir de esta
+// fecha. Antes de eso los partidos usan el formato legacy (1 solo pick:
+// marcador exacto, 100 pts si aciertas).
+const V2_ACTIVATION_DATE = '2026-06-28';
+const isV2Match = (m) => !!m?.match_date && m.match_date >= V2_ACTIVATION_DATE;
+
 export default function Matches() {
   const { user } = useOutletContext();
   const queryClient = useQueryClient();
@@ -98,11 +104,35 @@ export default function Matches() {
     }));
   };
 
-  // v2: envía pred_winner ('1'/'2') + pred_method + score fields.
-  // Pre-pen SIEMPRE va como pred_score_team1=pred_score_team2=X (validado en UI).
-  // Pen score solo si método=pen.
+  // Branch v1/v2 por fecha del partido:
+  //   match_date >= '2026-06-28' → payload v2 (3 picks: ganador/método/marcador)
+  //   match_date <  '2026-06-28' → payload v1 legacy (sólo marcador: pred_team1/pred_team2)
+  // El backend (evaluateMatchPredictions.js) detecta v2 por presencia de pred_method
+  // y rutea a scoreV2; si no, usa la rama legacy. Score fields v2 se mandan como null
+  // para partidos viejos así no se contaminan las columnas nuevas.
   const handleSubmit = (data) => {
+    const match = matches.find(m => m.id === data.match_id);
     const form = predictionsState[data.match_id] || {};
+    const v2 = isV2Match(match);
+
+    if (!v2) {
+      // ─── LEGACY v1 (pre-28 jun): sólo marcador, 100 pts si aciertas ───
+      const t1 = form.team1 ?? predictionsState[data.match_id]?.team1;
+      const t2 = form.team2 ?? predictionsState[data.match_id]?.team2;
+      if (t1 === '' || t1 === undefined || t2 === '' || t2 === undefined) {
+        toast.error('Completa el marcador (0-0 cuenta como predicción)');
+        return;
+      }
+      submitPrediction.mutate({
+        match_id: data.match_id,
+        user_email: data.user_email,
+        pred_team1: Number(t1),
+        pred_team2: Number(t2),
+      });
+      return;
+    }
+
+    // ─── v2 (>= 28 jun): 3 picks independientes ───
     if (!form.pred_winner) {
       toast.error('Elige quién gana');
       return;
@@ -271,6 +301,7 @@ export default function Matches() {
                   handleSubmit={handleSubmit}
                   liveResult={liveResults[match.id]}
                   live
+                  isV2={isV2Match(match)}
                 />
               ))}
             </div>
@@ -296,6 +327,7 @@ export default function Matches() {
                   submitPrediction={submitPrediction}
                   handlePredict={handlePredict}
                   handleSubmit={handleSubmit}
+                  isV2={isV2Match(match)}
                 />
               ))}
             </div>
@@ -325,6 +357,7 @@ export default function Matches() {
                     handleSubmit={handleSubmit}
                     liveResult={liveResults[match.id]}
                     pendingConfirm={pendingConfirmIds.has(match.id)}
+                    isV2={isV2Match(match)}
                   />
                 ))}
               </AnimatePresence>
@@ -353,6 +386,7 @@ export default function Matches() {
                     submitPrediction={submitPrediction}
                     handlePredict={handlePredict}
                     handleSubmit={handleSubmit}
+                    isV2={isV2Match(match)}
                   />
                 ))}
               </AnimatePresence>

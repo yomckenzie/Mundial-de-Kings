@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, Lock, UserPlus, Send } from 'lucide-react';
+import { Calendar, Clock, Lock, UserPlus, Send, Trophy } from 'lucide-react';
 import TeamFlag from '@/components/TeamFlag';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -104,7 +104,7 @@ export const isMatchOpenForPredictions = (match) => {
 // MatchCard (Task 6: 3-step form + post-eval breakdown)
 // ─────────────────────────────────────────────────────────────────────
 
-export function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult, live, pendingConfirm }) {
+export function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult, live, pendingConfirm, isV2 = true }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   // 'live' (prop) lo fuerza el horario: aunque la BD diga 'open', si el
@@ -295,6 +295,45 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                   className="w-full"
                 >
                   <div className="bg-muted/40 border border-border/50 rounded-xl p-2 sm:p-3 space-y-2">
+                    {/* ─── LEGACY v1 (partidos pre-28 jun) ─── */}
+                    {!isV2 && (
+                      <>
+                        <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+                          <Input
+                            type="number" inputMode="numeric" min="0"
+                            className="w-11 sm:w-12 h-11 sm:h-12 text-center text-base font-bold px-1"
+                            placeholder="0"
+                            value={form.team1 ?? ''}
+                            onChange={(e) => handlePredict(match.id, 'team1', e.target.value)}
+                          />
+                          <span className="text-base sm:text-lg font-bold text-muted-foreground/40">-</span>
+                          <Input
+                            type="number" inputMode="numeric" min="0"
+                            className="w-11 sm:w-12 h-11 sm:h-12 text-center text-base font-bold px-1"
+                            placeholder="0"
+                            value={form.team2 ?? ''}
+                            onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
+                          />
+                        </div>
+                        <Button
+                          onClick={() => handleSubmit({ match_id: match.id, user_email: user.email })}
+                          disabled={submitPrediction.isPending}
+                          size="sm"
+                          className="w-full min-w-0 gap-1.5 h-9 px-2 text-xs sm:text-sm font-semibold"
+                        >
+                          <Send className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{submitPrediction.isPending ? 'Enviando...' : 'Enviar'}</span>
+                        </Button>
+                        <div className="flex items-center justify-center gap-1 text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/20 px-1.5 py-1 rounded-md">
+                          <Trophy className="w-3 h-3 shrink-0" />
+                          <span><strong>100 pts</strong> si aciertas</span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* ─── v2 (>= 28 jun): 3 picks independientes ─── */}
+                    {isV2 && (
+                    <>
                     {/* Paso 1: ¿Quién gana? (v2 — sin Empate) */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
@@ -448,6 +487,8 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                     <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-center">
                       Hasta <strong>200 pts</strong> (250 si va a penales)
                     </div>
+                    </>
+                    )}
                   </div>
                 </m.div>
               ) : (
