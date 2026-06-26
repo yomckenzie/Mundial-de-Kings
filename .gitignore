@@ -66,3 +66,4 @@ k6-results/
 skills-lock.json
 build_output.txt
 *.log
+.superpowers/
