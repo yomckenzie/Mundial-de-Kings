@@ -20,10 +20,21 @@ import {
 // Hasta 150 pts si aciertas los 3.
 
 // v2 (metodología 3 picks con marcador exacto) se activa a partir de esta
-// fecha. Antes de eso los partidos usan el formato legacy (1 solo pick:
-// marcador exacto, 100 pts si aciertas).
+// fecha en PRODUCCIÓN. Antes de eso los partidos usan el formato legacy
+// (1 solo pick: marcador exacto, 100 pts si aciertas).
+//
+// Override en localhost: cuando se corre `npm run dev`, Vite expone
+// `import.meta.env.DEV === true` y forzamos v2 para TODOS los partidos
+// (sin importar la fecha) así podemos testear el flujo nuevo en localhost
+// sin tener que esperar al 28 jun ni riesgo de filtrarse a producción
+// (DEV es false en el build servido, así que producción sigue respetando
+// la fecha).
 const V2_ACTIVATION_DATE = '2026-06-28';
-const isV2Match = (m) => !!m?.match_date && m.match_date >= V2_ACTIVATION_DATE;
+const isLocalhost = import.meta.env.DEV;
+const isV2Match = (m) => {
+  if (isLocalhost) return true; // preview libre en dev
+  return !!m?.match_date && m.match_date >= V2_ACTIVATION_DATE;
+};
 
 export default function Matches() {
   const { user } = useOutletContext();
@@ -87,7 +98,7 @@ export default function Matches() {
         delete next[Object.keys(prev).find(k => prev[k]?.submitted)];
         return next;
       });
-      toast.success('¡Pronóstico enviado! 🏆 hasta 250 pts si todo a penales');
+      toast.success('¡Pronóstico enviado! 🏆');
     },
     onError: (err) => toast.error(err?.message || 'Error al enviar pronóstico'),
   });
