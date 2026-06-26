@@ -36,9 +36,15 @@ granularidad incentiva el análisis profundo del partido sin volver al
 
 - **Método = 90 min**: predecir score final a los 90 min → **+100 pts**
 - **Método = Tiempo extra**: predecir score final a los 120 min (pre-pens) → **+100 pts**
-- **Método = Penales**: el pick 3 se parte en 2 sub-picks obligatorios:
-  - **3a. Marcador pre-penales** (score al final de los 120 min) → **+50 pts**
+- **Método = Penales**: el pick 3 se parte en 2 sub-picks independientes:
+  - **3a. Marcador pre-penales** (score al final de los 120 min, **siempre empate**) → **+50 pts**
   - **3b. Marcador de penales** → **+100 pts**
+
+**Regla pre-pen**: si un partido va a penales, el score al final de los 120 min
+es necesariamente empate (si no, no habría penales). Por lo tanto, en la UI
+solo se pide UN número para pre-pen ("goles por equipo al final del
+partido"), que se aplica a ambos lados. Ejemplos válidos: 0-0, 1-1, 2-2,
+3-3, etc. Ejemplos inválidos: 1-0, 2-1, 3-0.
 
 ### Máximos por partido
 
@@ -127,13 +133,19 @@ function scoreV2(pred, result) {
 
   // Score según método
   let scoreCorrect = null;
-  if (winnerCorrect) {
-    if (method === 'ft' || method === 'aet') {
+  let prePenCorrect = null;
+  let penCorrect = null;
+
+  if (method === 'ft' || method === 'aet') {
+    if (winnerCorrect) {
       scoreCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
-    } else if (method === 'pen') {
-      // Para pen, "pred_score_*" ES el score pre-pen (score al final de ET)
-      const prePenCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
-      const penCorrect = pred.pred_pen_team1 === penaltyT1 && pred.pred_pen_team2 === penaltyT2;
+    }
+  } else if (method === 'pen') {
+    // Pre-pen SIEMPRE es empate (regla del fútbol). Si winner correcto, comparar.
+    // pre_pen_team1 === pre_pen_team2 por validación de input (la UI no permite otra cosa).
+    if (winnerCorrect) {
+      prePenCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
+      penCorrect = pred.pred_pen_team1 === penaltyT1 && pred.pred_pen_team2 === penaltyT2;
       scoreCorrect = prePenCorrect && penCorrect;
     }
   }
@@ -146,26 +158,23 @@ function scoreV2(pred, result) {
   if (method === 'ft' || method === 'aet') {
     if (scoreCorrect) points += 100;
   } else if (method === 'pen') {
-    // Pre-pen y pen son picks separados
-    if (scoreCorrect) {
-      points += 50 + 100; // pre-pen + pen, ambos requirieron winner correcto
-    } else {
-      // Caso raro: winner correcto, método correcto, pero solo 1 de los 2 scores correctos
-      // El usuario no recibe puntos de score (es 0 o 150, no 50 ni 100 sueltos)
-      // Decisión: si gana los 2 scores = 150 pts; si no = 0 pts del pick 3
-      // (más simple y predecible)
-    }
+    if (prePenCorrect) points += 50;
+    if (penCorrect) points += 100;
   }
 
-  return { winnerCorrect, methodCorrect, scoreCorrect, points };
+  return { winnerCorrect, methodCorrect, scoreCorrect, prePenCorrect, penCorrect, points };
 }
 ```
 
-**Nota sobre pen con 1 solo score correcto**: si winner y método son correctos
-pero solo 1 de los 2 scores es correcto, el pick 3 entero es 0 (no se
-fraccionan los 50/100). Esto es consistente con el modelo v1 (penal
-"todo o nada" = 50 pts). Si querés cambiar esto más adelante, queda como
-decisión de UX.
+**Nota sobre pen con 1 solo score correcto**: pre-pen y pen son **2 picks
+independientes**. Si winner y método son correctos:
+- Pre-pen correcto, pen incorrecto → +50 (pre-pen)
+- Pre-pen incorrecto, pen correcto → +100 (pen)
+- Los 2 correctos → +150 (ambos)
+- Los 2 incorrectos → +0 (pick 3 nulo)
+
+Esto es coherente con la regla "el pick 3 depende de winner correcto": si
+winner falla, ni pre-pen ni pen suman, aunque los números coincidan.
 
 ### Campos a persistir por predicción v2
 
@@ -190,7 +199,9 @@ decisión de UX.
 ## UI del usuario — formulario de pronóstico
 
 3 picks siempre visibles en el formulario. Cuando se elige
-método=Penales, el input único de score se transforma en 2 inputs.
+método=Penales, el score único se transforma en 2 inputs:
+- **Pre-pen** = 1 número (goles por equipo, ya que siempre es empate)
+- **Pen** = 2 números (score de penales)
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -207,8 +218,11 @@ método=Penales, el input único de score se transforma en 2 inputs.
 │     [ _ ] - [ _ ]                     → +100 pts    │
 │                                                      │
 │     Si elegiste Penales, se muestran 2 inputs:       │
-│     Pre-penales:  [ _ ] - [ _ ]        → +50 pts    │
-│     Penales:      [ _ ] - [ _ ]        → +100 pts   │
+│     Pre-penales (siempre empate):                    │
+│       Goles por equipo: [ _ ]          → +50 pts    │
+│       (equivale a decir "X-X")                       │
+│     Penales:                                         │
+│       [ _ ] - [ _ ]                   → +100 pts    │
 │                                                      │
 │  Si acertás todo: hasta 200 pts (250 si pen)         │
 │                                                      │
@@ -218,17 +232,25 @@ método=Penales, el input único de score se transforma en 2 inputs.
 
 ### Validaciones frontend
 
-- Ganador: requerido (Local o Visitante, no nulo)
+- Ganador: requerido (Local o Visitante, no nulo, no Empate)
 - Método: requerido
 - Score team1, score team2: requeridos, enteros 0-30
-- Si método=pen: pred_pen_team1, pred_pen_team2 requeridos, enteros 0-20
+- Si método=pen:
+  - pred_score_team1 === pred_score_team2 (validar en onChange; rechazar
+    números distintos visualmente, ej. mostrar "X" en el placeholder)
+  - pred_score_team1 y pred_score_team2: enteros 0-10 (los empates
+    comunes son 0-0, 1-1, 2-2; máximo razonable 5-5)
+  - pred_pen_team1, pred_pen_team2: enteros 0-20
 
 ### UX del cambio dinámico de score
 
 - Estado local `scoreMode = 'single' | 'double'`
-- Cuando `pred_method === 'pen'`: `scoreMode = 'double'` (2 inputs)
-- Caso contrario: `scoreMode = 'single'` (1 input)
+- Cuando `pred_method === 'pen'`: `scoreMode = 'double'` (1 input pre-pen
+  + 2 inputs pen)
+- Caso contrario: `scoreMode = 'single'` (2 inputs para team1, team2)
 - Transición instantánea sin animación (cambio claro)
+- El input pre-pen es UN solo número; se guarda como
+  pred_score_team1=X y pred_score_team2=X.
 
 ## UI del admin — publicar resultado
 
@@ -256,7 +278,7 @@ Después de crear tu cuenta, podrás realizar pronósticos diarios.
   2. Cómo gana (90 min / Tiempo extra / Penales) → +50 pts
   3. Marcador exacto → +100 pts
      · Si elegiste Penales, son 2 marcadores:
-       - Pre-penales → +50 pts
+       - Pre-penales (siempre empate: 0-0, 1-1, 2-2...) → +50 pts
        - Penales → +100 pts
 
 Para que el marcador cuente, tenés que acertar también el ganador.
@@ -313,8 +335,9 @@ describe('v2 — 90 min', () => {
   test('todos los picks correctos → 200 pts');
   test('solo ganador correcto → 50 pts');
   test('solo método correcto → 50 pts');
-  test('score correcto con ganador incorrecto → 50 pts (solo method)');
+  test('score correcto con ganador incorrecto → 50 pts (solo method si correcto)');
   test('ninguno correcto → 0 pts');
+  test('ganador incorrecto + score correcto → 50 pts (winner falla, score no cuenta)');
 });
 
 describe('v2 — tiempo extra', () => {
@@ -323,10 +346,12 @@ describe('v2 — tiempo extra', () => {
 });
 
 describe('v2 — penales', () => {
-  test('todos los picks correctos → 250 pts');
-  test('pre-pen correcto pero pen incorrecto → 100 pts (winner+method, score 0)');
-  test('pen correcto pero pre-pen incorrecto → 100 pts (winner+method, score 0)');
+  test('todos los picks correctos → 250 pts (winner + method + pre-pen + pen)');
+  test('pre-pen correcto pero pen incorrecto → 150 pts (winner+method+pre-pen)');
+  test('pen correcto pero pre-pen incorrecto → 200 pts (winner+method+pen)');
+  test('solo winner+method correctos, ambos scores mal → 100 pts');
   test('ganador incorrecto, scores correctos → 50 pts (solo method si correcto)');
+  test('pre-pen validado como empate (team1=team2 en input)');
 });
 
 describe('v1 legacy', () => {
