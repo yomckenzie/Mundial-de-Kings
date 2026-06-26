@@ -10,6 +10,12 @@ import { toast } from 'sonner';
 
 const SETTING_KEY = 'info_sections';
 
+// Versión del schema de DEFAULT_SECTIONS. Cuando cambia, loadSections()
+// sincroniza el contenido de las secciones default con el código actual.
+// Si un admin personaliza una sección desde el editor de Info, esa
+// personalización se preserva en deployments futuros con la misma versión.
+const DEFAULT_SECTIONS_VERSION = '2026-06-26';
+
 const DEFAULT_SECTIONS = [
   {
     id: 'participate',
@@ -119,20 +125,60 @@ export default function Info() {
     const settings = await api.entities.AppSettings.list();
     const found = settings.find(r => r.key === SETTING_KEY);
     if (found) {
-      const parsed = JSON.parse(found.value);
-      // Auto-agregar secciones nuevas que no existan (migración)
+      let parsed = JSON.parse(found.value);
       const existingIds = new Set(parsed.map(s => s.id));
+      const defaultIds = new Set(DEFAULT_SECTIONS.map(s => s.id));
+
+      // Migración: detectar versión del schema persistido
+      // Formato nuevo: { version, sections: [...] }
+      // Formato viejo: [...] (array directo)
+      let persistedVersion = null;
+      if (!Array.isArray(parsed) && parsed.version && Array.isArray(parsed.sections)) {
+        persistedVersion = parsed.version;
+        parsed = parsed.sections;
+      }
+
+      // 1. Agregar secciones nuevas (migración aditiva)
       const missing = DEFAULT_SECTIONS.filter(s => !existingIds.has(s.id));
-      if (missing.length > 0) {
-        parsed.push(...missing);
+      let changed = missing.length > 0;
+
+      // 2. Si cambió DEFAULT_SECTIONS_VERSION, sobrescribir contenido de secciones default
+      //    (preserva secciones custom agregadas por admin que no están en DEFAULT_SECTIONS)
+      if (persistedVersion !== DEFAULT_SECTIONS_VERSION) {
+        const defaultIdSet = new Set(DEFAULT_SECTIONS.map(s => s.id));
+        parsed = parsed.map(s => {
+          const fresh = DEFAULT_SECTIONS.find(d => d.id === s.id);
+          if (fresh) return { ...fresh };
+          return s;
+        });
+        // Inicializar entradas default que estuvieran vacías en parsed
+        DEFAULT_SECTIONS.forEach(d => {
+          if (!parsed.some(s => s.id === d.id)) parsed.push({ ...d });
+        });
+        changed = true;
+      }
+
+      if (changed) {
         settingIdRef.current = found.id;
-        const value = JSON.stringify(parsed);
+        const value = JSON.stringify({
+          version: DEFAULT_SECTIONS_VERSION,
+          sections: parsed,
+        });
         await api.entities.AppSettings.update(found.id, { value });
       } else {
         settingIdRef.current = found.id;
       }
       setSections(parsed);
     } else {
+      // Primer load: persistir con la versión actual
+      const created = await api.entities.AppSettings.create({
+        key: SETTING_KEY,
+        value: JSON.stringify({
+          version: DEFAULT_SECTIONS_VERSION,
+          sections: DEFAULT_SECTIONS,
+        }),
+      });
+      settingIdRef.current = created.id;
       setSections(DEFAULT_SECTIONS);
     }
     setLoading(false);
