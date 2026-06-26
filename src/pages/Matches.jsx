@@ -81,7 +81,7 @@ export default function Matches() {
         delete next[Object.keys(prev).find(k => prev[k]?.submitted)];
         return next;
       });
-      toast.success('¡Pronóstico enviado! 🏆 hasta 150 pts si aciertas los 3');
+      toast.success('¡Pronóstico enviado! 🏆 hasta 250 pts si todo a penales');
     },
     onError: (err) => toast.error(err?.message || 'Error al enviar pronóstico'),
   });
@@ -98,9 +98,9 @@ export default function Matches() {
     }));
   };
 
-  // Task 6: validación de 3 pasos + envío. El penalty score SOLO se persiste
-  // si el usuario eligió method='pen' (si no, queda null en BD para no
-  // confundir la evaluación posterior).
+  // v2: envía pred_winner ('1'/'2') + pred_method + score fields.
+  // Pre-pen SIEMPRE va como pred_score_team1=pred_score_team2=X (validado en UI).
+  // Pen score solo si método=pen.
   const handleSubmit = (data) => {
     const form = predictionsState[data.match_id] || {};
     if (!form.pred_winner) {
@@ -108,21 +108,35 @@ export default function Matches() {
       return;
     }
     if (!form.pred_method) {
-      toast.error('Elige cómo gana (90 min / tiempo extra / penales)');
+      toast.error('Elige cómo gana');
       return;
     }
-    if (form.pred_method === 'pen'
-      && (form.pred_penalty_team1 === '' || form.pred_penalty_team2 === '')) {
-      toast.error('Si elegiste penales, completa el marcador de penales');
-      return;
+    if (form.pred_method === '90' || form.pred_method === 'et') {
+      if (form.pred_score_team1 === '' || form.pred_score_team2 === '') {
+        toast.error('Completa el marcador exacto');
+        return;
+      }
+    }
+    if (form.pred_method === 'pen') {
+      if (form.pred_score_team1 === '') {
+        toast.error('Completa el marcador pre-penales');
+        return;
+      }
+      if (form.pred_pen_team1 === '' || form.pred_pen_team2 === '') {
+        toast.error('Completa el marcador de penales');
+        return;
+      }
     }
     submitPrediction.mutate({
       match_id: data.match_id,
       user_email: data.user_email,
-      pred_winner: form.pred_winner,
+      // Mapear 'team1'/'team2' → '1'/'2' para compatibilidad con deriveWinner/scoreV2
+      pred_winner: form.pred_winner === 'team1' ? '1' : '2',
       pred_method: form.pred_method,
-      pred_penalty_team1: form.pred_method === 'pen' ? Number(form.pred_penalty_team1) : null,
-      pred_penalty_team2: form.pred_method === 'pen' ? Number(form.pred_penalty_team2) : null,
+      pred_score_team1: form.pred_score_team1 === '' ? null : Number(form.pred_score_team1),
+      pred_score_team2: form.pred_score_team2 === '' ? null : Number(form.pred_score_team2),
+      pred_pen_team1: form.pred_method === 'pen' && form.pred_pen_team1 !== '' ? Number(form.pred_pen_team1) : null,
+      pred_pen_team2: form.pred_method === 'pen' && form.pred_pen_team2 !== '' ? Number(form.pred_pen_team2) : null,
     });
   };
 
