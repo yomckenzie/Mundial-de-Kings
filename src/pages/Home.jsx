@@ -211,7 +211,8 @@ export default function Home() {
               </h2>
               <p className="text-muted-foreground text-sm md:text-base max-w-lg mx-auto leading-relaxed">
                 Participa haciendo tus pronósticos en cada partido del Mundial.
-                Si aciertas el resultado exacto, ganas <strong className="text-secondary">100 puntos</strong>.
+                Cada pronóstico tiene 3 picks independientes: ganador, método y marcador de penales.
+                Puedes ganar hasta <strong className="text-secondary">150 puntos</strong> por partido.
                 Acumula puntos y canjéalos por increíbles premios.
               </p>
               <m.div className="mt-6" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>

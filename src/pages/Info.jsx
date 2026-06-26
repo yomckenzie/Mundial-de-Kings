@@ -34,18 +34,20 @@ Tu información será manejada de forma confidencial y no será visible pública
 
 • Los partidos se habilitarán 24 horas antes de cada encuentro
 • Los pronósticos se cerrarán automáticamente al iniciar el partido
-• Deberás predecir el marcador exacto del juego
-Ejemplo: Panamá 3 - 5 Inglaterra
+• Cada pronóstico se compone de 3 picks independientes, todos obligatorios:
+  1. Quién gana (Local / Empate / Visitante) → +50 pts si aciertas
+  2. Cómo gana (90 minutos / Tiempo extra / Penales) → +50 pts si aciertas
+  3. Marcador de penales (solo si elegiste Penales) → +50 pts si aciertas
 
 Una vez guardes tu pronóstico, este quedará registrado automáticamente en tu perfil.
 
-Por cada marcador acertado acumularás 100 puntos.
+Por cada pick correcto acumularás 50 puntos. Máximo 150 puntos por partido.
 
 Los puntos podrán reflejarse hasta 24 horas después de finalizar el partido y confirmarse el resultado oficial.
 
 En la sección "Mi Perfil" podrás ver:
 • Historial de pronósticos realizados
-• Partidos acertados
+• Desglose por pick (ganador / método / penales)
 • Puntos acumulados
 
 Ten en cuenta que debes cumplir los requisitos mencionados anteriormente, seguirnos y unirte a nuestro canal.
