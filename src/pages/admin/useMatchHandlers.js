@@ -251,6 +251,17 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       return;
     }
 
+    // FIX (bug v2-79): al PUBLICAR resultado final (forceFinish=true), el
+    // método es obligatorio. Sin result_method en la BD el breakdown muestra
+    // 'Cómo gana ❌ 0' aunque el pick sea correcto. La inferencia en
+    // resolveMethodAndPenalties es fallback defensivo, pero la UI ya bloquea
+    // el botón cuando falta, así que este caso solo se da si alguien publica
+    // sin método por API directa — devolvemos un error claro igual.
+    if (forceFinish && resultMethod == null) {
+      toast.error('Elegí cómo terminó el partido (90 min / T. extra / Penales) antes de publicar.');
+      return;
+    }
+
     // Solo actualizar marcador en vivo (sin finalizar) cuando NO se fuerza el
     // final. Con forceFinish (botón "Publicar resultado" de un partido por
     // confirmar) se salta esta rama y se finaliza + evalúa directamente.

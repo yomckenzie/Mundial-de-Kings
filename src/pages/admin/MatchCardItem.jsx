@@ -170,9 +170,20 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                   (() => {
                     const formEntry = results.form[match.id] || {};
                     const resultMethod = formEntry.resultMethod ?? null;
+                    // FIX (bug v2-79): método obligatorio al publicar resultado.
+                    // Sin result_method en la BD, el breakdown muestra 'Cómo gana ❌ 0'
+                    // aunque el pick sea correcto.
+                    const methodMissing = resultMethod == null;
                     const penaltyMissing = resultMethod === 'pen' && (!formEntry.penaltyTeam1 || !formEntry.penaltyTeam2);
                     const teamMissing = !formEntry.team1 || !formEntry.team2;
-                    const disabled = teamMissing || penaltyMissing;
+                    const disabled = teamMissing || methodMissing || penaltyMissing;
+                    const disabledReason = teamMissing
+                      ? 'Completa el marcador de los 90 min'
+                      : methodMissing
+                        ? 'Elegí cómo terminó (90 min / T. extra / Penales)'
+                        : penaltyMissing
+                          ? 'Completa el marcador de penales'
+                          : '';
                     return (
                       <Button
                         size="sm"
@@ -181,7 +192,7 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                         disabled={disabled}
                         className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
                         title={disabled
-                          ? (teamMissing ? 'Completa el marcador de los 90 min' : 'Completa el marcador de penales')
+                          ? disabledReason
                           : 'Finaliza el partido, evalúa pronósticos y notifica a los usuarios'
                         }
                       >
@@ -224,8 +235,11 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                   }
                 }))}
               >
-                <SelectTrigger className="h-8 text-xs w-[140px]">
-                  <SelectValue placeholder="Auto" />
+                <SelectTrigger className="h-8 text-xs w-[160px]">
+                  {/* FIX (bug v2-79): placeholder más explícito para que el
+                      admin entienda que tiene que elegir. Antes decía 'Auto'
+                      y confundía — parecía que el sistema lo resolvía solo. */}
+                  <SelectValue placeholder="Elegí método…" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="90">90 min</SelectItem>
@@ -233,12 +247,12 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                   <SelectItem value="pen">Penales</SelectItem>
                 </SelectContent>
               </Select>
-              {/* Si el form está vacío (null) pero SportScore detectó método,
-                  mostrar el badge "Auto →" para que el admin sepa qué caerá si
-                  no toca nada. */}
+              {/* FIX (bug v2-79): eliminamos el badge 'Auto →' que sugería
+                  que el sistema resolvía el método solo. El método es
+                  obligatorio al publicar — el admin tiene que elegirlo. */}
               {results.form[match.id]?.resultMethod == null && liveResult?.method && (
-                <span className="text-[10px] text-muted-foreground italic">
-                  Auto: {liveResult.method === '90' ? '90 min' : liveResult.method === 'et' ? 'Tiempo extra' : 'Penales'}
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 italic font-medium">
+                  Sugerido: {liveResult.method === '90' ? '90 min' : liveResult.method === 'et' ? 'Tiempo extra' : 'Penales'} (clic para elegir)
                 </span>
               )}
             </div>
