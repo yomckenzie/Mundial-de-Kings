@@ -110,7 +110,7 @@ vi.mock('@/lib/db', () => ({
 }));
 
 // Importar después de los mocks
-const { evaluateMatchPredictions } = await import('./evaluateMatchPredictions.js');
+const { evaluateMatchPredictions, evaluateMatchPredictionsLegacy } = await import('./evaluateMatchPredictions.js');
 
 // Acceso al mock de db para spy
 const { db: mockDb } = await import('@/lib/db');
@@ -127,61 +127,72 @@ beforeEach(() => {
 });
 
 describe('evaluateMatchPredictions', () => {
-  it('pronóstico correcto otorga 100 puntos y marca scored=true', async () => {
-    _predictionRows = [
-      { id: 'p1', user_email: 'jugador@test.com', match_id: 'match-1', pred_team1: 2, pred_team2: 1, scored: false, is_correct: false, points_earned: 0 },
-    ];
+  // Helper: crea una predicción con el nuevo formato
+  function makePred(overrides) {
+    return {
+      id: 'p', user_email: 'u@test.com', match_id: 'm1',
+      pred_team1: 0, pred_team2: 0, // legacy, ignorado
+      scored: false, is_correct: false, points_earned: 0,
+      ...overrides,
+    };
+  }
+
+  it('pronóstico correcto otorga 150 puntos y marca scored=true (3 componentes)', async () => {
+    _predictionRows = [makePred({
+      id: 'p1', user_email: 'jugador@test.com', match_id: 'match-1',
+      pred_winner: '1', pred_method: 'pen',
+      pred_penalty_team1: 2, pred_penalty_team2: 1,
+    })];
     _adminRows = [];
     _userMap = { 'jugador@test.com': { id: 'u1', prediction_points: 0, total_points: 0 } };
 
-    const resultado = await evaluateMatchPredictions('match-1', 2, 1);
+    const resultado = await evaluateMatchPredictions('match-1', 2, 1, 'pen', 2, 1);
 
     expect(resultado.evaluated).toBe(1);
     expect(resultado.correct).toBe(1);
 
-    // Debe haber upserteado la predicción con scored=true y points_earned=100
     const upserteado = _upsertedPredictions.find(p => p.id === 'p1');
     expect(upserteado).toBeDefined();
     expect(upserteado.scored).toBe(true);
-    expect(upserteado.points_earned).toBe(100);
+    expect(upserteado.points_earned).toBe(150);
     expect(upserteado.is_correct).toBe(true);
 
-    // Debe haber recalculado puntos del usuario a 100
     const updates = _updatedUsers['u1'];
     expect(updates).toBeDefined();
-    expect(updates.prediction_points).toBe(100);
-    expect(updates.total_points).toBe(100);
+    expect(updates.prediction_points).toBe(150);
+    expect(updates.total_points).toBe(150);
   });
 
   it('re-ejecutar sobre scored=true no duplica puntos (idempotencia)', async () => {
-    // Predicción ya evaluada previamente con 100 puntos
-    _predictionRows = [
-      { id: 'p2', user_email: 'jugador@test.com', match_id: 'match-1', pred_team1: 2, pred_team2: 1, scored: true, is_correct: true, points_earned: 100 },
-    ];
+    _predictionRows = [makePred({
+      id: 'p2', user_email: 'jugador@test.com', match_id: 'match-1',
+      pred_winner: '1', pred_method: 'pen',
+      pred_penalty_team1: 2, pred_penalty_team2: 1,
+      scored: true, is_correct: true, points_earned: 150,
+    })];
     _adminRows = [];
-    // El usuario ya tiene los 100 puntos del primer ciclo
-    _userMap = { 'jugador@test.com': { id: 'u2', prediction_points: 100, total_points: 100 } };
+    _userMap = { 'jugador@test.com': { id: 'u2', prediction_points: 150, total_points: 150 } };
 
-    const resultado = await evaluateMatchPredictions('match-1', 2, 1);
+    const resultado = await evaluateMatchPredictions('match-1', 2, 1, 'pen', 2, 1);
 
     expect(resultado.evaluated).toBe(1);
     expect(resultado.correct).toBe(1);
 
-    // Debe recalcular a 100 (no duplicar a 200)
     const updates = _updatedUsers['u2'];
     expect(updates).toBeDefined();
-    expect(updates.prediction_points).toBe(100);
-    expect(updates.total_points).toBe(100);
+    expect(updates.prediction_points).toBe(150);
+    expect(updates.total_points).toBe(150);
   });
 
   it('los admins se excluyen del cálculo', async () => {
-    _predictionRows = [
-      { id: 'p3', user_email: 'admin@test.com', match_id: 'match-1', pred_team1: 1, pred_team2: 0, scored: false, is_correct: false, points_earned: 0 },
-    ];
+    _predictionRows = [makePred({
+      id: 'p3', user_email: 'admin@test.com', match_id: 'match-1',
+      pred_winner: '1', pred_method: '90',
+    })];
     _adminRows = [{ email: 'admin@test.com' }];
     _userMap = { 'admin@test.com': { id: 'u3', prediction_points: 0, total_points: 0 } };
 
-    const resultado = await evaluateMatchPredictions('match-1', 1, 0);
+    const resultado = await evaluateMatchPredictions('match-1', 1, 0, '90');
 
     // El admin es excluido → evaluated=0
     expect(resultado.evaluated).toBe(0);
@@ -191,26 +202,182 @@ describe('evaluateMatchPredictions', () => {
   });
 
   it('pronóstico incorrecto no suma puntos', async () => {
-    _predictionRows = [
-      { id: 'p4', user_email: 'jugador2@test.com', match_id: 'match-1', pred_team1: 0, pred_team2: 0, scored: false, is_correct: false, points_earned: 0 },
-    ];
+    // Resultado (3,1) en '90': ganador=1, método=90.
+    // Predicción con ganador='2' (mal) y método='pen' (mal) → 0 pts.
+    _predictionRows = [makePred({
+      id: 'p4', user_email: 'jugador2@test.com', match_id: 'match-1',
+      pred_winner: '2', pred_method: 'pen',
+      pred_penalty_team1: 5, pred_penalty_team2: 4,
+    })];
     _adminRows = [];
     _userMap = { 'jugador2@test.com': { id: 'u4', prediction_points: 0, total_points: 0 } };
 
-    const resultado = await evaluateMatchPredictions('match-1', 3, 1);
+    const resultado = await evaluateMatchPredictions('match-1', 3, 1, '90', null, null);
 
     expect(resultado.evaluated).toBe(1);
     expect(resultado.correct).toBe(0);
 
-    // Predicción marcada scored=true pero con 0 puntos
     const upserteado = _upsertedPredictions.find(p => p.id === 'p4');
     expect(upserteado.scored).toBe(true);
     expect(upserteado.points_earned).toBe(0);
 
-    // Se recalcula el usuario pero con 0 puntos (no acertó)
     const updates = _updatedUsers['u4'];
     expect(updates).toBeDefined();
     expect(updates.prediction_points).toBe(0);
     expect(updates.total_points).toBe(0);
+  });
+
+  // -------- Nuevos tests para 3 componentes (Task 3) --------
+
+  it('3 componentes correctos = 150 pts', async () => {
+    _predictionRows = [makePred({
+      id: 'p150', pred_winner: '1', pred_method: 'pen',
+      pred_penalty_team1: 5, pred_penalty_team2: 4,
+    })];
+    _adminRows = [];
+    _userMap = { 'u@test.com': { id: 'u150', prediction_points: 0, total_points: 0 } };
+
+    const r = await evaluateMatchPredictions('m1', 2, 1, 'pen', 5, 4);
+    expect(r.evaluated).toBe(1);
+    expect(r.correct).toBe(1);
+
+    const up = _upsertedPredictions.find(p => p.id === 'p150');
+    expect(up.points_earned).toBe(150);
+    expect(up.winner_correct).toBe(true);
+    expect(up.method_correct).toBe(true);
+    expect(up.penalty_correct).toBe(true);
+    expect(_updatedUsers.u150.prediction_points).toBe(150);
+  });
+
+  it('solo ganador correcto = 50 pts', async () => {
+    // ganador='1' y método real='90' (acierto) → 50 + 50 = 100 pts;
+    // penalty_correct = null (no aplica). El nombre del test es histórico
+    // (legacy "solo ganador"), pero con el modelo 3-componentes el método
+    // también puntúa cuando coincide.
+    _predictionRows = [makePred({
+      id: 'p50', pred_winner: '1', pred_method: '90',
+    })];
+    _userMap = { 'u@test.com': { id: 'u50', prediction_points: 0, total_points: 0 } };
+
+    await evaluateMatchPredictions('m1', 2, 1, '90');
+    const up = _upsertedPredictions.find(p => p.id === 'p50');
+    expect(up.points_earned).toBe(100); // 50 ganador + 50 método
+    expect(up.winner_correct).toBe(true);
+    expect(up.method_correct).toBe(true);
+    expect(up.penalty_correct).toBe(null); // no aplica
+    expect(_updatedUsers.u50.prediction_points).toBe(100);
+  });
+
+  it('ganador + método correcto pero penal mal = 100 pts', async () => {
+    _predictionRows = [makePred({
+      id: 'p100', pred_winner: '1', pred_method: 'pen',
+      pred_penalty_team1: 5, pred_penalty_team2: 4,
+    })];
+    _userMap = { 'u@test.com': { id: 'u100', prediction_points: 0, total_points: 0 } };
+
+    await evaluateMatchPredictions('m1', 2, 1, 'pen', 5, 3); // real 5-3, pred 5-4
+    const up = _upsertedPredictions.find(p => p.id === 'p100');
+    expect(up.points_earned).toBe(100);
+    expect(up.winner_correct).toBe(true);
+    expect(up.method_correct).toBe(true);
+    expect(up.penalty_correct).toBe(false);
+  });
+
+  it('apostó a penales pero partido NO fue a penales = 50 pts (solo ganador)', async () => {
+    _predictionRows = [makePred({
+      id: 'p_pen_was_90', pred_winner: '1', pred_method: 'pen',
+      pred_penalty_team1: 5, pred_penalty_team2: 4,
+    })];
+    _userMap = { 'u@test.com': { id: 'u_pen90', prediction_points: 0, total_points: 0 } };
+
+    await evaluateMatchPredictions('m1', 2, 1, '90', null, null);
+    const up = _upsertedPredictions.find(p => p.id === 'p_pen_was_90');
+    expect(up.points_earned).toBe(50);
+    expect(up.winner_correct).toBe(true);
+    expect(up.method_correct).toBe(false);
+    expect(up.penalty_correct).toBe(null);
+  });
+
+  it('empate X en 90 min que va a penales: X NO gana aunque haya sido empate 120 min', async () => {
+    _predictionRows = [makePred({
+      id: 'p_tie', pred_winner: 'X', pred_method: 'pen',
+      pred_penalty_team1: 4, pred_penalty_team2: 5,
+    })];
+    _userMap = { 'u@test.com': { id: 'u_tie', prediction_points: 0, total_points: 0 } };
+
+    // Resultado: 0-0 en 90, 0-0 en ET, visitante gana penales 4-5
+    await evaluateMatchPredictions('m1', 0, 0, 'pen', 4, 5);
+    const up = _upsertedPredictions.find(p => p.id === 'p_tie');
+    expect(up.winner_correct).toBe(false); // alguien ganó (visitante)
+    expect(up.method_correct).toBe(true);
+    expect(up.penalty_correct).toBe(true);
+    expect(up.points_earned).toBe(100); // método + penal, NO ganador
+  });
+
+  it('result_method null → method_correct null, suma solo ganador', async () => {
+    _predictionRows = [makePred({
+      id: 'p_no_method', pred_winner: '1', pred_method: '90',
+    })];
+    _userMap = { 'u@test.com': { id: 'u_nm', prediction_points: 0, total_points: 0 } };
+
+    await evaluateMatchPredictions('m1', 2, 1, null); // SportScore caído
+    const up = _upsertedPredictions.find(p => p.id === 'p_no_method');
+    expect(up.points_earned).toBe(50);
+    expect(up.winner_correct).toBe(true);
+    expect(up.method_correct).toBe(null);
+    expect(up.penalty_correct).toBe(null);
+  });
+
+  it('re-ejecución: 150 puntos no se duplican a 300 (idempotencia)', async () => {
+    _predictionRows = [makePred({
+      id: 'p_idem', pred_winner: '1', pred_method: 'pen',
+      pred_penalty_team1: 5, pred_penalty_team2: 4,
+      scored: true, is_correct: true, points_earned: 150,
+    })];
+    _userMap = { 'u@test.com': { id: 'u_idem', prediction_points: 150, total_points: 150 } };
+
+    await evaluateMatchPredictions('m1', 2, 1, 'pen', 5, 4);
+    expect(_updatedUsers.u_idem.prediction_points).toBe(150);
+  });
+
+  it('legacy: predicción sin nuevas columnas (pred_winner=null) = 0 pts', async () => {
+    _predictionRows = [makePred({ id: 'p_legacy' })];
+    _userMap = { 'u@test.com': { id: 'u_leg', prediction_points: 0, total_points: 0 } };
+
+    await evaluateMatchPredictions('m1', 2, 1, '90');
+    const up = _upsertedPredictions.find(p => p.id === 'p_legacy');
+    expect(up.points_earned).toBe(0);
+    expect(up.winner_correct).toBe(null);
+  });
+});
+
+describe('evaluateMatchPredictionsLegacy', () => {
+  // Helper inline (re-uses makePred pattern via spread)
+  function makePredL(overrides) {
+    return {
+      id: 'p', user_email: 'u@test.com', match_id: 'm1',
+      pred_team1: 0, pred_team2: 0,
+      scored: false, is_correct: false, points_earned: 0,
+      ...overrides,
+    };
+  }
+
+  it('alias legacy acepta (matchId, t1, t2) y pasa resultMethod=null', async () => {
+    _predictionRows = [makePredL({
+      id: 'p_legacy_alias', pred_winner: '1', pred_method: '90',
+    })];
+    _userMap = { 'u@test.com': { id: 'u_legacy_alias', prediction_points: 0, total_points: 0 } };
+
+    const r = await evaluateMatchPredictionsLegacy('m1', 2, 1);
+
+    expect(r.evaluated).toBe(1);
+    expect(r.correct).toBe(1);
+
+    const up = _upsertedPredictions.find(p => p.id === 'p_legacy_alias');
+    // Solo ganador cuenta (50 pts) porque resultMethod=null → method/penal son null
+    expect(up.points_earned).toBe(50);
+    expect(up.winner_correct).toBe(true);
+    expect(up.method_correct).toBe(null);
+    expect(up.penalty_correct).toBe(null);
   });
 });

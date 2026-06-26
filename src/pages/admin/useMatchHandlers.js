@@ -1,7 +1,7 @@
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';
+import { evaluateMatchPredictionsLegacy } from '@/api/evaluateMatchPredictions';
 import { isValidTransition } from './matchTransitions';
 import { toast } from 'sonner';
 
@@ -118,7 +118,7 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       // Si ya estaba finished, no re-ejecutar scoring (idempotencia extra).
       const alreadyFinished = match.status === 'finished' && match.result_team1 != null && match.result_team2 != null;
       if (newStatus === 'finished' && !alreadyFinished && match.result_team1 != null && match.result_team2 != null) {
-        const evalResult = await evaluateMatchPredictions(match.id, match.result_team1, match.result_team2);
+        const evalResult = await evaluateMatchPredictionsLegacy(match.id, match.result_team1, match.result_team2);
         if (evalResult.correct > 0) {
           toast.success(`✅ ${evalResult.correct} pronóstico${evalResult.correct > 1 ? 's' : ''} acertado${evalResult.correct > 1 ? 's' : ''}`);
         } else if (evalResult.evaluated > 0) {
@@ -180,7 +180,7 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     await api.entities.Match.update(match.id, {
       result_team1: resultTeam1, result_team2: resultTeam2, status: 'finished',
     });
-    const evalResult = await evaluateMatchPredictions(match.id, resultTeam1, resultTeam2);
+    const evalResult = await evaluateMatchPredictionsLegacy(match.id, resultTeam1, resultTeam2);
     setResults(prev => {
       const { [match.id]: _, ...rest } = prev.form;
       return { ...prev, form: rest };
@@ -220,7 +220,7 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
         const resultTeam1 = Number(r.team1);
         const resultTeam2 = Number(r.team2);
         await api.entities.Match.update(matchId, { result_team1: resultTeam1, result_team2: resultTeam2, status: 'finished' });
-        const evalResult = await evaluateMatchPredictions(matchId, resultTeam1, resultTeam2);
+        const evalResult = await evaluateMatchPredictionsLegacy(matchId, resultTeam1, resultTeam2);
         totalCorrect += evalResult.correct;
         return matchId;
       })
