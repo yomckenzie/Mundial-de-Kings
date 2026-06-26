@@ -299,7 +299,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Quién gana?</p>
-                        <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+50 pts</span>
+                        <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+50 pts</span>
                       </div>
                       <div className="grid grid-cols-2 gap-1">
                         {[
@@ -323,7 +323,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Cómo gana?</p>
-                        <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+50 pts</span>
+                        <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+50 pts</span>
                       </div>
                       <div className="grid grid-cols-3 gap-1">
                         {[
@@ -343,7 +343,8 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                         ))}
                       </div>
                       <p className="text-[9px] text-muted-foreground/80 leading-tight text-center px-1">
-                        90 = 90 min + reposición · ET = 30 min extra · Pen = penales
+                        <span className="block">90 min = 90 + tiempo de adición</span>
+                        <span className="block">T. extra = 30 min · Penales = definición</span>
                       </p>
                     </div>
 
@@ -352,7 +353,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                       <div className="space-y-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final</p>
-                          <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+100 pts</span>
+                          <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+100 pts</span>
                         </div>
                         <div className="flex items-center justify-center gap-1.5">
                           <Input
@@ -378,7 +379,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                         <div className="space-y-1">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pre-penales (siempre empate)</p>
-                            <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+50 pts</span>
+                            <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+50 pts</span>
                           </div>
                           <div className="flex items-center justify-center gap-1.5">
                             <Input
@@ -409,7 +410,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                         <div className="space-y-1">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Penales</p>
-                            <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+100 pts</span>
+                            <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+100 pts</span>
                           </div>
                           <div className="flex items-center justify-center gap-1.5">
                             <Input
