@@ -265,15 +265,32 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     // Solo actualizar marcador en vivo (sin finalizar) cuando NO se fuerza el
     // final. Con forceFinish (botón "Publicar resultado" de un partido por
     // confirmar) se salta esta rama y se finaliza + evalúa directamente.
+    //
+    // FIX (bug v2-79): si el admin ya eligió método/penales en el dropdown
+    // mientras el partido está 'live', también los persistimos. Sin esto, el
+    // método quedaba null en la BD hasta que el partido pasara a 'finished'
+    // y se volviera a publicar — y muchos admins ni volvían a tocar el
+    // botón, dejando el partido finalizado con result_method=null (breakdown
+    // mostraba "Cómo gana ❌ 0" aunque el pick fuera correcto).
     if (match.status === 'live' && !forceFinish) {
-      await api.entities.Match.update(match.id, { result_team1: resultTeam1, result_team2: resultTeam2 });
+      const update = { result_team1: resultTeam1, result_team2: resultTeam2 };
+      if (resultMethod != null) update.result_method = resultMethod;
+      if (resultMethod === 'pen') {
+        update.penalty_score_team1 = penaltyT1;
+        update.penalty_score_team2 = penaltyT2;
+      }
+      await api.entities.Match.update(match.id, update);
       setResults(prev => {
         const { [match.id]: _, ...rest } = prev.form;
         return { ...prev, form: rest };
       });
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       queryClient.invalidateQueries({ queryKey: ['matches'] });
-      toast.success('Marcador actualizado (en vivo).');
+      toast.success(
+        resultMethod != null
+          ? `Marcador y método (${resultMethod === '90' ? '90 min' : resultMethod === 'et' ? 'T. extra' : 'Penales'}) actualizados (en vivo).`
+          : 'Marcador actualizado (en vivo).'
+      );
       return;
     }
 
