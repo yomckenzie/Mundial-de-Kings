@@ -364,18 +364,32 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                     {form.pred_method === 'pen' && (
                       <div className="space-y-2">
                         <div className="space-y-1">
-                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final (empate)</p>
-                          <Input
-                            type="number" min="0" inputMode="numeric"
-                            className="w-full h-9 text-center text-sm font-bold"
-                            placeholder="0"
-                            value={form.pred_score_team1}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              handlePredict(match.id, 'pred_score_team1', v);
-                              handlePredict(match.id, 'pred_score_team2', v);
-                            }}
-                          />
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final (siempre empate)</p>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Input
+                              type="number" min="0" inputMode="numeric"
+                              className="w-11 h-9 text-center text-sm font-bold"
+                              placeholder="0"
+                              value={form.pred_score_team1}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                handlePredict(match.id, 'pred_score_team1', v);
+                                handlePredict(match.id, 'pred_score_team2', v);
+                              }}
+                            />
+                            <span className="text-sm font-bold">-</span>
+                            <Input
+                              type="number" min="0" inputMode="numeric"
+                              className="w-11 h-9 text-center text-sm font-bold"
+                              placeholder="0"
+                              value={form.pred_score_team2}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                handlePredict(match.id, 'pred_score_team1', v);
+                                handlePredict(match.id, 'pred_score_team2', v);
+                              }}
+                            />
+                          </div>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Penales</p>
