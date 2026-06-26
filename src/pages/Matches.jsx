@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useOutletContext, Link } from 'react-router-dom';
+import { useOutletContext, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { m, AnimatePresence } from 'framer-motion';
 import { api } from '@/api/client';
@@ -23,17 +23,31 @@ export default function Matches() {
   const { user } = useOutletContext();
   const queryClient = useQueryClient();
   const [predictionsState, setPredictionsState] = useState({});
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Test mode: partidos con is_test=true son LOCAL ONLY (no se muestran al
+  // público en producción). Para que vos los veas en localhost, abrí
+  // /matches?include_test=1. El admin los ve siempre sin importar la URL.
+  const includeTestFromUrl = searchParams.get('include_test') === '1';
+  const showTestMatches = user?.role === 'admin' || includeTestFromUrl;
 
   const { data: rawMatches = [], isLoading } = useQuery({
     queryKey: ['matches'],
     queryFn: () => api.entities.Match.list(),
   });
 
-  const matches = React.useMemo(() =>
-    rawMatches.toSorted((a, b) => {
+  // Filtrar partidos de prueba para usuarios no-admin en producción.
+  // Admin: ve todo (matches.is_test === true o false). Público: solo !is_test,
+  // a menos que la URL tenga ?include_test=1 (override local de testing).
+  const matches = React.useMemo(() => {
+    const filtered = showTestMatches
+      ? rawMatches
+      : rawMatches.filter(m => !m.is_test);
+    return filtered.toSorted((a, b) => {
       if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
       return (a.match_time || '').localeCompare(b.match_time || '');
-    }), [rawMatches]);
+    });
+  }, [rawMatches, showTestMatches]);
 
   const { data: userPredictions = [] } = useQuery({
     queryKey: ['my-predictions', user?.email],
@@ -176,6 +190,27 @@ export default function Matches() {
       <div className="flex items-center justify-between">
         <h1 className="font-display text-4xl tracking-wide">PARTIDOS</h1>
       </div>
+
+      {/* Banner de modo test: solo visible si el usuario está viendo partidos
+          de prueba (es admin O pidió ?include_test=1). Avisa que estos partidos
+          NO son visibles al público. */}
+      {showTestMatches && (rawMatches || []).some(m => m.is_test) && (
+        <div className="rounded-md border border-amber-400/60 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs flex items-center justify-between gap-3">
+          <span className="text-amber-700 dark:text-amber-300">
+            🧪 <strong>Modo prueba activo</strong>: estás viendo partidos de testing
+            que NO se muestran al público en producción.
+          </span>
+          {!includeTestFromUrl && user?.role === 'admin' && (
+            <button
+              type="button"
+              onClick={() => setSearchParams({})}
+              className="text-amber-700 dark:text-amber-300 underline hover:no-underline shrink-0"
+            >
+              Ocultar partidos de prueba
+            </button>
+          )}
+        </div>
+      )}
 
       {matches.length === 0 && (
         <m.div
