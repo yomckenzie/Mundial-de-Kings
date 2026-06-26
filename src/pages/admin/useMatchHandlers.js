@@ -11,6 +11,14 @@ import { toast } from 'sonner';
 // el proveedor live (sportscore). El form tiene prioridad porque es lo que
 // el admin acaba de tipear; el proveedor live solo sirve para partidos ya
 // finalizados donde el admin no tocó nada.
+//
+// FIX (bug v2-79): si después de los dos pasos method sigue null, inferir
+// desde el marcador del partido para que el breakdown de puntos muestre el
+// método correcto. Reglas:
+//   - Si t1 !== t2 → '90' (ganador claro al final, no hay ET ni penales)
+//   - Si t1 === t2 → 'pen' (asumimos penales si está empatado al final)
+// Esto evita el bug donde el admin publica sin seleccionar método y los
+// pronósticos muestran "Cómo gana ❌ 0" cuando en realidad sí acertaron.
 async function resolveMethodAndPenalties(match, formEntry) {
   // 1) Si el form ya trae method/penalties, usarlos.
   if (formEntry) {
@@ -33,6 +41,23 @@ async function resolveMethodAndPenalties(match, formEntry) {
     }
   } catch {
     // Silencioso: si el proveedor falla, devolvemos nulls.
+  }
+  // 3) Fallback final: inferir método desde el marcador del form o del match.
+  // Si t1 !== t2 → '90' (ganador claro). Si t1 === t2 → 'pen' (asumimos
+  // penales). Esto evita guardar result_method=null en la BD cuando el admin
+  // olvidó seleccionar el método en el dropdown.
+  const t1 = formEntry?.team1 != null && formEntry.team1 !== ''
+    ? Number(formEntry.team1)
+    : match?.result_team1;
+  const t2 = formEntry?.team2 != null && formEntry.team2 !== ''
+    ? Number(formEntry.team2)
+    : match?.result_team2;
+  if (t1 != null && t2 != null && !Number.isNaN(t1) && !Number.isNaN(t2)) {
+    return {
+      method: t1 !== t2 ? '90' : 'pen',
+      penaltyT1: null,
+      penaltyT2: null,
+    };
   }
   return { method: null, penaltyT1: null, penaltyT2: null };
 }

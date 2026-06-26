@@ -314,18 +314,35 @@ describe('evaluateMatchPredictions', () => {
     expect(up.points_earned).toBe(100); // método + penal, NO ganador
   });
 
-  it('result_method null → method_correct null, suma solo ganador', async () => {
+  it('result_method null sin penales → method_correct null, suma solo ganador', async () => {
     _predictionRows = [makePred({
       id: 'p_no_method', pred_winner: '1', pred_method: '90',
     })];
     _userMap = { 'u@test.com': { id: 'u_nm', prediction_points: 0, total_points: 0 } };
 
-    await evaluateMatchPredictions('m1', 2, 1, null); // SportScore caído
+    await evaluateMatchPredictions('m1', 2, 1, null); // SportScore caído, sin penales
     const up = _upsertedPredictions.find(p => p.id === 'p_no_method');
     expect(up.points_earned).toBe(50);
     expect(up.winner_correct).toBe(true);
     expect(up.method_correct).toBe(null);
     expect(up.penalty_correct).toBe(null);
+  });
+
+  it('FIX (bug v2-79): result_method null PERO hay penales → infiere pen y evalúa correcto', async () => {
+    // Caso típico: admin publicó sin seleccionar método (quedó null en BD),
+    // pero sí completó marcador de penales. Sin este fix, el breakdown
+    // mostraba "Cómo gana ❌ 0" cuando en realidad el pick de pen era correcto.
+    _predictionRows = [makePred({
+      id: 'p_pen_infer', pred_winner: '1', pred_method: 'pen',
+      pred_score_team1: 7, pred_score_team2: 6, // total pen = 2-2 (90+ET) + 5-4 (pens) = 7-6
+    })];
+    _userMap = { 'u@test.com': { id: 'u_pi', prediction_points: 0, total_points: 0 } };
+
+    await evaluateMatchPredictions('m1', 2, 2, null, 5, 4);
+    const up = _upsertedPredictions.find(p => p.id === 'p_pen_infer');
+    expect(up.method_correct).toBe(true); // infirió 'pen'
+    expect(up.score_correct).toBe(true);
+    expect(up.points_earned).toBe(250); // 50 winner + 50 method + 150 score
   });
 
   it('re-ejecución: 150 puntos no se duplican a 300 (idempotencia)', async () => {

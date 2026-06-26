@@ -119,6 +119,14 @@ export async function evaluateMatchPredictions(
     return { evaluated: 0, correct: 0 };
   }
 
+  // FIX (bug v2-79): si el admin publicó el resultado sin seleccionar método
+  // (result_method quedó null en la BD), pero hay marcador de penales, inferir
+  // que fue a penales. Sin esto, el breakdown muestra "Cómo gana ❌ 0" porque
+  // pred_method='90' !== method=null.
+  if (resultMethod == null && penaltyScoreT1 != null && penaltyScoreT2 != null) {
+    resultMethod = 'pen';
+  }
+
   // 1. Cargar pronósticos del partido
   const { data: allPredictions, error: predErr } = await supabase
     .from('predictions')
