@@ -14,10 +14,10 @@
 
 - **Predicciones v1 legacy** (con `pred_penalty_team1/2` y `pred_winner='1'/'X'/'2'`) **siguen funcionando con reglas v1**: 50 winner + 50 method + 50 penalty = 150 max.
 - **Predicciones v2 nuevas** usan las reglas v2 de este spec.
-- **Pred_winner en v2** solo acepta `'team1' | 'team2'` (no Empate). Validar en UI y backend.
+- **Pred_winner en v2** solo acepta `'1' | '2'` (no Empate). Validar en UI y backend.
 - **Pre-pen siempre empate**: en v2 con método=pen, `pred_score_team1 === pred_score_team2` por validación de UI. UI muestra UN solo input "goles por equipo" que se guarda como pred_score_team1=X y pred_score_team2=X.
-- **Score requiere winner correcto**: si pred_winner es incorrecto, ni `score_correct` ni `pre_pen_correct` ni `pen_correct` suman aunque los números sean iguales.
-- **Convention values**: `pred_method` usa `'90' | 'et' | 'pen'` (no SportScore codes 'ft'/'aet'); `pred_winner` v2 usa `'team1' | 'team2'` (no '1'/'2'); `match.result_method` se queda con los valores que ya usa la BD.
+- **Score requiere winner correcto Y method correcto**: si pred_winner o pred_method no coinciden con el real, ni `score_correct` ni `pre_pen_correct` ni `pen_correct` suman aunque los números sean iguales (los score fields del pred se interpretan distinto según el método predicho: 90min vs pre-pen).
+- **Convention values**: `pred_method` usa `'90' | 'et' | 'pen'` (no SportScore codes 'ft'/'aet'); `pred_winner` v2 usa `'1' | '2'` (mapping team1→'1', team2→'2'). NO usar `'X'` (sin Empate en v2); `match.result_method` se queda con los valores que ya usa la BD.
 - **NO usar Co-Authored-By trailer en commits** (instrucción global).
 - **Tests required**: cada cambio en lógica de scoring debe ir con su test antes (TDD).
 - **Commits frecuentes**: 1 commit por task mínimo.

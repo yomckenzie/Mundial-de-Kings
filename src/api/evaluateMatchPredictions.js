@@ -57,9 +57,12 @@ export function scoreV2(pred, result) {
   let prePenCorrect = null;
   let penCorrect = null;
 
-  if (winnerCorrect && (method === '90' || method === 'et')) {
+  // Score pick — REQUIERE winner correcto Y method correcto.
+  // Si el método predicho no coincide con el real, los score fields del pred
+  // no son comparables (distinta interpretación: 90min vs pre-pen).
+  if (winnerCorrect && methodCorrect && (method === '90' || method === 'et')) {
     scoreCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
-  } else if (winnerCorrect && method === 'pen') {
+  } else if (winnerCorrect && methodCorrect && method === 'pen') {
     prePenCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
     penCorrect = pred.pred_pen_team1 === penaltyT1 && pred.pred_pen_team2 === penaltyT2;
     scoreCorrect = prePenCorrect && penCorrect;

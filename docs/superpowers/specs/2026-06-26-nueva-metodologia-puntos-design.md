@@ -93,8 +93,9 @@ ALTER TABLE public.predictions
 
 ### Tabla `predictions` — columna `pred_winner` cambia semántica
 
-- **Antes (v1)**: podía ser `'team1' | 'draw' | 'team2'`
-- **Ahora (v2)**: solo `'team1' | 'team2'`
+- **Antes (v1)**: podía ser `'1' | 'X' | '2'` (Local / Empate / Visitante)
+- **Ahora (v2)**: solo `'1' | '2'` (Local / Visitante — sin Empate, decisión del usuario).
+- El mapeo a nombres legibles (`team1`/`team2`) es solo de presentación en UI.
 - Predicciones v1 con `pred_winner='draw'` siguen funcionando con reglas v1
   en `evaluateMatchPredictions` (legacy).
 

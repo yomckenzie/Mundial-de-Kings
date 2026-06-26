@@ -459,20 +459,23 @@ describe('scoreV2 — 90 min', () => {
 describe('scoreV2 — tiempo extra', () => {
   it('todos los picks correctos → 200 pts', () => {
     const r = scoreV2(
-      { pred_winner: TEAM1, pred_method: 'et', pred_score_team1: 2, pred_score_team2: 2 },
-      { team1: 2, team2: 2, method: 'et' },
+      { pred_winner: TEAM1, pred_method: 'et', pred_score_team1: 3, pred_score_team2: 2 },
+      { team1: 3, team2: 2, method: 'et' },
     );
-    expect(r.points).toBe(200);
+    expect(r.winnerCorrect).toBe(true);
+    expect(r.methodCorrect).toBe(true);
     expect(r.scoreCorrect).toBe(true);
+    expect(r.points).toBe(200);
   });
 
   it('método correcto pero ganador incorrecto → 50 pts', () => {
     const r = scoreV2(
-      { pred_winner: TEAM2, pred_method: 'et', pred_score_team1: 2, pred_score_team2: 2 },
-      { team1: 2, team2: 2, method: 'et' },
+      { pred_winner: TEAM2, pred_method: 'et', pred_score_team1: 3, pred_score_team2: 2 },
+      { team1: 3, team2: 2, method: 'et' },
     );
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
+    expect(r.scoreCorrect).toBe(null);
     expect(r.points).toBe(50);
   });
 });
