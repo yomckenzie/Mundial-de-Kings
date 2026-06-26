@@ -192,4 +192,16 @@ main [style*="opacity:0"] {
     mask-composite: exclude;
     pointer-events: none;
   }
+
+  /* Esconde flechas nativas de <input type="number"> en todos los navegadores.
+     Mantiene el input funcional pero sin el UI spinner que tapa el contenido. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }

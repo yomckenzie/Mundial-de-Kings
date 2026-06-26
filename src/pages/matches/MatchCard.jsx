@@ -58,7 +58,7 @@ export const getMatchDate = (match_date, match_time) => {
 export const EMPTY_FORM = {
   pred_winner: null,
   pred_method: null,
-  pred_score_team1: '',
+  pred_score_team1: '',  // placeholder visual "0" en el input; '' si el usuario no escribió
   pred_score_team2: '',
   pred_pen_team1: '',
   pred_pen_team2: '',

@@ -113,17 +113,17 @@ export default function Matches() {
     }
     if (form.pred_method === '90' || form.pred_method === 'et') {
       if (form.pred_score_team1 === '' || form.pred_score_team2 === '') {
-        toast.error('Completa el marcador exacto');
+        toast.error('Completa el marcador exacto (0-0 cuenta como predicción)');
         return;
       }
     }
     if (form.pred_method === 'pen') {
       if (form.pred_score_team1 === '') {
-        toast.error('Completa el marcador pre-penales');
+        toast.error('Completa el marcador pre-penales (0-0 cuenta como predicción)');
         return;
       }
       if (form.pred_pen_team1 === '' || form.pred_pen_team2 === '') {
-        toast.error('Completa el marcador de penales');
+        toast.error('Completa el marcador de penales (0-0 cuenta como predicción)');
         return;
       }
     }
