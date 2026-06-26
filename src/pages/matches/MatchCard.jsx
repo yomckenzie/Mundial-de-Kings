@@ -48,16 +48,20 @@ export const getMatchDate = (match_date, match_time) => {
   return new Date(year, month - 1, day, hour, minute, 0);
 };
 
-// Forma vacía del formulario 3-pasos (Task 6). Cada pick es independiente:
-//   - pred_winner: '1' | 'X' | '2' | null
+// Forma vacía del formulario 3-pasos (Task 5 v2). Cada pick es independiente:
+//   - pred_winner: 'team1' | 'team2' | null (sin Empate en v2)
 //   - pred_method: '90' | 'et' | 'pen' | null
-//   - pred_penalty_team1 / pred_penalty_team2: string vacío hasta que
-//     el usuario escribe (se convierten a Number en el submit)
+//   - pred_score_team1 / pred_score_team2: marcador final (req. si method es '90' o 'et')
+//   - pred_pen_team1 / pred_pen_team2: penales (req. si method es 'pen')
+//   Los scores arrancan como '' (string vacío) porque son inputs controlados
+//   de tipo number; handleSubmit (Task 6) los convierte a Number al enviar.
 export const EMPTY_FORM = {
   pred_winner: null,
   pred_method: null,
-  pred_penalty_team1: '',
-  pred_penalty_team2: '',
+  pred_score_team1: '',
+  pred_score_team2: '',
+  pred_pen_team1: '',
+  pred_pen_team2: '',
 };
 
 const VISIBILITY_WINDOW_HOURS = 48; // Partido aparece en la lista
@@ -128,15 +132,18 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
         Number(existing.pred_team2) === Number(match.result_team2)
   );
 
-  // Task 6: forma actual del formulario (3 picks). Si hay una predicción
-  // guardada, la usamos como fuente para pre-rellenar (re-abrir el partido).
-  // Para predicciones legacy (sin nuevos campos), partimos de EMPTY_FORM.
+  // Task 5 v2: forma actual del formulario (3 picks independientes). Si hay
+  // una predicción guardada, la usamos como fuente para pre-rellenar
+  // (re-abrir el partido). Para predicciones legacy (sin nuevos campos),
+  // partimos de EMPTY_FORM.
   const savedForm = existing && (existing.pred_winner != null || existing.pred_method != null)
     ? {
         pred_winner: existing.pred_winner ?? null,
         pred_method: existing.pred_method ?? null,
-        pred_penalty_team1: existing.pred_penalty_team1 != null ? String(existing.pred_penalty_team1) : '',
-        pred_penalty_team2: existing.pred_penalty_team2 != null ? String(existing.pred_penalty_team2) : '',
+        pred_score_team1: existing.pred_score_team1 != null ? String(existing.pred_score_team1) : '',
+        pred_score_team2: existing.pred_score_team2 != null ? String(existing.pred_score_team2) : '',
+        pred_pen_team1: existing.pred_pen_team1 != null ? String(existing.pred_pen_team1) : '',
+        pred_pen_team2: existing.pred_pen_team2 != null ? String(existing.pred_pen_team2) : '',
       }
     : EMPTY_FORM;
   const form = { ...savedForm, ...(predictions[match.id] || {}) };
@@ -288,14 +295,13 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                   className="w-full"
                 >
                   <div className="bg-muted/40 border border-border/50 rounded-xl p-2 sm:p-3 space-y-2">
-                    {/* Paso 1: ¿Quién gana? */}
+                    {/* Paso 1: ¿Quién gana? (v2 — sin Empate) */}
                     <div className="space-y-1">
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Quién gana?</p>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-2 gap-1">
                         {[
-                          { value: '1', label: match.team1.slice(0, 8) },
-                          { value: 'X', label: 'Empate' },
-                          { value: '2', label: match.team2.slice(0, 8) },
+                          { value: 'team1', label: match.team1.slice(0, 10) },
+                          { value: 'team2', label: match.team2.slice(0, 10) },
                         ].map(opt => (
                           <Button
                             key={opt.value}
@@ -332,26 +338,64 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                       </div>
                     </div>
 
-                    {/* Paso 3: Marcador de penales (solo si eligió pen) */}
-                    {form.pred_method === 'pen' && (
+                    {/* Paso 3: Marcador final (v2 — dinámico según método) */}
+                    {(form.pred_method === '90' || form.pred_method === 'et') && (
                       <div className="space-y-1">
-                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador de penales</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final</p>
                         <div className="flex items-center justify-center gap-1.5">
                           <Input
                             type="number" min="0" inputMode="numeric"
                             className="w-11 h-9 text-center text-sm font-bold"
                             placeholder="0"
-                            value={form.pred_penalty_team1}
-                            onChange={(e) => handlePredict(match.id, 'pred_penalty_team1', e.target.value)}
+                            value={form.pred_score_team1}
+                            onChange={(e) => handlePredict(match.id, 'pred_score_team1', e.target.value)}
                           />
                           <span className="text-sm font-bold">-</span>
                           <Input
                             type="number" min="0" inputMode="numeric"
                             className="w-11 h-9 text-center text-sm font-bold"
                             placeholder="0"
-                            value={form.pred_penalty_team2}
-                            onChange={(e) => handlePredict(match.id, 'pred_penalty_team2', e.target.value)}
+                            value={form.pred_score_team2}
+                            onChange={(e) => handlePredict(match.id, 'pred_score_team2', e.target.value)}
                           />
+                        </div>
+                      </div>
+                    )}
+                    {form.pred_method === 'pen' && (
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final (empate)</p>
+                          <Input
+                            type="number" min="0" inputMode="numeric"
+                            className="w-full h-9 text-center text-sm font-bold"
+                            placeholder="0"
+                            value={form.pred_score_team1}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              handlePredict(match.id, 'pred_score_team1', v);
+                              handlePredict(match.id, 'pred_score_team2', v);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Penales</p>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Input
+                              type="number" min="0" inputMode="numeric"
+                              className="w-11 h-9 text-center text-sm font-bold"
+                              placeholder="0"
+                              value={form.pred_pen_team1}
+                              onChange={(e) => handlePredict(match.id, 'pred_pen_team1', e.target.value)}
+                            />
+                            <span className="text-sm font-bold">-</span>
+                            <Input
+                              type="number" min="0" inputMode="numeric"
+                              className="w-11 h-9 text-center text-sm font-bold"
+                              placeholder="0"
+                              value={form.pred_pen_team2}
+                              onChange={(e) => handlePredict(match.id, 'pred_pen_team2', e.target.value)}
+                            />
+                          </div>
                         </div>
                       </div>
                     )}
@@ -368,7 +412,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                     </Button>
 
                     <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-center">
-                      Hasta <strong>150 pts</strong> si aciertas los 3
+                      Hasta <strong>200 pts</strong> (250 si va a penales)
                     </div>
                   </div>
                 </m.div>
