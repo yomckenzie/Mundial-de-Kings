@@ -297,7 +297,10 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                   <div className="bg-muted/40 border border-border/50 rounded-xl p-2 sm:p-3 space-y-2">
                     {/* Paso 1: ¿Quién gana? (v2 — sin Empate) */}
                     <div className="space-y-1">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Quién gana?</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Quién gana?</p>
+                        <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+50 pts</span>
+                      </div>
                       <div className="grid grid-cols-2 gap-1">
                         {[
                           { value: 'team1', label: match.team1.slice(0, 10) },
@@ -318,7 +321,10 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
 
                     {/* Paso 2: ¿Cómo gana? */}
                     <div className="space-y-1">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Cómo gana?</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Cómo gana?</p>
+                        <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+50 pts</span>
+                      </div>
                       <div className="grid grid-cols-3 gap-1">
                         {[
                           { value: '90', label: '90 min' },
@@ -336,12 +342,18 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                           </Button>
                         ))}
                       </div>
+                      <p className="text-[9px] text-muted-foreground/80 leading-tight text-center px-1">
+                        90 = 90 min + reposición · ET = 30 min extra · Pen = penales
+                      </p>
                     </div>
 
                     {/* Paso 3: Marcador final (v2 — dinámico según método) */}
                     {(form.pred_method === '90' || form.pred_method === 'et') && (
                       <div className="space-y-1">
-                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final</p>
+                          <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+100 pts</span>
+                        </div>
                         <div className="flex items-center justify-center gap-1.5">
                           <Input
                             type="number" min="0" inputMode="numeric"
@@ -364,7 +376,10 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                     {form.pred_method === 'pen' && (
                       <div className="space-y-2">
                         <div className="space-y-1">
-                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marcador final (siempre empate)</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pre-penales (siempre empate)</p>
+                            <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+50 pts</span>
+                          </div>
                           <div className="flex items-center justify-center gap-1.5">
                             <Input
                               type="number" min="0" inputMode="numeric"
@@ -392,7 +407,10 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Penales</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Penales</p>
+                            <span className="text-[10px] font-bold text-secondary tabular-nums shrink-0">+100 pts</span>
+                          </div>
                           <div className="flex items-center justify-center gap-1.5">
                             <Input
                               type="number" min="0" inputMode="numeric"
