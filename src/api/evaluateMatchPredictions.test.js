@@ -381,3 +381,13 @@ describe('evaluateMatchPredictionsLegacy', () => {
     expect(up.penalty_correct).toBe(null);
   });
 });
+
+describe('isV2Prediction', () => {
+  it('detecta v2 por presencia de pred_score_team1', async () => {
+    const { isV2Prediction } = await import('./evaluateMatchPredictions.js');
+    expect(isV2Prediction({ pred_score_team1: 1, pred_score_team2: 0 })).toBe(true);
+    expect(isV2Prediction({ pred_score_team1: null, pred_score_team2: null })).toBe(false);
+    expect(isV2Prediction({ pred_penalty_team1: 4, pred_penalty_team2: 3 })).toBe(false);
+    expect(isV2Prediction({})).toBe(false);
+  });
+});

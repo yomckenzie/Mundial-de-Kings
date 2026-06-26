@@ -3,7 +3,10 @@ import { db } from '../lib/db';
 
 const POINTS_WINNER = 50;
 const POINTS_METHOD = 50;
-const POINTS_PENALTY = 50;
+const POINTS_SCORE_FT_AET = 100;  // método 90 min o tiempo extra
+const POINTS_PRE_PEN = 50;        // marcador pre-penales (solo si método=pen)
+const POINTS_PEN = 100;           // marcador de penales (solo si método=pen)
+const POINTS_PENALTY_LEGACY = 50; // v1: penal score
 
 // Deriva el ganador del resultado final.
 // Si hay penales y el resultado agregado (90+ET) es empate,
@@ -18,6 +21,63 @@ function deriveWinner(team1, team2, resultMethod = null, penaltyT1 = null, penal
     if (penaltyT1 < penaltyT2) return '2';
   }
   return 'X';
+}
+
+/**
+ * Detecta si una predicción usa el modelo v2 (con marcador exacto).
+ * v2: tiene `pred_score_team1` o `pred_score_team2` populated.
+ * v1 legacy: solo `pred_penalty_team1`/`pred_penalty_team2` populated.
+ */
+export function isV2Prediction(pred) {
+  return pred.pred_score_team1 != null || pred.pred_score_team2 != null;
+}
+
+/**
+ * Score puro v2 — recibe pred y resultado, devuelve flags + puntos.
+ * Esta función es pura (sin I/O) para que sea fácil testearla directamente.
+ *
+ * @param {object} pred - { pred_winner, pred_method, pred_score_team1/2, pred_pen_team1/2 }
+ * @param {object} result - { team1, team2, method, penaltyT1, penaltyT2 }
+ *   method: '90' | 'et' | 'pen'
+ *   penaltyT1/T2: solo si method='pen'
+ * @returns {{ winnerCorrect, methodCorrect, scoreCorrect, prePenCorrect, penCorrect, points }}
+ */
+export function scoreV2(pred, result) {
+  const { team1, team2, method, penaltyT1, penaltyT2 } = result;
+
+  // Ganador real (post-pens si los hubo). Reutiliza deriveWinner existente.
+  const actualWinner = deriveWinner(team1, team2, method, penaltyT1, penaltyT2);
+  const winnerCorrect = actualWinner != null && pred.pred_winner === actualWinner;
+
+  // Método correcto
+  const methodCorrect = pred.pred_method === method;
+
+  // Score pick — REQUIERE winner correcto
+  let scoreCorrect = null;
+  let prePenCorrect = null;
+  let penCorrect = null;
+
+  if (winnerCorrect && (method === '90' || method === 'et')) {
+    scoreCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
+  } else if (winnerCorrect && method === 'pen') {
+    prePenCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
+    penCorrect = pred.pred_pen_team1 === penaltyT1 && pred.pred_pen_team2 === penaltyT2;
+    scoreCorrect = prePenCorrect && penCorrect;
+  }
+
+  // Puntos
+  let points = 0;
+  if (winnerCorrect) points += POINTS_WINNER;
+  if (methodCorrect) points += POINTS_METHOD;
+
+  if (method === '90' || method === 'et') {
+    if (scoreCorrect) points += POINTS_SCORE_FT_AET;
+  } else if (method === 'pen') {
+    if (prePenCorrect) points += POINTS_PRE_PEN;
+    if (penCorrect) points += POINTS_PEN;
+  }
+
+  return { winnerCorrect, methodCorrect, scoreCorrect, prePenCorrect, penCorrect, points };
 }
 
 /**
@@ -108,7 +168,7 @@ export async function evaluateMatchPredictions(
     const pointsEarned =
       (winnerCorrect === true ? POINTS_WINNER : 0) +
       (methodCorrect === true ? POINTS_METHOD : 0) +
-      (penaltyCorrect === true ? POINTS_PENALTY : 0);
+      (penaltyCorrect === true ? POINTS_PENALTY_LEGACY : 0);
 
     if (pointsEarned > 0) correctEmails.add(pred.user_email);
 
