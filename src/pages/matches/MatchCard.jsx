@@ -381,10 +381,11 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                           </Button>
                         ))}
                       </div>
-                      <p className="text-[9px] text-muted-foreground/80 leading-tight text-center px-1">
-                        <span className="block">90 min = 90 + tiempo de adición</span>
-                        <span className="block">T. extra = 30 min · Penales = definición</span>
-                      </p>
+                      <div className="text-[9px] text-muted-foreground/80 leading-tight text-center px-1 space-y-0.5">
+                        <div>90 min = 90 + tiempo de adición</div>
+                        <div>T. extra = 30 min</div>
+                        <div>Penales = definición desde los 11m</div>
+                      </div>
                     </div>
 
                     {/* Paso 3: Marcador final (v2 — dinámico según método) */}
