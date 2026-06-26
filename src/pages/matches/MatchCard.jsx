@@ -414,62 +414,31 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                       </div>
                     )}
                     {form.pred_method === 'pen' && (
-                      <div className="space-y-2">
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pre-penales</p>
-                            <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+50 pts</span>
-                          </div>
-                          <div className="flex items-center justify-center gap-1.5">
-                            <Input
-                              type="number" min="0" inputMode="numeric"
-                              className="w-11 h-9 text-center text-sm font-bold"
-                              placeholder="0"
-                              value={form.pred_score_team1}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                handlePredict(match.id, 'pred_score_team1', v);
-                                handlePredict(match.id, 'pred_score_team2', v);
-                              }}
-                            />
-                            <span className="text-sm font-bold">-</span>
-                            <Input
-                              type="number" min="0" inputMode="numeric"
-                              className="w-11 h-9 text-center text-sm font-bold"
-                              placeholder="0"
-                              value={form.pred_score_team2}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                handlePredict(match.id, 'pred_score_team1', v);
-                                handlePredict(match.id, 'pred_score_team2', v);
-                              }}
-                            />
-                          </div>
-                          <p className="text-[9px] text-muted-foreground/70 leading-tight text-center">siempre empate</p>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Penales</p>
+                          <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+100 pts</span>
                         </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Penales</p>
-                            <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+100 pts</span>
-                          </div>
-                          <div className="flex items-center justify-center gap-1.5">
-                            <Input
-                              type="number" min="0" inputMode="numeric"
-                              className="w-11 h-9 text-center text-sm font-bold"
-                              placeholder="0"
-                              value={form.pred_pen_team1}
-                              onChange={(e) => handlePredict(match.id, 'pred_pen_team1', e.target.value)}
-                            />
-                            <span className="text-sm font-bold">-</span>
-                            <Input
-                              type="number" min="0" inputMode="numeric"
-                              className="w-11 h-9 text-center text-sm font-bold"
-                              placeholder="0"
-                              value={form.pred_pen_team2}
-                              onChange={(e) => handlePredict(match.id, 'pred_pen_team2', e.target.value)}
-                            />
-                          </div>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Input
+                            type="number" min="0" inputMode="numeric"
+                            className="w-11 h-9 text-center text-sm font-bold"
+                            placeholder="0"
+                            value={form.pred_score_team1}
+                            onChange={(e) => handlePredict(match.id, 'pred_score_team1', e.target.value)}
+                          />
+                          <span className="text-sm font-bold">-</span>
+                          <Input
+                            type="number" min="0" inputMode="numeric"
+                            className="w-11 h-9 text-center text-sm font-bold"
+                            placeholder="0"
+                            value={form.pred_score_team2}
+                            onChange={(e) => handlePredict(match.id, 'pred_score_team2', e.target.value)}
+                          />
                         </div>
+                        <p className="text-[9px] text-muted-foreground/70 leading-tight text-center px-1">
+                          Suma los goles de <strong>90 min + ET + penales</strong>
+                        </p>
                       </div>
                     )}
 

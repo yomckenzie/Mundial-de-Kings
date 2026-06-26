@@ -159,12 +159,8 @@ export default function Matches() {
       }
     }
     if (form.pred_method === 'pen') {
-      if (form.pred_score_team1 === '') {
-        toast.error('Completa el marcador pre-penales (0-0 cuenta como predicción)');
-        return;
-      }
-      if (form.pred_pen_team1 === '' || form.pred_pen_team2 === '') {
-        toast.error('Completa el marcador de penales (0-0 cuenta como predicción)');
+      if (form.pred_score_team1 === '' || form.pred_score_team2 === '') {
+        toast.error('Completa el marcador final (suma 90 + ET + penales, 0-0 cuenta como predicción)');
         return;
       }
     }
@@ -176,8 +172,9 @@ export default function Matches() {
       pred_method: form.pred_method,
       pred_score_team1: form.pred_score_team1 === '' ? null : Number(form.pred_score_team1),
       pred_score_team2: form.pred_score_team2 === '' ? null : Number(form.pred_score_team2),
-      pred_pen_team1: form.pred_method === 'pen' && form.pred_pen_team1 !== '' ? Number(form.pred_pen_team1) : null,
-      pred_pen_team2: form.pred_method === 'pen' && form.pred_pen_team2 !== '' ? Number(form.pred_pen_team2) : null,
+      // v2 pen simplificado: un solo input suma 90+ET+pens. pred_pen_* quedan null.
+      pred_pen_team1: null,
+      pred_pen_team2: null,
     });
   };
 

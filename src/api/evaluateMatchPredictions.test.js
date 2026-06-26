@@ -480,62 +480,62 @@ describe('scoreV2 — tiempo extra', () => {
   });
 });
 
-describe('scoreV2 — penales', () => {
+describe('scoreV2 — penales (v2 simplificado: pred_score = total 90+ET+pens)', () => {
+  // Real: Argentina 1-1 (90+ET), 4-3 en penales. Total = 5-4.
   const basePred = {
     pred_winner: TEAM1, pred_method: 'pen',
-    pred_score_team1: 1, pred_score_team2: 1,  // pre-pen: 1-1
-    pred_pen_team1: 4, pred_pen_team2: 3,
+    pred_score_team1: 5, pred_score_team2: 4,  // user predice el TOTAL de goles
   };
 
   it('todos los picks correctos → 250 pts', () => {
     const r = scoreV2(basePred, { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 });
     expect(r.winnerCorrect).toBe(true);
     expect(r.methodCorrect).toBe(true);
-    expect(r.prePenCorrect).toBe(true);
-    expect(r.penCorrect).toBe(true);
+    expect(r.scoreCorrect).toBe(true);
+    expect(r.prePenCorrect).toBe(null); // obsoleto en v2 simplificado
+    expect(r.penCorrect).toBe(null);    // obsoleto en v2 simplificado
     expect(r.points).toBe(250);
   });
 
-  it('pre-pen correcto, pen incorrecto → 150 pts', () => {
-    const r = scoreV2(basePred, { team1: 1, team2: 1, method: 'pen', penaltyT1: 5, penaltyT2: 4 });
-    expect(r.winnerCorrect).toBe(true);
-    expect(r.methodCorrect).toBe(true);
-    expect(r.prePenCorrect).toBe(true);
-    expect(r.penCorrect).toBe(false);
-    expect(r.scoreCorrect).toBe(false);
-    expect(r.points).toBe(150); // 50 + 50 + 50 (pre-pen)
-  });
-
-  it('pen correcto, pre-pen incorrecto → 200 pts', () => {
+  it('total incorrecto → 100 pts (solo winner + method)', () => {
     const r = scoreV2(
-      { ...basePred, pred_score_team1: 2, pred_score_team2: 2 }, // user picked 2-2
+      { ...basePred, pred_score_team1: 6, pred_score_team2: 5 }, // predice mal el total
       { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 },
     );
     expect(r.winnerCorrect).toBe(true);
     expect(r.methodCorrect).toBe(true);
-    expect(r.prePenCorrect).toBe(false);
-    expect(r.penCorrect).toBe(true);
     expect(r.scoreCorrect).toBe(false);
-    expect(r.points).toBe(200); // 50 + 50 + 100 (pen)
-  });
-
-  it('solo winner + method correctos, scores mal → 100 pts', () => {
-    const r = scoreV2(
-      { ...basePred, pred_score_team1: 0, pred_score_team2: 0, pred_pen_team1: 5, pred_pen_team2: 5 },
-      { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 },
-    );
     expect(r.points).toBe(100); // 50 winner + 50 method
   });
 
-  it('ganador incorrecto, scores correctos → 50 pts (solo method si correcto)', () => {
+  it('total correcto pero winner mal → 50 pts (solo method)', () => {
     const r = scoreV2(
       { ...basePred, pred_winner: TEAM2 },
       { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 },
     );
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
-    expect(r.prePenCorrect).toBe(null); // null porque winnerCorrect=false
-    expect(r.penCorrect).toBe(null);
+    expect(r.scoreCorrect).toBe(null); // null porque winnerCorrect=false
     expect(r.points).toBe(50);
+  });
+
+  it('total correcto, método incorrecto → 0 pts (score null)', () => {
+    const r = scoreV2(
+      { ...basePred, pred_method: '90' },
+      { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 },
+    );
+    expect(r.winnerCorrect).toBe(true);
+    expect(r.methodCorrect).toBe(false);
+    expect(r.scoreCorrect).toBe(null);
+    expect(r.points).toBe(50); // solo winner
+  });
+
+  it('calcula el total como result + penalty (ej: 2-2 + 5-4 pens = 7-6)', () => {
+    const r = scoreV2(
+      { ...basePred, pred_score_team1: 7, pred_score_team2: 6 },
+      { team1: 2, team2: 2, method: 'pen', penaltyT1: 5, penaltyT2: 4 },
+    );
+    expect(r.scoreCorrect).toBe(true);
+    expect(r.points).toBe(250);
   });
 });

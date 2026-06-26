@@ -59,13 +59,18 @@ export function scoreV2(pred, result) {
 
   // Score pick — REQUIERE winner correcto Y method correcto.
   // Si el método predicho no coincide con el real, los score fields del pred
-  // no son comparables (distinta interpretación: 90min vs pre-pen).
+  // no son comparables (distinta interpretación: 90min vs pen).
+  // v2 pen simplificado: pred_score_team1/2 = TOTAL de goles (90+ET+pens)
+  // comparado contra (result_team1 + penaltyT1) y (result_team2 + penaltyT2).
   if (winnerCorrect && methodCorrect && (method === '90' || method === 'et')) {
     scoreCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
   } else if (winnerCorrect && methodCorrect && method === 'pen') {
-    prePenCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
-    penCorrect = pred.pred_pen_team1 === penaltyT1 && pred.pred_pen_team2 === penaltyT2;
-    scoreCorrect = prePenCorrect && penCorrect;
+    const totalT1 = team1 + (penaltyT1 ?? 0);
+    const totalT2 = team2 + (penaltyT2 ?? 0);
+    scoreCorrect = pred.pred_score_team1 === totalT1 && pred.pred_score_team2 === totalT2;
+    // prePenCorrect/penCorrect quedan null — ya no se predicen por separado.
+    prePenCorrect = null;
+    penCorrect = null;
   }
 
   // Puntos
@@ -76,8 +81,8 @@ export function scoreV2(pred, result) {
   if (method === '90' || method === 'et') {
     if (scoreCorrect) points += POINTS_SCORE_FT_AET;
   } else if (method === 'pen') {
-    if (prePenCorrect) points += POINTS_PRE_PEN;
-    if (penCorrect) points += POINTS_PEN;
+    // Pen: un solo score pick vale 150 pts (50 pre-pen + 100 pen consolidados).
+    if (scoreCorrect) points += POINTS_PRE_PEN + POINTS_PEN;
   }
 
   return { winnerCorrect, methodCorrect, scoreCorrect, prePenCorrect, penCorrect, points };

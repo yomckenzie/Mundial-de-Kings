@@ -38,8 +38,9 @@ function PtsRow({ label, correct, pts, notApplicable }) {
 }
 
 // Renderiza el resumen del pronóstico en formato legible.
-// Soporta v2 (pred_winner='1'/'2' + pred_method + pred_score_team1/2 +
-// pred_pen_team1/2) y legacy (pred_team1/pred_team2 sin pred_winner/method).
+// Soporta v2 (pred_winner='1'/'2' + pred_method + pred_score_team1/2 como
+// marcador total) y legacy (pred_team1/pred_team2 sin pred_winner/method).
+// v2 pen simplificado: pred_score_team1/2 = TOTAL de goles (90+ET+pens).
 function renderPickSummary(existing, match) {
   // Legacy: sin pred_winner ni pred_method, pero con marcador viejo cargado.
   const isLegacy = existing.pred_winner == null
@@ -55,20 +56,13 @@ function renderPickSummary(existing, match) {
     : existing.pred_method === 'et' ? 'T. extra'
     : existing.pred_method === 'pen' ? 'Penales'
     : '?';
-  // Marcador pre-pen siempre es empate (regla del fútbol).
-  const scoreStr = existing.pred_method === 'pen'
-    && existing.pred_score_team1 != null
-    && existing.pred_score_team2 != null
-      ? ` · pre-pen ${existing.pred_score_team1}-${existing.pred_score_team2}`
-      : existing.pred_score_team1 != null && existing.pred_score_team2 != null
-        ? ` · ${existing.pred_score_team1}-${existing.pred_score_team2}`
-        : '';
-  const penStr = existing.pred_method === 'pen'
-    && existing.pred_pen_team1 != null
-    && existing.pred_pen_team2 != null
-      ? ` · pen ${existing.pred_pen_team1}-${existing.pred_pen_team2}`
-      : '';
-  return `${winnerLabel} · ${methodLabel}${scoreStr}${penStr}`;
+  // v2 pen: pred_score_team1/2 = TOTAL (90+ET+pens). Mostramos como "X-Y total".
+  const scoreStr = existing.pred_score_team1 != null && existing.pred_score_team2 != null
+    ? existing.pred_method === 'pen'
+      ? ` · ${existing.pred_score_team1}-${existing.pred_score_team2} total`
+      : ` · ${existing.pred_score_team1}-${existing.pred_score_team2}`
+    : '';
+  return `${winnerLabel} · ${methodLabel}${scoreStr}`;
 }
 
 // Renderiza el panel de "predicción guardada" reutilizable.
@@ -141,26 +135,17 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
   // Predicción nueva (v2 — 3 picks: ganador + método + marcador).
   // Render de filas según el método REAL del partido:
   //   - Siempre: Ganador (50), Cómo gana (50).
-  //   - Si result_method === 'pen': Pre-penales (50) + Penales (100).
-  //     NO se muestra "Marcador" (sería redundante: score_correct ya engloba
-  //     pre-pen + pen cuando ambos son correctos).
   //   - Si result_method ∈ {'90', 'et'}: Marcador (100).
-  //   - "Marcador" / "Pre-penales" / "Penales" muestran "⏸ no aplica" si
-  //     result_method es null (sin resultado) o si el usuario apostó a un
-  //     método distinto (scoreCorrect queda en null en backend, pero acá
-  //     lo cubrimos también visualmente).
+  //   - Si result_method === 'pen': Marcador final (150 — suma 90+ET+pens
+  //     en una sola predicción, score_correct ya cubre ambos lados).
+  //   - Las filas muestran "⏸ no aplica" si result_method es null o si el
+  //     usuario apostó a un método distinto al real (scoreCorrect queda null
+  //     en backend, pero acá lo cubrimos también visualmente).
   const resultMethod = match.result_method;
   const showScoreRow = resultMethod === '90' || resultMethod === 'et';
-  const showPrePenRow = resultMethod === 'pen';
-  const showPenRow = resultMethod === 'pen';
+  const showPenScoreRow = resultMethod === 'pen';
   const scoreNotApplicable = resultMethod == null
     || existing.pred_method !== resultMethod;
-  const prePenNotApplicable = resultMethod == null
-    || resultMethod !== 'pen'
-    || existing.pred_method !== 'pen';
-  const penNotApplicable = resultMethod == null
-    || resultMethod !== 'pen'
-    || existing.pred_method !== 'pen';
   return (
     <div className="space-y-1.5">
       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico</p>
@@ -170,14 +155,11 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
       <div className="space-y-1">
         <PtsRow label="Ganador" correct={existing.winner_correct} pts={50} />
         <PtsRow label="Cómo gana" correct={existing.method_correct} pts={50} />
-        {showPrePenRow && (
-          <PtsRow label="Pre-penales" correct={existing.pre_pen_correct} pts={50} notApplicable={prePenNotApplicable} />
-        )}
-        {showPenRow && (
-          <PtsRow label="Penales" correct={existing.pen_correct} pts={100} notApplicable={penNotApplicable} />
-        )}
         {showScoreRow && (
           <PtsRow label="Marcador" correct={existing.score_correct} pts={100} notApplicable={scoreNotApplicable} />
+        )}
+        {showPenScoreRow && (
+          <PtsRow label="Marcador final (90+ET+pens)" correct={existing.score_correct} pts={150} notApplicable={scoreNotApplicable} />
         )}
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <span className="text-xs font-bold">Total</span>
