@@ -164,21 +164,25 @@ export default function Info() {
           version: DEFAULT_SECTIONS_VERSION,
           sections: parsed,
         });
-        await api.entities.AppSettings.update(found.id, { value });
+        // UPDATE puede fallar por RLS (si la policy es restrictiva) o por
+        // schema (ej. columna updated_at faltante). En ese caso seguimos
+        // mostrando el contenido en memoria — el admin puede reintentar
+        // manualmente desde el editor de Info.
+        try {
+          await api.entities.AppSettings.update(found.id, { value });
+        } catch (e) {
+          console.warn('[Info] auto-sync de DEFAULT_SECTIONS falló:', e?.message || e);
+        }
       } else {
         settingIdRef.current = found.id;
       }
       setSections(parsed);
     } else {
-      // Primer load: persistir con la versión actual
-      const created = await api.entities.AppSettings.create({
-        key: SETTING_KEY,
-        value: JSON.stringify({
-          version: DEFAULT_SECTIONS_VERSION,
-          sections: DEFAULT_SECTIONS,
-        }),
-      });
-      settingIdRef.current = created.id;
+      // Sin fila persistida: mostrar DEFAULT_SECTIONS en memoria.
+      // NO intentar INSERT — RLS suele bloquear anon, y el copy default
+      // es bueno aunque no esté persistido. La próxima vez que el admin
+      // edite una sección desde el editor de Info, ese flujo creará la fila.
+      settingIdRef.current = null;
       setSections(DEFAULT_SECTIONS);
     }
     setLoading(false);
