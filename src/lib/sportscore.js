@@ -72,14 +72,23 @@ function isHalftime(statusText) {
   return s === 'ht' || s.includes('half-time') || s.includes('halftime') || s.includes('half time') || s === 'descanso';
 }
 
-// Normaliza el status crudo de SportScore a uno de los nuestros.
-function normalizeState(raw) {
+// Normaliza el status crudo de SportScore a {state, method}.
+// state: 'live' | 'finished' | 'upcoming'
+// method: '90' | 'et' | 'pen' | null  (null si no se puede inferir)
+export function normalizeState(raw) {
   const s = (raw || '').toLowerCase();
-  if (s === 'finished' || s === 'ft' || s === 'aet' || s === 'pen') return 'finished';
-  if (s === 'upcoming' || s === 'notstarted' || s === 'not_started' || s === 'scheduled') return 'upcoming';
+  if (s === 'ft') return { state: 'finished', method: '90' };
+  if (s === 'aet') return { state: 'finished', method: 'et' };
+  if (s === 'pen') return { state: 'finished', method: 'pen' };
+  if (s === 'finished') return { state: 'finished', method: null };
+  if (s === 'upcoming' || s === 'notstarted' || s === 'not_started' || s === 'scheduled')
+    return { state: 'upcoming', method: null };
   // Cualquier otra cosa (inprogress, live, 1h, 2h, ht, inplay) = en vivo
-  return 'live';
+  return { state: 'live', method: null };
 }
+
+// Para tests
+export const _normalizeStateForTest = normalizeState;
 
 // Extrae el slug del match desde su URL: "/football/match/paraguay-vs-usa/" → "paraguay-vs-usa"
 function matchSlugFromUrl(url) {
@@ -123,11 +132,13 @@ function buildLiveLabel(state, statusText, liveMinute) {
  * @param {{team1:string, team2:string}} match  equipos en español
  * @returns {Promise<null | {
  *   state: 'live'|'finished'|'upcoming',
+ *   method: '90'|'et'|'pen'|null,  // cómo terminó (null si no se sabe)
+ *   penaltyScore: {team1:number, team2:number}|null,  // marcador de penales (si aplica)
  *   label: string,                  // "67'", "HT", "Finalizado"...
  *   minute: string|null,            // minuto real crudo ("86", "90+"); solo en vivo
  *   team1Score: number, team2Score: number,  // orientados a NUESTRO team1/team2
  *   raw: object
- * }>}  null si no se puede emparejar (placeholder, equipo no encontrado, sin fixture)
+ * }>}
  */
 export async function getLiveResultForMatch(match) {
   const k1 = toEnglishKey(match.team1);
@@ -156,7 +167,7 @@ export async function getLiveResultForMatch(match) {
         const isMatch = (home === k1 && away === k2) || (home === k2 && away === k1);
         if (!isMatch) continue;
 
-        const state = normalizeState(fx.status);
+        const { state, method } = normalizeState(fx.status);
         const homeIsTeam1 = home === k1;
         const team1Score = homeIsTeam1 ? fx.home_score : fx.away_score;
         const team2Score = homeIsTeam1 ? fx.away_score : fx.home_score;
@@ -172,8 +183,24 @@ export async function getLiveResultForMatch(match) {
           if (m != null && String(m).trim() !== '') minute = String(m).trim();
         }
 
+        // Intentar leer marcador de penales del detalle (si está disponible y es 'pen')
+        let penaltyScore = null;
+        if (state === 'finished' && method === 'pen') {
+          const detail = await _getMatchDetail(matchSlugFromUrl(fx.url));
+          const hs = detail?.home_score_pen ?? detail?.home_pen_score;
+          const aws = detail?.away_score_pen ?? detail?.away_pen_score;
+          if (hs != null && aws != null) {
+            penaltyScore = {
+              team1: homeIsTeam1 ? hs : aws,
+              team2: homeIsTeam1 ? aws : hs,
+            };
+          }
+        }
+
         return {
           state,
+          method,
+          penaltyScore,
           label: buildLiveLabel(state, fx.status_text, minute),
           minute,
           team1Score: team1Score ?? null,
