@@ -14,7 +14,7 @@ const SETTING_KEY = 'info_sections';
 // sincroniza el contenido de las secciones default con el código actual.
 // Si un admin personaliza una sección desde el editor de Info, esa
 // personalización se preserva en deployments futuros con la misma versión.
-const DEFAULT_SECTIONS_VERSION = '2026-06-26';
+const DEFAULT_SECTIONS_VERSION = '2026-06-27';
 
 const DEFAULT_SECTIONS = [
   {
@@ -41,19 +41,19 @@ Tu información será manejada de forma confidencial y no será visible pública
 • Los partidos se habilitarán 24 horas antes de cada encuentro
 • Los pronósticos se cerrarán automáticamente al iniciar el partido
 • Cada pronóstico se compone de 3 picks independientes, todos obligatorios:
-  1. Quién gana (Local / Empate / Visitante) → +50 pts si aciertas
-  2. Cómo gana (90 minutos / Tiempo extra / Penales) → +50 pts si aciertas
-  3. Marcador de penales (solo si elegiste Penales) → +50 pts si aciertas
+  1. Quién gana (Local / Visitante) → +50 pts si aciertas
+  2. Marcador exacto del partido → +150 pts si aciertas (o +75 si aciertas el resultado con un gol de diferencia)
+  3. Si el partido se define por penales, elegís un segundo marcador: pre-penales (siempre 0-0) → +50 pts si aciertas que terminó en penales
 
 Una vez guardes tu pronóstico, este quedará registrado automáticamente en tu perfil.
 
-Por cada pick correcto acumularás 50 puntos. Máximo 150 puntos por partido.
+Por cada pick correcto acumularás puntos. Máximo 250 puntos por partido (50 del ganador + 150 del marcador + 50 del pre-penales en caso de penales). Si no elegís penales, el máximo es 200 puntos (50 del ganador + 150 del marcador).
 
 Los puntos podrán reflejarse hasta 24 horas después de finalizar el partido y confirmarse el resultado oficial.
 
 En la sección "Mi Perfil" podrás ver:
 • Historial de pronósticos realizados
-• Desglose por pick (ganador / método / penales)
+• Desglose por pick (ganador / marcador / pre-penales)
 • Puntos acumulados
 
 Ten en cuenta que debes cumplir los requisitos mencionados anteriormente, seguirnos y unirte a nuestro canal.
