@@ -57,12 +57,14 @@ export default function Prizes() {
     acc[r.prize_id] = (acc[r.prize_id] || 0) + 1;
     return acc;
   }, {});
-  const prizes = dbPrizes
-    .filter(p => p.status === 'active')
-    .map(p => ({
+  const prizes = [];
+  for (const p of dbPrizes) {
+    if (p.status !== 'active') continue;
+    prizes.push({
       ...p,
       units_available: Math.max(0, (Number(p.units_available) || 0) - (reservedByPrize[p.id] || 0)),
-    }));
+    });
+  }
 
   const totalPoints = user?.total_points || 0;
   // Descontar puntos ya gastados en canjes activos (pending, approved, delivered)

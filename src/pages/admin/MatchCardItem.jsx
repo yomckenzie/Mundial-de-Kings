@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Clock, Save, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { formatTime12h } from '@/lib/utils';
@@ -53,7 +54,7 @@ function canPublishResult(match) {
 // reconstruirlo en cada render desperdicia trabajo y rompe memoización de hijos.
 const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
 
-export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, pendingConfirm }) {
+export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, pendingConfirm, liveResult }) {
   const handleReopen = () => {
     if (window.confirm('¿Reabrir este partido? Se limpiará el resultado y los usuarios podrán volver a pronosticar.')) {
       handleStatusChange(match, 'open');
@@ -90,11 +91,24 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
         <div className="text-center font-bold text-lg">
           {match.team1} vs {match.team2}
           {(match.status === 'finished' || match.status === 'live') && (
-            <p className={`text-xl mt-1 ${match.status === 'live' ? 'text-red-600' : 'text-primary'}`}>
-              {match.result_team1 ?? '-'}
-              {' - '}
-              {match.result_team2 ?? '-'}
-            </p>
+            <>
+              <p className={`text-xl mt-1 ${match.status === 'live' ? 'text-red-600' : 'text-primary'}`}>
+                {match.result_team1 ?? '-'}
+                {' - '}
+                {match.result_team2 ?? '-'}
+              </p>
+              {/* Cómo terminó — solo cuando hay resultado publicado Y método */}
+              {match.result_method && (
+                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">
+                  {match.result_method === '90' && '90 min'}
+                  {match.result_method === 'et' && 'T. extra'}
+                  {match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null && (
+                    <>Pen ({match.penalty_score_team1}-{match.penalty_score_team2})</>
+                  )}
+                  {match.result_method === 'pen' && (match.penalty_score_team1 == null || match.penalty_score_team2 == null) && 'Penales'}
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -166,16 +180,40 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                   }))}
                 />
                 {pendingConfirm ? (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    onClick={() => handlePublishResult(match, true)}
-                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                    title="Finaliza el partido, evalúa pronósticos y notifica a los usuarios"
-                  >
-                    <Save className="w-3 h-3 mr-1" />
-                    Publicar resultado
-                  </Button>
+                  (() => {
+                    const formEntry = results.form[match.id] || {};
+                    const resultMethod = formEntry.resultMethod ?? null;
+                    // FIX (bug v2-79): método obligatorio al publicar resultado.
+                    // Sin result_method en la BD, el breakdown muestra 'Cómo gana ❌ 0'
+                    // aunque el pick sea correcto.
+                    const methodMissing = resultMethod == null;
+                    const penaltyMissing = resultMethod === 'pen' && (!formEntry.penaltyTeam1 || !formEntry.penaltyTeam2);
+                    const teamMissing = !formEntry.team1 || !formEntry.team2;
+                    const disabled = teamMissing || methodMissing || penaltyMissing;
+                    const disabledReason = teamMissing
+                      ? 'Completa el marcador de los 90 min'
+                      : methodMissing
+                        ? 'Elegí cómo terminó (90 min / T. extra / Penales)'
+                        : penaltyMissing
+                          ? 'Completa el marcador de penales'
+                          : '';
+                    return (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handlePublishResult(match, true)}
+                        disabled={disabled}
+                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        title={disabled
+                          ? disabledReason
+                          : 'Finaliza el partido, evalúa pronósticos y notifica a los usuarios'
+                        }
+                      >
+                        <Save className="w-3 h-3 mr-1" />
+                        Publicar resultado
+                      </Button>
+                    );
+                  })()
                 ) : (
                   <Button size="sm" variant={match.status === 'finished' ? 'outline' : 'secondary'} onClick={() => handlePublishResult(match)} className="h-8 text-xs">
                     <Save className="w-3 h-3 mr-1" />
@@ -192,6 +230,90 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
               </span>
             )}
           </div>
+
+          {/* Selector de método + marcador de penales (Task 5 · betting-3ways).
+              Solo visible cuando el partido puede recibir resultado (live/finished
+              o por confirmar). Se renderiza en su propia línea debajo del marcador
+              para no romper el layout horizontal de la fila. */}
+          {(canPublishResult(match) || pendingConfirm) && (
+            <div className="flex flex-wrap items-center gap-2 w-full mt-1">
+              <Label className="text-xs text-muted-foreground">Cómo terminó:</Label>
+              <Select
+                value={results.form[match.id]?.resultMethod ?? ''}
+                onValueChange={(v) => setResults(prev => ({
+                  ...prev,
+                  form: {
+                    ...prev.form,
+                    [match.id]: { ...prev.form[match.id], resultMethod: v || null },
+                  }
+                }))}
+              >
+                <SelectTrigger className="h-8 text-xs w-[160px]">
+                  {/* FIX (bug v2-79): placeholder más explícito para que el
+                      admin entienda que tiene que elegir. Antes decía 'Auto'
+                      y confundía — parecía que el sistema lo resolvía solo. */}
+                  <SelectValue placeholder="Elegí método…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="90">90 min</SelectItem>
+                  <SelectItem value="et">Tiempo extra</SelectItem>
+                  <SelectItem value="pen">Penales</SelectItem>
+                </SelectContent>
+              </Select>
+              {/* FIX (bug v2-79): eliminamos el badge 'Auto →' que sugería
+                  que el sistema resolvía el método solo. El método es
+                  obligatorio al publicar — el admin tiene que elegirlo. */}
+              {results.form[match.id]?.resultMethod == null && liveResult?.method && (
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 italic font-medium">
+                  Sugerido: {liveResult.method === '90' ? '90 min' : liveResult.method === 'et' ? 'Tiempo extra' : 'Penales'} (clic para elegir)
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Inputs de penales — solo aparecen si el admin eligió (o el form
+              ya tiene) método = 'pen'. */}
+          {(canPublishResult(match) || pendingConfirm) && results.form[match.id]?.resultMethod === 'pen' && (
+            <div className="flex flex-wrap items-center gap-2 w-full mt-1">
+              <Label className="text-xs text-muted-foreground">Penales:</Label>
+              <Input
+                name={`result_${match.id}_pt1`}
+                type="number"
+                min="0"
+                className="w-14 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                placeholder="0"
+                value={results.form[match.id]?.penaltyTeam1 ?? ''}
+                onChange={(e) => setResults(prev => ({
+                  ...prev,
+                  form: {
+                    ...prev.form,
+                    [match.id]: { ...prev.form[match.id], penaltyTeam1: e.target.value },
+                  }
+                }))}
+              />
+              <span className="text-muted-foreground text-sm">-</span>
+              <Input
+                name={`result_${match.id}_pt2`}
+                type="number"
+                min="0"
+                className="w-14 h-8 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                placeholder="0"
+                value={results.form[match.id]?.penaltyTeam2 ?? ''}
+                onChange={(e) => setResults(prev => ({
+                  ...prev,
+                  form: {
+                    ...prev.form,
+                    [match.id]: { ...prev.form[match.id], penaltyTeam2: e.target.value },
+                  }
+                }))}
+              />
+              {(!results.form[match.id]?.penaltyTeam1 || !results.form[match.id]?.penaltyTeam2) && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                  ⚠ Completa el marcador de penales antes de publicar.
+                </span>
+              )}
+            </div>
+          )}
 
           {hasLockedMatches && isMatchLocked(match) && (
             <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600 dark:text-amber-400 ml-auto">🔒 Bloqueado</Badge>

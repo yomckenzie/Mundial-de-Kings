@@ -76,17 +76,22 @@ let _lastCleanAt = null;
 const CLEAN_AT_KEY = 'chessking_last_clean_at';
 
 // --- Supabase direct-write helpers ---
-function _stripFields(records) {
+function _stripFields(records, tableName) {
   const arr = Array.isArray(records) ? records : [records];
+  // app_settings en este deploy no tiene columna `updated_at` en Supabase
+  // (la tabla fue creada en un momento donde no se incluía). Stripping evita
+  // el 400 de "Could not find the updated_at column" al sincronizar.
+  const stripUpdatedAt = tableName === 'app_settings';
   return arr.map(r => {
     const { password, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r;
+    if (stripUpdatedAt) delete clean.updated_at;
     return clean;
   });
 }
 
 async function _upsertToCloud(tableName, records, onConflict = 'id') {
   if (!isSupabaseAvailable() || !supabase) return;
-  const cleaned = _stripFields(records);
+  const cleaned = _stripFields(records, tableName);
   if (cleaned.length === 0) return;
   const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict });
   if (error) {
@@ -219,7 +224,7 @@ const syncTableToSupabaseFn = async (jsKey, records) => {
   const tableName = tableNameToSupabase(jsKey);
   if (!tableName || !records || !isSupabaseAvailable()) return;
   try {
-    const cleaned = _stripFields(records);
+    const cleaned = _stripFields(records, tableName);
     if (cleaned.length === 0) return;
     const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict: 'id' });
     if (error) throw error;

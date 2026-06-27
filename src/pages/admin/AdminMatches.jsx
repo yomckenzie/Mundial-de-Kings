@@ -61,22 +61,46 @@ export default function AdminMatches() {
 
   // IDs de partidos que SportScore da por finalizados y que el admin AÚN no ha
   // publicado en la BD. Se resaltan como "Resultado por confirmar".
-  const pendingConfirmIds = React.useMemo(() => new Set(
-    matches
-      .filter(m => liveResults[m.id]?.state === 'finished' && m.status !== 'finished')
-      .map(m => m.id)
-  ), [matches, liveResults]);
+  const pendingConfirmIds = React.useMemo(() => {
+    const ids = new Set();
+    for (const m of matches) {
+      if (liveResults[m.id]?.state === 'finished' && m.status !== 'finished') {
+        ids.add(m.id);
+      }
+    }
+    return ids;
+  }, [matches, liveResults]);
 
   // Precargar el marcador sugerido de SportScore en el formulario, una sola vez
-  // por partido (si el admin aún no escribió nada en ese campo).
+  // por partido (si el admin aún no escribió nada en ese campo). Ahora también
+  // pre-rellena método y marcador de penales si SportScore los detectó
+  // (betting-3ways · Task 5).
   useEffect(() => {
     setResults(prev => {
       let changed = false;
       const next = { ...prev.form };
       for (const m of matches) {
         const lr = liveResults[m.id];
-        if (lr?.state === 'finished' && lr.team1Score != null && lr.team2Score != null && !next[m.id]) {
-          next[m.id] = { team1: String(lr.team1Score), team2: String(lr.team2Score) };
+        if (lr?.state !== 'finished') continue;
+        const existing = next[m.id] || {};
+        const entry = { ...existing };
+        let entryChanged = false;
+        if (lr.team1Score != null && lr.team2Score != null && !existing.team1 && !existing.team2) {
+          entry.team1 = String(lr.team1Score);
+          entry.team2 = String(lr.team2Score);
+          entryChanged = true;
+        }
+        if (lr.method && !existing.resultMethod) {
+          entry.resultMethod = lr.method;
+          entryChanged = true;
+        }
+        if (lr.method === 'pen' && lr.penaltyScore && (!existing.penaltyTeam1 || !existing.penaltyTeam2)) {
+          entry.penaltyTeam1 = String(lr.penaltyScore.team1);
+          entry.penaltyTeam2 = String(lr.penaltyScore.team2);
+          entryChanged = true;
+        }
+        if (entryChanged) {
+          next[m.id] = entry;
           changed = true;
         }
       }
@@ -84,7 +108,8 @@ export default function AdminMatches() {
     });
   }, [matches, liveResults]);
 
-  // Pre-fill results.form con resultados existentes
+  // Pre-fill results.form con resultados existentes (BD) — método + penales
+  // también si el partido ya estaba finalizado en la base.
   useEffect(() => {
     setResults(prev => {
       let changed = false;
@@ -92,10 +117,14 @@ export default function AdminMatches() {
       matches.forEach(m => {
         const hasT1 = m.result_team1 !== undefined && m.result_team1 !== null;
         const hasT2 = m.result_team2 !== undefined && m.result_team2 !== null;
-        if ((hasT1 || hasT2) && !next[m.id]) {
+        const existing = next[m.id];
+        if ((hasT1 || hasT2) && !existing) {
           next[m.id] = {
             team1: hasT1 ? String(m.result_team1) : '',
             team2: hasT2 ? String(m.result_team2) : '',
+            resultMethod: m.result_method ?? null,
+            penaltyTeam1: m.penalty_score_team1 != null ? String(m.penalty_score_team1) : '',
+            penaltyTeam2: m.penalty_score_team2 != null ? String(m.penalty_score_team2) : '',
           };
           changed = true;
         }
@@ -155,6 +184,7 @@ export default function AdminMatches() {
         results={results}
         setResults={setResults}
         onPublish={handleBatchPublish}
+        liveResults={liveResults}
       />
 
       <StatusLegend />
@@ -201,6 +231,7 @@ export default function AdminMatches() {
         deleteMatch={deleteMatch}
         predictionCountByMatchId={predictionCountByMatchId}
         pendingConfirmIds={pendingConfirmIds}
+        liveResults={liveResults}
       />
     </div>
   );

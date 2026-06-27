@@ -49,15 +49,16 @@ export default function AdminPredictions() {
   }, [usersMap, search]);
 
   const filteredRows = React.useMemo(() => {
-    return matchPredictions
-      .filter(p => matchesText(p.user_email))
-      .map(p => {
-        const match = matchMap[p.match_id];
-        const st = match ? statusOf(p, match) : 'pendiente';
-        return { p, match, st };
-      })
-      .filter(({ st }) => statusFilter === 'all' || st === statusFilter)
-      .sort((a, b) => (a.p.created_date || '').localeCompare(b.p.created_date || ''));
+    const rows = [];
+    for (const p of matchPredictions) {
+      if (!matchesText(p.user_email)) continue;
+      const match = matchMap[p.match_id];
+      const st = match ? statusOf(p, match) : 'pendiente';
+      if (statusFilter !== 'all' && st !== statusFilter) continue;
+      rows.push({ p, match, st });
+    }
+    rows.sort((a, b) => (a.p.created_date || '').localeCompare(b.p.created_date || ''));
+    return rows;
   }, [matchPredictions, statusFilter, matchMap, matchesText]);
 
   const standings = React.useMemo(
@@ -115,8 +116,8 @@ export default function AdminPredictions() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex rounded-lg border p-0.5">
-          <button onClick={() => setMode('match')} className={`px-3 py-1 text-sm rounded-md ${mode === 'match' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por partido</button>
-          <button onClick={() => setMode('user')} className={`px-3 py-1 text-sm rounded-md ${mode === 'user' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por usuario</button>
+          <button type="button" onClick={() => setMode('match')} className={`px-3 py-1 text-sm rounded-md ${mode === 'match' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por partido</button>
+          <button type="button" onClick={() => setMode('user')} className={`px-3 py-1 text-sm rounded-md ${mode === 'user' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>Por usuario</button>
         </div>
         <Button variant="outline" size="sm" onClick={handleTotalPdf} className="gap-2">
           <FileText className="w-4 h-4" /> PDF total

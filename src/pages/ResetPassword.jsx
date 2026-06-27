@@ -15,14 +15,21 @@ export default function ResetPassword() {
   const [form, setForm] = useState({ password: '', confirm: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  // 'checking' | 'ready' | 'invalid'  → estado de la sesión de recuperación
-  const [sessionState, setSessionState] = useState('checking');
+  // 'checking' | 'ready' | 'invalid'  → estado de la sesión de recuperación.
+  // El estado inicial se calcula de forma síncrona a partir de la URL para
+  // evitar un render inicial con 'checking' innecesario. Luego el useEffect
+  // (sólo monta una vez) actualiza según el resultado de la verificación async.
+  const [sessionState, setSessionState] = useState(() => {
+    if (!supabase) return 'invalid';
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    if (hashParams.get('error')) return 'invalid';
+    return 'checking';
+  });
 
   useEffect(() => {
-    if (!supabase) {
-      setSessionState('invalid');
-      return;
-    }
+    // El estado 'invalid' ya viene del inicializador si no hay supabase o si
+    // el hash trae error. Aquí solo corremos verificaciones async y actualizamos
+    // a 'ready'/'invalid' según el resultado.
 
     // 0. Si el enlace regresó con un error en el hash (p. ej. el token de
     //    {{ .ConfirmationURL }} fue consumido por el escáner del proveedor de

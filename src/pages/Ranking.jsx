@@ -1,22 +1,23 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useReducer, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { db } from '@/lib/db';
 import { useOutletContext } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Medal, Award, ChevronLeft, ChevronRight, Download,
-  Crown, TrendingUp, Users, RefreshCw, Search, X, Calendar
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
+import {
+  TrendingUp, Users, Calendar,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import RankingExportTemplate from '@/components/RankingExportTemplate';
 import RankingPodium from './ranking/RankingPodium';
 import MyRankCard from './ranking/MyRankCard';
 import RankingTable from './ranking/RankingTable';
+import { RankingHeader } from './ranking/RankingHeader';
+import { RankingSearch } from './ranking/RankingSearch';
+import { RankingPagination } from './ranking/RankingPagination';
 import UserProfileCard from '@/components/admin/UserProfileCard';
 import { getTournamentWeeks, computeWeeklyRanking } from './ranking/weeklyRanking';
 
@@ -33,10 +34,30 @@ const containerVariants = {
   }
 };
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] } }
+// Estado agrupado en un reducer: page, query, selectedWeek, profileUser
+// cambian juntos (cambiar filtro resetea paginación), así que un solo set
+// evita 4 renders encadenados.
+const RANKING_INITIAL = {
+  page: 0,
+  query: '',
+  selectedWeekN: null,  // null = General
+  profileUser: null,
 };
+
+function rankingReducer(state, action) {
+  switch (action.type) {
+    case 'SET_PAGE':
+      return { ...state, page: action.value };
+    case 'SET_QUERY':
+      return { ...state, query: action.value, page: 0 };
+    case 'SET_WEEK':
+      return { ...state, selectedWeekN: action.value, page: 0 };
+    case 'SET_PROFILE':
+      return { ...state, profileUser: action.value };
+    default:
+      return state;
+  }
+}
 
 function RankSkeleton() {
   return (
@@ -55,56 +76,28 @@ function RankSkeleton() {
   );
 }
 
-function getRankBadge(pos) {
-  if (pos === 1) return { icon: Crown, color: 'from-foreground to-foreground', bg: 'bg-muted border-muted-foreground/30', text: 'text-foreground' };
-  if (pos === 2) return { icon: Medal, color: 'from-foreground to-foreground', bg: 'bg-muted border-muted-foreground/30', text: 'text-foreground' };
-  if (pos === 3) return { icon: Award, color: 'from-foreground to-foreground', bg: 'bg-muted border-muted-foreground/30', text: 'text-foreground' };
-  if (pos <= 10) return { icon: null, color: 'from-foreground to-foreground', bg: 'bg-muted/50 border-border/50', text: 'text-muted-foreground' };
-  return { icon: null, color: null, bg: 'bg-transparent border-transparent', text: 'text-muted-foreground' };
-}
-
-function getRowStyle(pos) {
-  const base = 'transition-all duration-200 hover:bg-muted/40 hover:scale-[1.002]';
-  if (pos === 1) return `${base} bg-gradient-to-r from-foreground/[0.06] via-foreground/[0.03] to-transparent border-l-[3px] border-l-foreground`;
-  if (pos === 2) return `${base} bg-gradient-to-r from-foreground/[0.06] via-foreground/[0.03] to-transparent border-l-[3px] border-l-foreground`;
-  if (pos === 3) return `${base} bg-gradient-to-r from-foreground/[0.06] via-foreground/[0.03] to-transparent border-l-[3px] border-l-foreground`;
-  return `${base} border-l-[3px] border-l-transparent hover:border-l-border`;
-}
-
-function getPointGap(currentPoints, previousPoints) {
-  if (previousPoints == null || currentPoints == null) return null;
-  const diff = previousPoints - currentPoints;
-  if (diff <= 0) return null;
-  return diff;
-}
-
 export default function Ranking() {
   const { user } = useOutletContext();
   const isAdmin = user?.role === 'admin';
-  const [page, setPage] = useState(0);
+  const [uiState, dispatch] = useReducer(rankingReducer, RANKING_INITIAL);
+  const { page, query, selectedWeekN, profileUser } = uiState;
+
   const [showExportTop10, setShowExportTop10] = useState(false);
-  const exportTop10Ref = useRef(null);
-  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
-  const [query, setQuery] = useState(''); // buscador admin
-  const [selectedWeekN, setSelectedWeekN] = useState(null); // null = General
-  const [profileUser, setProfileUser] = useState(null); // admin: usuario abierto en el perfil completo
+  const exportTop10Ref = useRef(null);
+  const queryClient = useQueryClient();
 
   // Solo admin: lista completa de usuarios (con cédula, teléfono, etc.) para
-  // mostrar el perfil detallado al tocar una fila del ranking. Las filas del
-  // ranking traen un subconjunto público, así que buscamos el registro completo.
+  // mostrar el perfil detallado al tocar una fila del ranking.
   const { data: fullUsers = [] } = useQuery({
     queryKey: ['ranking-full-users'],
     queryFn: () => api.entities.User.list(),
     enabled: isAdmin,
   });
 
-  // Abre el perfil completo (solo admin). Empareja por email con el registro
-  // completo; si no aparece, usa la fila tal cual (igual trae email para las
-  // sub-consultas de pronósticos/canjes).
   const openProfile = isAdmin
-    ? (rowUser) => setProfileUser(fullUsers.find(fu => fu.email === rowUser.email) || rowUser)
+    ? (rowUser) => dispatch({ type: 'SET_PROFILE', value: fullUsers.find(fu => fu.email === rowUser.email) || rowUser })
     : undefined;
 
   const { data: allUsers = [], isLoading: loadingUsers } = useQuery({
@@ -126,8 +119,7 @@ export default function Ranking() {
   });
 
   // Forzar sync desde Supabase → actualiza prediction_points y total_points
-  // de todos los usuarios. Útil cuando el admin acaba de evaluar un
-  // partido en otro dispositivo y los puntos aún no llegaron al poll de 60s.
+  // de todos los usuarios.
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -185,16 +177,14 @@ export default function Ranking() {
 
   const handleExportTop10 = async () => {
     setShowExportTop10(true);
-    // Esperar a que monte la tarjeta y, sobre todo, a que la imagen de fondo
-    // (plantilla) termine de cargar — si no, html2canvas captura sin fondo.
     await new Promise(r => setTimeout(r, 60));
     const imgEl = exportTop10Ref.current?.querySelector('img');
     if (imgEl && !imgEl.complete) {
       await new Promise((res) => { imgEl.onload = res; imgEl.onerror = res; });
     }
-    await new Promise(r => setTimeout(r, 120)); // settle de layout
+    await new Promise(r => setTimeout(r, 120));
     try {
-      const html2canvas = (await import('html2canvas')).default; // carga bajo demanda
+      const html2canvas = (await import('html2canvas')).default;
       const canvas = await html2canvas(exportTop10Ref.current, { backgroundColor: null, scale: 2, useCORS: true });
       const link = document.createElement('a');
       link.download = `ranking-top10-${new Date().toISOString().slice(0, 10)}.png`;
@@ -206,16 +196,6 @@ export default function Ranking() {
       setShowExportTop10(false);
     }
   };
-
-  const exportCards = (
-    <>
-      {showExportTop10 && (
-        <div className="fixed top-0 left-[-9999px]">
-          <RankingExportTemplate ref={exportTop10Ref} topUsers={allUsers.slice(0, 10)} title="TOP 10" />
-        </div>
-      )}
-    </>
-  );
 
   if (loadingUsers) {
     return (
@@ -245,54 +225,23 @@ export default function Ranking() {
         <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-foreground/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* ─── Header ─── */}
-      <m.div className="flex items-end justify-between flex-wrap gap-4" variants={itemVariants}>
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-1.5 h-8 bg-foreground rounded-full" />
-            <div>
-              <h1 className="font-display text-5xl md:text-6xl tracking-wider leading-none">
-                <span className="text-foreground font-black">RANKING</span>
-              </h1>
-              <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5" />
-                <span>{allUsers.length} participante{allUsers.length !== 1 ? 's' : ''}</span>
-                {myRank > 0 && (
-                  <span className="ml-2 text-foreground font-medium">
-                    · Tu puesto: #{myRank}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
-            <Button onClick={handleRefresh} size="sm" variant="outline" disabled={refreshing} className="gap-2">
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Actualizar</span>
-            </Button>
-            <Button onClick={handleExportTop10} size="sm" className="gap-2 glow-sm shadow-lg shadow-foreground/10">
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Exportar Top 10</span>
-            </Button>
-          </div>
-        )}
+      <RankingHeader
+        allUsers={allUsers}
+        myRank={myRank}
+        isAdmin={isAdmin}
+        refreshing={refreshing}
+        lastSyncedAt={lastSyncedAt}
+        onRefresh={handleRefresh}
+        onExport={handleExportTop10}
+      />
 
-        {lastSyncedAt && (
-          <p className="w-full text-right text-[11px] text-muted-foreground/60 -mt-1">
-            Última sincronización: {lastSyncedAt.toLocaleTimeString('es-PA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </p>
-        )}
-      </m.div>
-
-      {/* ─── Selector de semana (desplegable, todos los usuarios) ─── */}
+      {/* ─── Selector de semana ─── */}
       {weeks.length > 0 && (
-        <m.div variants={itemVariants} className="flex items-center gap-2">
+        <m.div variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }} className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
           <Select
             value={isWeekly ? String(selectedWeekN) : 'general'}
-            onValueChange={(v) => { setSelectedWeekN(v === 'general' ? null : Number(v)); setPage(0); }}
+            onValueChange={(v) => dispatch({ type: 'SET_WEEK', value: v === 'general' ? null : Number(v) })}
           >
             <SelectTrigger className="w-auto min-w-[180px]">
               <SelectValue />
@@ -309,40 +258,21 @@ export default function Ranking() {
 
       {/* ─── Buscador (solo admin) ─── */}
       {isAdmin && (
-        <m.div variants={itemVariants}>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <Input
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); setPage(0); }}
-              placeholder="Buscar usuario por Instagram o email…"
-              className="pl-9 pr-9"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => { setQuery(''); setPage(0); }}
-                aria-label="Limpiar búsqueda"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          {isFiltering && (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {filteredUsers.length} coincidencia{filteredUsers.length !== 1 ? 's' : ''}
-            </p>
-          )}
-        </m.div>
+        <RankingSearch
+          value={query}
+          onChange={(v) => dispatch({ type: 'SET_QUERY', value: v })}
+          matchCount={filteredUsers.length}
+        />
       )}
 
       {/* ─── Podium ─── */}
       <RankingPodium top3={top3} onUserClick={openProfile} />
 
       {/* ─── My Position Card ─── */}
-      <MyRankCard myUser={myUser} myRank={myRank} allUsers={baseRanked} />      {/* ─── Table ─── */}
-      <m.div variants={itemVariants}>
+      <MyRankCard myUser={myUser} myRank={myRank} allUsers={baseRanked} />
+
+      {/* ─── Table ─── */}
+      <m.div variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}>
         <Card className="overflow-hidden shadow-lg">
           <CardHeader className="pb-3 border-b border-border/50 bg-muted/10">
             <CardTitle className="text-lg flex items-center gap-2.5">
@@ -371,72 +301,25 @@ export default function Ranking() {
         </Card>
       </m.div>
 
-      {/* ─── Pagination ─── */}
-      {totalPages > 1 && (
-        <m.div
-          className="flex items-center justify-center gap-3"
-          variants={itemVariants}
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 0}
-            onClick={() => setPage(p => p - 1)}
-            className="gap-1.5 px-4"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Anterior</span>
-          </Button>
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-              let pageNum;
-              if (totalPages <= 5) {
-                pageNum = i;
-              } else if (page < 3) {
-                pageNum = i;
-              } else if (page > totalPages - 3) {
-                pageNum = totalPages - 5 + i;
-              } else {
-                pageNum = page - 2 + i;
-              }
-              return (
-                <Button
-                  key={pageNum}
-                  variant={page === pageNum ? 'default' : 'ghost'}
-                  size="sm"
-                  className={`w-9 h-9 p-0 text-sm font-bold transition-all ${
-                    page === pageNum
-                      ? 'bg-foreground text-background hover:bg-foreground/80 shadow-lg shadow-foreground/20 scale-110'
-                      : ''
-                  }`}
-                  onClick={() => setPage(pageNum)}
-                >
-                  {pageNum + 1}
-                </Button>
-              );
-            })}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage(p => p + 1)}
-            className="gap-1.5 px-4"
-          >
-            <span className="hidden sm:inline">Siguiente</span>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </m.div>
-      )}
+      <RankingPagination
+        page={page}
+        totalPages={totalPages}
+        onPageChange={(p) => dispatch({ type: 'SET_PAGE', value: p })}
+      />
 
-      {exportCards}
+      {/* Tarjeta oculta usada SOLO para exportar top 10. */}
+      {showExportTop10 && (
+        <div className="fixed top-0 left-[-9999px]">
+          <RankingExportTemplate ref={exportTop10Ref} topUsers={allUsers.slice(0, 10)} title="TOP 10" />
+        </div>
+      )}
 
       {/* Perfil completo del usuario (solo admin, al tocar una fila/podio) */}
       {isAdmin && (
         <UserProfileCard
           user={profileUser}
           open={!!profileUser}
-          onClose={() => setProfileUser(null)}
+          onClose={() => dispatch({ type: 'SET_PROFILE', value: null })}
         />
       )}
     </m.div>

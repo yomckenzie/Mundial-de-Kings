@@ -2,8 +2,65 @@ import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';
+import { getLiveResultForMatch } from '@/lib/sportscore';
+import { db } from '@/lib/db';
 import { isValidTransition } from './matchTransitions';
 import { toast } from 'sonner';
+
+// Resuelve method + penales desde el form, con fallback al auto-fill desde
+// el proveedor live (sportscore). El form tiene prioridad porque es lo que
+// el admin acaba de tipear; el proveedor live solo sirve para partidos ya
+// finalizados donde el admin no tocó nada.
+//
+// FIX (bug v2-79): si después de los dos pasos method sigue null, inferir
+// desde el marcador del partido para que el breakdown de puntos muestre el
+// método correcto. Reglas:
+//   - Si t1 !== t2 → '90' (ganador claro al final, no hay ET ni penales)
+//   - Si t1 === t2 → 'pen' (asumimos penales si está empatado al final)
+// Esto evita el bug donde el admin publica sin seleccionar método y los
+// pronósticos muestran "Cómo gana ❌ 0" cuando en realidad sí acertaron.
+async function resolveMethodAndPenalties(match, formEntry) {
+  // 1) Si el form ya trae method/penalties, usarlos.
+  if (formEntry) {
+    const m = formEntry.resultMethod ?? null;
+    const pT1 = formEntry.penaltyTeam1 != null && formEntry.penaltyTeam1 !== '' ? Number(formEntry.penaltyTeam1) : null;
+    const pT2 = formEntry.penaltyTeam2 != null && formEntry.penaltyTeam2 !== '' ? Number(formEntry.penaltyTeam2) : null;
+    if (m != null || pT1 != null || pT2 != null) {
+      return { method: m, penaltyT1: pT1, penaltyT2: pT2 };
+    }
+  }
+  // 2) Auto-fill desde el proveedor live.
+  try {
+    const live = await getLiveResultForMatch(match);
+    if (live) {
+      return {
+        method: live.method ?? null,
+        penaltyT1: live.penaltyScore?.team1 ?? null,
+        penaltyT2: live.penaltyScore?.team2 ?? null,
+      };
+    }
+  } catch {
+    // Silencioso: si el proveedor falla, devolvemos nulls.
+  }
+  // 3) Fallback final: inferir método desde el marcador del form o del match.
+  // Si t1 !== t2 → '90' (ganador claro). Si t1 === t2 → 'pen' (asumimos
+  // penales). Esto evita guardar result_method=null en la BD cuando el admin
+  // olvidó seleccionar el método en el dropdown.
+  const t1 = formEntry?.team1 != null && formEntry.team1 !== ''
+    ? Number(formEntry.team1)
+    : match?.result_team1;
+  const t2 = formEntry?.team2 != null && formEntry.team2 !== ''
+    ? Number(formEntry.team2)
+    : match?.result_team2;
+  if (t1 != null && t2 != null && !Number.isNaN(t1) && !Number.isNaN(t2)) {
+    return {
+      method: t1 !== t2 ? '90' : 'pen',
+      penaltyT1: null,
+      penaltyT2: null,
+    };
+  }
+  return { method: null, penaltyT1: null, penaltyT2: null };
+}
 
 const LOCK_HOURS = 24;
 const PREDICTION_WINDOW_HOURS = 24;
@@ -100,6 +157,12 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       extra.result_team2 = null;
       extra.elapsed = null;
       extra.live_started_at = null;
+      // Limpiar también los nuevos campos para que el partido vuelva a
+      // estado "sin resultado". Sin esto, al pasar finished→open seguiría
+      // teniendo result_method/penalty_score_* colgados.
+      extra.result_method = null;
+      extra.penalty_score_team1 = null;
+      extra.penalty_score_team2 = null;
     }
     const willResetResult = extra.result_team1 === null;
 
@@ -118,7 +181,18 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       // Si ya estaba finished, no re-ejecutar scoring (idempotencia extra).
       const alreadyFinished = match.status === 'finished' && match.result_team1 != null && match.result_team2 != null;
       if (newStatus === 'finished' && !alreadyFinished && match.result_team1 != null && match.result_team2 != null) {
-        const evalResult = await evaluateMatchPredictions(match.id, match.result_team1, match.result_team2);
+        // Pasar también method/penalties: si el match ya los trae en BD los
+        // usamos directo (ya finalizados con el form viejo); si no, intentar
+        // auto-fill desde el proveedor live.
+        const live = await resolveMethodAndPenalties(match, null);
+        const evalResult = await evaluateMatchPredictions(
+          match.id,
+          match.result_team1,
+          match.result_team2,
+          match.result_method ?? live.method,
+          match.penalty_score_team1 ?? live.penaltyT1,
+          match.penalty_score_team2 ?? live.penaltyT2,
+        );
         if (evalResult.correct > 0) {
           toast.success(`✅ ${evalResult.correct} pronóstico${evalResult.correct > 1 ? 's' : ''} acertado${evalResult.correct > 1 ? 's' : ''}`);
         } else if (evalResult.evaluated > 0) {
@@ -145,15 +219,6 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       toast.error('El partido debe estar EN VIVO o FINALIZADO para actualizar el marcador.');
       return;
     }
-    // Guard: si el partido ya está finalizado con el mismo resultado, no re-ejecutar scoring
-    if (match.status === 'finished' && match.result_team1 != null && match.result_team2 != null) {
-      const r = results.form[match.id];
-      const sameResult = r && Number(r.team1) === match.result_team1 && Number(r.team2) === match.result_team2;
-      if (sameResult || !r || r.team1 === '' || r.team2 === '') {
-        toast.info('Este partido ya fue finalizado y evaluado.');
-        return;
-      }
-    }
     const r = results.form[match.id];
     if (r?.team1 === undefined || r?.team2 === undefined || r.team1 === '' || r.team2 === '') {
       toast.error('Ingresa el resultado de ambos equipos');
@@ -161,26 +226,68 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     }
     const resultTeam1 = Number(r.team1);
     const resultTeam2 = Number(r.team2);
+    const { method: resultMethod, penaltyT1, penaltyT2 } = await resolveMethodAndPenalties(match, r);
+
+    // Validar: si el método es 'pen', los penales son obligatorios.
+    if (resultMethod === 'pen' && (penaltyT1 == null || penaltyT2 == null)) {
+      toast.error('Si el partido terminó en penales, completa el marcador de penales.');
+      return;
+    }
+
+    // FIX (bug v2-79): al PUBLICAR resultado final (forceFinish=true), el
+    // método es obligatorio. Sin result_method en la BD el breakdown muestra
+    // 'Cómo gana ❌ 0' aunque el pick sea correcto. La inferencia en
+    // resolveMethodAndPenalties es fallback defensivo, pero la UI ya bloquea
+    // el botón cuando falta, así que este caso solo se da si alguien publica
+    // sin método por API directa — devolvemos un error claro igual.
+    if (forceFinish && resultMethod == null) {
+      toast.error('Elegí cómo terminó el partido (90 min / T. extra / Penales) antes de publicar.');
+      return;
+    }
 
     // Solo actualizar marcador en vivo (sin finalizar) cuando NO se fuerza el
     // final. Con forceFinish (botón "Publicar resultado" de un partido por
     // confirmar) se salta esta rama y se finaliza + evalúa directamente.
+    //
+    // FIX (bug v2-79): si el admin ya eligió método/penales en el dropdown
+    // mientras el partido está 'live', también los persistimos. Sin esto, el
+    // método quedaba null en la BD hasta que el partido pasara a 'finished'
+    // y se volviera a publicar — y muchos admins ni volvían a tocar el
+    // botón, dejando el partido finalizado con result_method=null (breakdown
+    // mostraba "Cómo gana ❌ 0" aunque el pick fuera correcto).
     if (match.status === 'live' && !forceFinish) {
-      await api.entities.Match.update(match.id, { result_team1: resultTeam1, result_team2: resultTeam2 });
+      const update = { result_team1: resultTeam1, result_team2: resultTeam2 };
+      if (resultMethod != null) update.result_method = resultMethod;
+      if (resultMethod === 'pen') {
+        update.penalty_score_team1 = penaltyT1;
+        update.penalty_score_team2 = penaltyT2;
+      }
+      await api.entities.Match.update(match.id, update);
       setResults(prev => {
         const { [match.id]: _, ...rest } = prev.form;
         return { ...prev, form: rest };
       });
       queryClient.invalidateQueries({ queryKey: ['admin-matches-sorted'] });
       queryClient.invalidateQueries({ queryKey: ['matches'] });
-      toast.success('Marcador actualizado (en vivo).');
+      toast.success(
+        resultMethod != null
+          ? `Marcador y método (${resultMethod === '90' ? '90 min' : resultMethod === 'et' ? 'T. extra' : 'Penales'}) actualizados (en vivo).`
+          : 'Marcador actualizado (en vivo).'
+      );
       return;
     }
 
     await api.entities.Match.update(match.id, {
-      result_team1: resultTeam1, result_team2: resultTeam2, status: 'finished',
+      result_team1: resultTeam1,
+      result_team2: resultTeam2,
+      result_method: resultMethod,
+      penalty_score_team1: penaltyT1,
+      penalty_score_team2: penaltyT2,
+      status: 'finished',
     });
-    const evalResult = await evaluateMatchPredictions(match.id, resultTeam1, resultTeam2);
+    const evalResult = await evaluateMatchPredictions(
+      match.id, resultTeam1, resultTeam2, resultMethod, penaltyT1, penaltyT2,
+    );
     setResults(prev => {
       const { [match.id]: _, ...rest } = prev.form;
       return { ...prev, form: rest };
@@ -219,8 +326,24 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
         if (!canPublishResult(match)) { return; }
         const resultTeam1 = Number(r.team1);
         const resultTeam2 = Number(r.team2);
-        await api.entities.Match.update(matchId, { result_team1: resultTeam1, result_team2: resultTeam2, status: 'finished' });
-        const evalResult = await evaluateMatchPredictions(matchId, resultTeam1, resultTeam2);
+        const { method: resultMethod, penaltyT1, penaltyT2 } = await resolveMethodAndPenalties(match, r);
+        // Si el método declarado es 'pen' pero no hay penales, saltear este
+        // partido — un resultado a penales sin penales es inválido.
+        if (resultMethod === 'pen' && (penaltyT1 == null || penaltyT2 == null)) {
+          console.warn(`[batch] Partido ${matchId}: método=pen pero penales vacíos, se saltea`);
+          return;
+        }
+        await api.entities.Match.update(matchId, {
+          result_team1: resultTeam1,
+          result_team2: resultTeam2,
+          result_method: resultMethod,
+          penalty_score_team1: penaltyT1,
+          penalty_score_team2: penaltyT2,
+          status: 'finished',
+        });
+        const evalResult = await evaluateMatchPredictions(
+          matchId, resultTeam1, resultTeam2, resultMethod, penaltyT1, penaltyT2,
+        );
         totalCorrect += evalResult.correct;
         return matchId;
       })

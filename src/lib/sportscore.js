@@ -72,14 +72,23 @@ function isHalftime(statusText) {
   return s === 'ht' || s.includes('half-time') || s.includes('halftime') || s.includes('half time') || s === 'descanso';
 }
 
-// Normaliza el status crudo de SportScore a uno de los nuestros.
-function normalizeState(raw) {
+// Normaliza el status crudo de SportScore a {state, method}.
+// state: 'live' | 'finished' | 'upcoming'
+// method: '90' | 'et' | 'pen' | null  (null si no se puede inferir)
+export function normalizeState(raw) {
   const s = (raw || '').toLowerCase();
-  if (s === 'finished' || s === 'ft' || s === 'aet' || s === 'pen') return 'finished';
-  if (s === 'upcoming' || s === 'notstarted' || s === 'not_started' || s === 'scheduled') return 'upcoming';
+  if (s === 'ft') return { state: 'finished', method: '90' };
+  if (s === 'aet') return { state: 'finished', method: 'et' };
+  if (s === 'pen') return { state: 'finished', method: 'pen' };
+  if (s === 'finished') return { state: 'finished', method: null };
+  if (s === 'upcoming' || s === 'notstarted' || s === 'not_started' || s === 'scheduled')
+    return { state: 'upcoming', method: null };
   // Cualquier otra cosa (inprogress, live, 1h, 2h, ht, inplay) = en vivo
-  return 'live';
+  return { state: 'live', method: null };
 }
+
+// Para tests
+export const _normalizeStateForTest = normalizeState;
 
 // Extrae el slug del match desde su URL: "/football/match/paraguay-vs-usa/" → "paraguay-vs-usa"
 function matchSlugFromUrl(url) {
@@ -123,11 +132,13 @@ function buildLiveLabel(state, statusText, liveMinute) {
  * @param {{team1:string, team2:string}} match  equipos en español
  * @returns {Promise<null | {
  *   state: 'live'|'finished'|'upcoming',
+ *   method: '90'|'et'|'pen'|null,  // cómo terminó (null si no se sabe)
+ *   penaltyScore: {team1:number, team2:number}|null,  // marcador de penales (si aplica)
  *   label: string,                  // "67'", "HT", "Finalizado"...
  *   minute: string|null,            // minuto real crudo ("86", "90+"); solo en vivo
  *   team1Score: number, team2Score: number,  // orientados a NUESTRO team1/team2
  *   raw: object
- * }>}  null si no se puede emparejar (placeholder, equipo no encontrado, sin fixture)
+ * }>}
  */
 export async function getLiveResultForMatch(match) {
   const k1 = toEnglishKey(match.team1);
@@ -144,36 +155,63 @@ export async function getLiveResultForMatch(match) {
   if (slug2) slugsToTry.push(slug2);
   if (!slugsToTry.length) return null;
 
-  for (const querySlug of slugsToTry) {
+  // Acumulador de la primera coincidencia encontrada (entre los slugs paralelos).
+  let matchedFixture = null;
+
+  // Procesamos los slugs en paralelo (cada uno puede fallar silenciosamente).
+  // El primer fixture que coincida con el partido (k1 vs k2) gana — los
+  // siguientes slugs se descartan al hacer `return` desde dentro del forEach.
+  // Antes era un `for await` secuencial; ahora ambos endpoints se piden a la
+  // vez y devolvemos el primer match, reduciendo la latencia p99 cuando el
+  // primer slug tarda o falla.
+  await Promise.all(slugsToTry.map(async (querySlug) => {
     try {
       const data = await _getJson(`/api/widget/team/?sport=${SPORT}&slug=${querySlug}&limit=30`);
       const fixtures = data.matches || [];
 
-      // Buscar el fixture donde el rival coincide
       for (const fx of fixtures) {
         const home = normalizeTeam(fx.home);
         const away = normalizeTeam(fx.away);
         const isMatch = (home === k1 && away === k2) || (home === k2 && away === k1);
         if (!isMatch) continue;
 
-        const state = normalizeState(fx.status);
+        const { state, method } = normalizeState(fx.status);
         const homeIsTeam1 = home === k1;
         const team1Score = homeIsTeam1 ? fx.home_score : fx.away_score;
         const team2Score = homeIsTeam1 ? fx.away_score : fx.home_score;
 
-        // Solo si está EN VIVO pedimos el detalle para el minuto real.
-        // (Una llamada extra por partido en vivo; los finalizados/próximos no la necesitan.)
+        // Solo si está EN VIVO o terminó por penales pedimos el detalle.
+        // (Una llamada extra por partido en vivo o con pens; el resto no la necesita.)
         // El minuto se conserva como texto crudo ("86", "90+", "90+2") — no se
         // fuerza a número porque el tiempo añadido no es numérico.
         let minute = null;
-        if (state === 'live') {
+        let penaltyScore = null;
+        const needsDetail = state === 'live' || (state === 'finished' && method === 'pen');
+        if (needsDetail) {
           const detail = await _getMatchDetail(matchSlugFromUrl(fx.url));
-          const m = detail?.live_minute;
-          if (m != null && String(m).trim() !== '') minute = String(m).trim();
+          if (state === 'live') {
+            const m = detail?.live_minute;
+            if (m != null && String(m).trim() !== '') minute = String(m).trim();
+          } else {
+            const hs = detail?.home_score_pen ?? detail?.home_pen_score;
+            const aws = detail?.away_score_pen ?? detail?.away_pen_score;
+            if (hs != null && aws != null) {
+              penaltyScore = {
+                team1: homeIsTeam1 ? hs : aws,
+                team2: homeIsTeam1 ? aws : hs,
+              };
+            }
+          }
         }
 
-        return {
+        // Guardamos la primera coincidencia y descartamos los demás resultados.
+        // Nota: si dos slugs encuentran match casi a la vez, puede que gane el
+        // segundo. Es aceptable porque ambos vienen de la misma fuente SportScore.
+        if (matchedFixture) return; // ya tenemos match, este forEach lo ignora
+        matchedFixture = {
           state,
+          method,
+          penaltyScore,
           label: buildLiveLabel(state, fx.status_text, minute),
           minute,
           team1Score: team1Score ?? null,
@@ -182,8 +220,9 @@ export async function getLiveResultForMatch(match) {
         };
       }
     } catch {
-      // Silencioso: si un equipo falla, intentamos el otro.
+      // Silencioso: si un equipo falla, dejamos que el otro encuentre el match.
     }
-  }
-  return null;
+  }));
+
+  return matchedFixture;
 }

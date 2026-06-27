@@ -67,8 +67,12 @@ export function buildMatchReport(match, predictions, usersByEmail) {
 // Tabla de posiciones acumulada (solo partidos finalizados), dedup por (correo,
 // partido), excluye admins, ordena por puntos desc y luego nombre.
 export function buildStandings(predictions, matches, usersByEmail) {
-  const matchById = new Map(matches.map(m => [m.id, m]));
-  const finishedIds = new Set(matches.filter(m => m.status === 'finished' && hasResult(m)).map(m => m.id));
+  const matchById = new Map();
+  const finishedIds = new Set();
+  for (const m of matches) {
+    matchById.set(m.id, m);
+    if (m.status === 'finished' && hasResult(m)) finishedIds.add(m.id);
+  }
   const seenPair = new Set();
   const byUser = new Map(); // email → { hits, total, points }
   for (const p of predictions) {
@@ -93,8 +97,12 @@ export function buildStandings(predictions, matches, usersByEmail) {
 
 // Métricas globales (solo partidos finalizados, sin admins).
 export function buildGlobalStats(predictions, finishedMatches, usersByEmail) {
-  const finishedIds = new Set(finishedMatches.filter(m => m.status === 'finished' && hasResult(m)).map(m => m.id));
-  const matchById = new Map(finishedMatches.map(m => [m.id, m]));
+  const finishedIds = new Set();
+  const matchById = new Map();
+  for (const m of finishedMatches) {
+    matchById.set(m.id, m);
+    if (m.status === 'finished' && hasResult(m)) finishedIds.add(m.id);
+  }
   const participants = new Set();
   const seenPair = new Set();
   let hits = 0;

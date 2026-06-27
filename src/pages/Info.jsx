@@ -10,6 +10,12 @@ import { toast } from 'sonner';
 
 const SETTING_KEY = 'info_sections';
 
+// Versión del schema de DEFAULT_SECTIONS. Cuando cambia, loadSections()
+// sincroniza el contenido de las secciones default con el código actual.
+// Si un admin personaliza una sección desde el editor de Info, esa
+// personalización se preserva en deployments futuros con la misma versión.
+const DEFAULT_SECTIONS_VERSION = '2026-06-27';
+
 const DEFAULT_SECTIONS = [
   {
     id: 'participate',
@@ -34,18 +40,22 @@ Tu información será manejada de forma confidencial y no será visible pública
 
 • Los partidos se habilitarán 24 horas antes de cada encuentro
 • Los pronósticos se cerrarán automáticamente al iniciar el partido
-• Deberás predecir el marcador exacto del juego
-Ejemplo: Panamá 3 - 5 Inglaterra
+• Cada pronóstico se compone de 3 picks independientes, todos obligatorios:
+  1. Quién gana (Local / Visitante) → +50 pts si aciertas
+  2. Cómo gana: 90 min / T. extra / Penales → +50 pts si aciertas
+  3. Marcador exacto:
+     • Si el partido termina en 90 min o tiempo extra → goles al final del partido → +100 pts si aciertas
+     • Si elegís "Penales", el marcador es el TOTAL de goles (90 + ET + penales) → +150 pts si aciertas
 
 Una vez guardes tu pronóstico, este quedará registrado automáticamente en tu perfil.
 
-Por cada marcador acertado acumularás 100 puntos.
+Por cada pick correcto acumularás puntos. Máximo 250 puntos por partido (50 del ganador + 50 de cómo gana + 150 del marcador final si va a penales). Si el partido termina en 90 min o tiempo extra, el máximo es 200 puntos (50 del ganador + 50 de cómo gana + 100 del marcador).
 
 Los puntos podrán reflejarse hasta 24 horas después de finalizar el partido y confirmarse el resultado oficial.
 
 En la sección "Mi Perfil" podrás ver:
 • Historial de pronósticos realizados
-• Partidos acertados
+• Desglose por pick (ganador / cómo gana / marcador)
 • Puntos acumulados
 
 Ten en cuenta que debes cumplir los requisitos mencionados anteriormente, seguirnos y unirte a nuestro canal.
@@ -117,20 +127,64 @@ export default function Info() {
     const settings = await api.entities.AppSettings.list();
     const found = settings.find(r => r.key === SETTING_KEY);
     if (found) {
-      const parsed = JSON.parse(found.value);
-      // Auto-agregar secciones nuevas que no existan (migración)
+      let parsed = JSON.parse(found.value);
       const existingIds = new Set(parsed.map(s => s.id));
+      const defaultIds = new Set(DEFAULT_SECTIONS.map(s => s.id));
+
+      // Migración: detectar versión del schema persistido
+      // Formato nuevo: { version, sections: [...] }
+      // Formato viejo: [...] (array directo)
+      let persistedVersion = null;
+      if (!Array.isArray(parsed) && parsed.version && Array.isArray(parsed.sections)) {
+        persistedVersion = parsed.version;
+        parsed = parsed.sections;
+      }
+
+      // 1. Agregar secciones nuevas (migración aditiva)
       const missing = DEFAULT_SECTIONS.filter(s => !existingIds.has(s.id));
-      if (missing.length > 0) {
-        parsed.push(...missing);
+      let changed = missing.length > 0;
+
+      // 2. Si cambió DEFAULT_SECTIONS_VERSION, sobrescribir contenido de secciones default
+      //    (preserva secciones custom agregadas por admin que no están en DEFAULT_SECTIONS)
+      if (persistedVersion !== DEFAULT_SECTIONS_VERSION) {
+        const defaultIdSet = new Set(DEFAULT_SECTIONS.map(s => s.id));
+        parsed = parsed.map(s => {
+          const fresh = DEFAULT_SECTIONS.find(d => d.id === s.id);
+          if (fresh) return { ...fresh };
+          return s;
+        });
+        // Inicializar entradas default que estuvieran vacías en parsed
+        DEFAULT_SECTIONS.forEach(d => {
+          if (!parsed.some(s => s.id === d.id)) parsed.push({ ...d });
+        });
+        changed = true;
+      }
+
+      if (changed) {
         settingIdRef.current = found.id;
-        const value = JSON.stringify(parsed);
-        await api.entities.AppSettings.update(found.id, { value });
+        const value = JSON.stringify({
+          version: DEFAULT_SECTIONS_VERSION,
+          sections: parsed,
+        });
+        // UPDATE puede fallar por RLS (si la policy es restrictiva) o por
+        // schema (ej. columna updated_at faltante). En ese caso seguimos
+        // mostrando el contenido en memoria — el admin puede reintentar
+        // manualmente desde el editor de Info.
+        try {
+          await api.entities.AppSettings.update(found.id, { value });
+        } catch (e) {
+          console.warn('[Info] auto-sync de DEFAULT_SECTIONS falló:', e?.message || e);
+        }
       } else {
         settingIdRef.current = found.id;
       }
       setSections(parsed);
     } else {
+      // Sin fila persistida: mostrar DEFAULT_SECTIONS en memoria.
+      // NO intentar INSERT — RLS suele bloquear anon, y el copy default
+      // es bueno aunque no esté persistido. La próxima vez que el admin
+      // edite una sección desde el editor de Info, ese flujo creará la fila.
+      settingIdRef.current = null;
       setSections(DEFAULT_SECTIONS);
     }
     setLoading(false);
