@@ -91,11 +91,24 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
         <div className="text-center font-bold text-lg">
           {match.team1} vs {match.team2}
           {(match.status === 'finished' || match.status === 'live') && (
-            <p className={`text-xl mt-1 ${match.status === 'live' ? 'text-red-600' : 'text-primary'}`}>
-              {match.result_team1 ?? '-'}
-              {' - '}
-              {match.result_team2 ?? '-'}
-            </p>
+            <>
+              <p className={`text-xl mt-1 ${match.status === 'live' ? 'text-red-600' : 'text-primary'}`}>
+                {match.result_team1 ?? '-'}
+                {' - '}
+                {match.result_team2 ?? '-'}
+              </p>
+              {/* Cómo terminó — solo cuando hay resultado publicado Y método */}
+              {match.result_method && (
+                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">
+                  {match.result_method === '90' && '90 min'}
+                  {match.result_method === 'et' && 'T. extra'}
+                  {match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null && (
+                    <>Pen ({match.penalty_score_team1}-{match.penalty_score_team2})</>
+                  )}
+                  {match.result_method === 'pen' && (match.penalty_score_team1 == null || match.penalty_score_team2 == null) && 'Penales'}
+                </p>
+              )}
+            </>
           )}
         </div>
 

@@ -3,9 +3,7 @@ import { db } from '../lib/db';
 
 const POINTS_WINNER = 50;
 const POINTS_METHOD = 50;
-const POINTS_SCORE_FT_AET = 100;  // método 90 min o tiempo extra
-const POINTS_PRE_PEN = 50;        // marcador pre-penales (solo si método=pen)
-const POINTS_PEN = 100;           // marcador de penales (solo si método=pen)
+const POINTS_SCORE = 100;         // marcador único (90/ET = score exacto, Pen = score total 90+ET+pens)
 const POINTS_PENALTY_LEGACY = 50; // v1: penal score
 
 // Deriva el ganador del resultado final.
@@ -57,18 +55,20 @@ export function scoreV2(pred, result) {
   let prePenCorrect = null;
   let penCorrect = null;
 
-  // Score pick — REQUIERE winner correcto Y method correcto.
-  // Si el método predicho no coincide con el real, los score fields del pred
-  // no son comparables (distinta interpretación: 90min vs pen).
-  // v2 pen simplificado: pred_score_team1/2 = TOTAL de goles (90+ET+pens)
-  // comparado contra (result_team1 + penaltyT1) y (result_team2 + penaltyT2).
-  if (winnerCorrect && methodCorrect && (method === '90' || method === 'et')) {
+  // Marcador es un componente INDEPENDIENTE. La evaluación requiere que la
+  // CATEGORÍA del método coincida (90/ET comparten "score exacto"; pen es
+  // "score total 90+ET+pens" — categorías distintas, no comparables):
+  //   - actual 90/ET + pred 90/ET → comparar pred_score vs score exacto
+  //   - actual pen  + pred pen    → comparar pred_score vs total (90+ET+pens)
+  //   - Cualquier cruce (90/ET vs pen o viceversa) → scoreCorrect queda null
+  //     (interpretaciones distintas, no se puede comparar).
+  // NO requiere winnerCorrect — los 3 picks son independientes.
+  if ((method === '90' || method === 'et') && (pred.pred_method === '90' || pred.pred_method === 'et')) {
     scoreCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
-  } else if (winnerCorrect && methodCorrect && method === 'pen') {
+  } else if (method === 'pen' && pred.pred_method === 'pen') {
     const totalT1 = team1 + (penaltyT1 ?? 0);
     const totalT2 = team2 + (penaltyT2 ?? 0);
     scoreCorrect = pred.pred_score_team1 === totalT1 && pred.pred_score_team2 === totalT2;
-    // prePenCorrect/penCorrect quedan null — ya no se predicen por separado.
     prePenCorrect = null;
     penCorrect = null;
   }
@@ -77,13 +77,9 @@ export function scoreV2(pred, result) {
   let points = 0;
   if (winnerCorrect) points += POINTS_WINNER;
   if (methodCorrect) points += POINTS_METHOD;
-
-  if (method === '90' || method === 'et') {
-    if (scoreCorrect) points += POINTS_SCORE_FT_AET;
-  } else if (method === 'pen') {
-    // Pen: un solo score pick vale 150 pts (50 pre-pen + 100 pen consolidados).
-    if (scoreCorrect) points += POINTS_PRE_PEN + POINTS_PEN;
-  }
+  // Marcador: 100 pts si scoreCorrect, independiente del método del partido
+  // (siempre vale 100, sea 90/ET o Pen). Pre-pen fue eliminado del modelo.
+  if (scoreCorrect) points += POINTS_SCORE;
 
   return { winnerCorrect, methodCorrect, scoreCorrect, prePenCorrect, penCorrect, points };
 }
@@ -91,10 +87,15 @@ export function scoreV2(pred, result) {
 /**
  * Evalúa todos los pronósticos de un partido contra el resultado real.
  *
- * 3 componentes independientes:
+ * 3 componentes independientes (cada uno suma sus propios puntos):
  *   - Ganador correcto (1/X/2): +50 pts
  *   - Método correcto ('90'/'et'/'pen'): +50 pts
- *   - Penal exacto (solo si pred_method='pen' y result_method='pen'): +50 pts
+ *   - Marcador exacto: +100 pts (un solo componente)
+ *       · Si método=90/ET: pred_score_team1/2 = score exacto comparado contra team1/team2
+ *       · Si método=pen:  pred_score_team1/2 = total (90+ET+pens) comparado contra team1+penT1
+ *
+ * Pre-pen fue eliminado del modelo. Cada pick se evalúa por separado:
+ * si perdiste el ganador pero acertaste método y marcador, sumás 150 pts.
  *
  * IDEMPOTENTE: recalcula desde cero. Apto para llamar N veces.
  *

@@ -61,11 +61,15 @@ export default function AdminMatches() {
 
   // IDs de partidos que SportScore da por finalizados y que el admin AÚN no ha
   // publicado en la BD. Se resaltan como "Resultado por confirmar".
-  const pendingConfirmIds = React.useMemo(() => new Set(
-    matches
-      .filter(m => liveResults[m.id]?.state === 'finished' && m.status !== 'finished')
-      .map(m => m.id)
-  ), [matches, liveResults]);
+  const pendingConfirmIds = React.useMemo(() => {
+    const ids = new Set();
+    for (const m of matches) {
+      if (liveResults[m.id]?.state === 'finished' && m.status !== 'finished') {
+        ids.add(m.id);
+      }
+    }
+    return ids;
+  }, [matches, liveResults]);
 
   // Precargar el marcador sugerido de SportScore en el formulario, una sola vez
   // por partido (si el admin aún no escribió nada en ese campo). Ahora también

@@ -20,6 +20,8 @@ const movementStyles = {
 
 function buildMovements({ bonuses, myCommissions, predictions, redemptions, allUsers, matchMap }) {
   const movements = [];
+  const userByEmail = new Map();
+  for (const u of allUsers || []) userByEmail.set(u.email, u);
 
   // Bonos (bienvenida + otorgados por admin)
   for (const b of bonuses) {
@@ -35,7 +37,7 @@ function buildMovements({ bonuses, myCommissions, predictions, redemptions, allU
 
   // Comisiones por referidos
   for (const c of myCommissions) {
-    const referredUser = allUsers.find(u => u.email === c.from_email);
+    const referredUser = userByEmail.get(c.from_email);
     const refMatch = matchMap[c.match_id];
     const isRegistration = c.type === 'registration' || !c.match_id;
     const name = referredUser?.full_name || c.from_email;
@@ -89,7 +91,10 @@ function buildMovements({ bonuses, myCommissions, predictions, redemptions, allU
   return movements;
 }
 
-export default function OverviewTab({ bonuses, myCommissions, allUsers, matchMap, predictions = [], redemptions = [] }) {
+const EMPTY_PREDICTIONS = [];
+const EMPTY_REDEMPTIONS = [];
+
+export default function OverviewTab({ bonuses, myCommissions, allUsers, matchMap, predictions = EMPTY_PREDICTIONS, redemptions = EMPTY_REDEMPTIONS }) {
   const movements = buildMovements({ bonuses, myCommissions, predictions, redemptions, allUsers, matchMap });
 
   if (movements.length === 0) {

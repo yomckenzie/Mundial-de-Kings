@@ -85,11 +85,14 @@ export function computeWeeklyRanking(users, predictions, matches, week) {
     countByEmail[p.user_email] = (countByEmail[p.user_email] || 0) + 1;
   }
 
-  const ranked = (users || [])
-    .filter((u) => u.profile_complete && u.role !== 'admin')
-    .map((u) => ({ ...u, weeklyPoints: (countByEmail[u.email] || 0) * POINTS_PER_CORRECT }))
-    .filter((u) => u.weeklyPoints > 0)
-    .sort((a, b) => b.weeklyPoints - a.weeklyPoints);
+  const ranked = [];
+  for (const u of (users || [])) {
+    if (!u.profile_complete || u.role === 'admin') continue;
+    const weeklyPoints = (countByEmail[u.email] || 0) * POINTS_PER_CORRECT;
+    if (weeklyPoints <= 0) continue;
+    ranked.push({ ...u, weeklyPoints });
+  }
+  ranked.sort((a, b) => b.weeklyPoints - a.weeklyPoints);
 
   return ranked.map((u, i) => ({
     ...u,

@@ -342,7 +342,7 @@ describe('evaluateMatchPredictions', () => {
     const up = _upsertedPredictions.find(p => p.id === 'p_pen_infer');
     expect(up.method_correct).toBe(true); // infirió 'pen'
     expect(up.score_correct).toBe(true);
-    expect(up.points_earned).toBe(250); // 50 winner + 50 method + 150 score
+    expect(up.points_earned).toBe(200); // 50 winner + 50 method + 100 score (pen max uniforme)
   });
 
   it('re-ejecución: 150 puntos no se duplican a 300 (idempotencia)', async () => {
@@ -441,27 +441,31 @@ describe('scoreV2 — 90 min', () => {
     expect(r.points).toBe(50);
   });
 
-  it('solo método correcto → 50 pts', () => {
+  it('solo método correcto → 50 pts (winner mal, score bien → 150 pts con regla independiente)', () => {
+    // Picks independientes: si method y score aciertan aunque winner no,
+    // suman 50 + 100 = 150 pts. Score NO requiere winner correcto.
     const r = scoreV2(
       { ...basePred, pred_winner: TEAM2 },
       { team1: 2, team2: 1, method: '90' },
     );
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
-    expect(r.scoreCorrect).toBe(null);
-    expect(r.points).toBe(50);
+    expect(r.scoreCorrect).toBe(true);
+    expect(r.points).toBe(150); // 50 method + 100 score
   });
 
-  it('score correcto con ganador incorrecto → 50 pts (winner falla, score no cuenta)', () => {
-    // Caso raro: usuario predijo Visitante 2-1 y el real fue Local 2-1.
-    // Score es numéricamente igual pero winner falla → no cuenta.
+  it('score correcto con ganador incorrecto → 150 pts (picks independientes)', () => {
+    // Caso: usuario predijo Visitante 2-1 y el real fue Local 2-1.
+    // Score es numéricamente igual pero winner falla. Como los picks son
+    // independientes, score suma 100 igual. Total: 50 (method) + 100 (score) = 150.
     const r = scoreV2(
       { ...basePred, pred_winner: TEAM2 },
       { team1: 2, team2: 1, method: '90' },
     );
     expect(r.winnerCorrect).toBe(false);
-    expect(r.scoreCorrect).toBe(null); // null porque winnerCorrect era false
-    expect(r.points).toBe(50); // solo method
+    expect(r.methodCorrect).toBe(true);
+    expect(r.scoreCorrect).toBe(true);
+    expect(r.points).toBe(150);
   });
 
   it('ninguno correcto → 0 pts', () => {
@@ -470,6 +474,31 @@ describe('scoreV2 — 90 min', () => {
       { team1: 2, team2: 1, method: '90' },
     );
     expect(r.points).toBe(0);
+  });
+
+  it('pred ET con score igual al 90 real → scoreCorrect=true (90/ET misma categoría)', () => {
+    // Caso reportado por el usuario: predijo 'et' con 0-1, el real fue 90 con 0-1.
+    // 90 y ET comparten interpretación (score exacto), así que el scoreMatch.
+    // Winner mal (esperaba Local, ganó Visitante) — no afecta al marcador.
+    // Total: 50 method + 100 score = 150 pts.
+    const r = scoreV2(
+      { pred_winner: TEAM1, pred_method: 'et', pred_score_team1: 0, pred_score_team2: 1 },
+      { team1: 0, team2: 1, method: '90' },
+    );
+    expect(r.winnerCorrect).toBe(false);
+    expect(r.methodCorrect).toBe(false); // 'et' !== '90' — categorías OK pero no idéntico
+    expect(r.scoreCorrect).toBe(true);   // ← score sí match
+    expect(r.points).toBe(100); // solo score (50 winner off, 50 method off)
+  });
+
+  it('pred pen con score 1-1 + real 90 con score 1-1 → scoreCorrect=null (categorías distintas)', () => {
+    // Pred significa total 90+ET+pens = 1-1; real significa exacto 1-1.
+    // Interpretaciones distintas → no comparable, score queda null.
+    const r = scoreV2(
+      { pred_winner: TEAM1, pred_method: 'pen', pred_score_team1: 1, pred_score_team2: 1 },
+      { team1: 1, team2: 1, method: '90' },
+    );
+    expect(r.scoreCorrect).toBe(null);
   });
 });
 
@@ -485,15 +514,15 @@ describe('scoreV2 — tiempo extra', () => {
     expect(r.points).toBe(200);
   });
 
-  it('método correcto pero ganador incorrecto → 50 pts', () => {
+  it('método correcto pero ganador incorrecto → 150 pts (picks independientes)', () => {
     const r = scoreV2(
       { pred_winner: TEAM2, pred_method: 'et', pred_score_team1: 3, pred_score_team2: 2 },
       { team1: 3, team2: 2, method: 'et' },
     );
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
-    expect(r.scoreCorrect).toBe(null);
-    expect(r.points).toBe(50);
+    expect(r.scoreCorrect).toBe(true);
+    expect(r.points).toBe(150); // 50 method + 100 score
   });
 });
 
@@ -504,14 +533,15 @@ describe('scoreV2 — penales (v2 simplificado: pred_score = total 90+ET+pens)',
     pred_score_team1: 5, pred_score_team2: 4,  // user predice el TOTAL de goles
   };
 
-  it('todos los picks correctos → 250 pts', () => {
+  it('todos los picks correctos → 200 pts (pen max)', () => {
+    // Marcador único 100 pts — pre-pen eliminado. Max uniforme = 200.
     const r = scoreV2(basePred, { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 });
     expect(r.winnerCorrect).toBe(true);
     expect(r.methodCorrect).toBe(true);
     expect(r.scoreCorrect).toBe(true);
     expect(r.prePenCorrect).toBe(null); // obsoleto en v2 simplificado
     expect(r.penCorrect).toBe(null);    // obsoleto en v2 simplificado
-    expect(r.points).toBe(250);
+    expect(r.points).toBe(200);
   });
 
   it('total incorrecto → 100 pts (solo winner + method)', () => {
@@ -525,18 +555,20 @@ describe('scoreV2 — penales (v2 simplificado: pred_score = total 90+ET+pens)',
     expect(r.points).toBe(100); // 50 winner + 50 method
   });
 
-  it('total correcto pero winner mal → 50 pts (solo method)', () => {
+  it('total correcto pero winner mal → 150 pts (picks independientes)', () => {
+    // Picks independientes: winner mal, pero method y score bien → 50 + 100 = 150.
     const r = scoreV2(
       { ...basePred, pred_winner: TEAM2 },
       { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 },
     );
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
-    expect(r.scoreCorrect).toBe(null); // null porque winnerCorrect=false
-    expect(r.points).toBe(50);
+    expect(r.scoreCorrect).toBe(true);
+    expect(r.points).toBe(150);
   });
 
-  it('total correcto, método incorrecto → 0 pts (score null)', () => {
+  it('total correcto, método incorrecto → 50 pts (score null por mismatch de método)', () => {
+    // Si pred_method !== result_method, scoreCorrect queda null (los campos no son comparables).
     const r = scoreV2(
       { ...basePred, pred_method: '90' },
       { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 },
@@ -553,6 +585,6 @@ describe('scoreV2 — penales (v2 simplificado: pred_score = total 90+ET+pens)',
       { team1: 2, team2: 2, method: 'pen', penaltyT1: 5, penaltyT2: 4 },
     );
     expect(r.scoreCorrect).toBe(true);
-    expect(r.points).toBe(250);
+    expect(r.points).toBe(200);
   });
 });

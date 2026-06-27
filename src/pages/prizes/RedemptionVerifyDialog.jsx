@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,10 +25,18 @@ export default function RedemptionVerifyDialog({ open, prize, user, isPending, o
   const docLabel = isPassport ? 'pasaporte' : 'cédula';
   const registered = user?.cedula || '';
 
-  // Limpiar el campo cada vez que se abre/cierra el diálogo.
-  useEffect(() => {
-    if (open) { setDoc(''); setError(''); }
-  }, [open]);
+  // FIX (react-doctor): reset inline en render (patrón "track prev prop") en
+  // vez de useEffect. El useEffect mostraba doc/error del render anterior
+  // durante un frame antes de limpiarse. Usamos useRef porque `prevOpen` solo
+  // se lee en este control de flujo, nunca se renderiza.
+  const prevOpenRef = useRef(open);
+  if (open !== prevOpenRef.current) {
+    prevOpenRef.current = open;
+    if (open) {
+      setDoc('');
+      setError('');
+    }
+  }
 
   const handleConfirm = () => {
     const value = doc.trim();

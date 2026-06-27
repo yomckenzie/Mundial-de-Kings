@@ -37,11 +37,9 @@ function PtsRow({ label, correct, pts, notApplicable }) {
   );
 }
 
-// Renderiza el resumen del pronóstico en formato legible.
-// Soporta v2 (pred_winner='1'/'2' + pred_method + pred_score_team1/2 como
-// marcador total) y legacy (pred_team1/pred_team2 sin pred_winner/method).
-// v2 pen simplificado: pred_score_team1/2 = TOTAL de goles (90+ET+pens).
-function renderPickSummary(existing, match) {
+// Helper puro: devuelve el string del resumen. Lo separamos del componente
+// para mantenerlo testeable y sin JSX.
+function buildPickSummary(existing, match) {
   // Legacy: sin pred_winner ni pred_method, pero con marcador viejo cargado.
   const isLegacy = existing.pred_winner == null
     && existing.pred_method == null
@@ -65,6 +63,14 @@ function renderPickSummary(existing, match) {
   return `${winnerLabel} · ${methodLabel}${scoreStr}`;
 }
 
+// Componente nombrado (no función inline) para evitar el warning de
+// react-doctor "Component rendered by inline function call". React
+// preserva su identidad entre renders, evitando que el <span> interno
+// se remonte innecesariamente.
+function PickSummary({ existing, match }) {
+  return <span>{buildPickSummary(existing, match)}</span>;
+}
+
 // Renderiza el panel de "predicción guardada" reutilizable.
 //   - Admin: muestra el pick + nota "no acumula puntos" (sin desglose).
 //   - User normal:
@@ -80,7 +86,7 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
   if (isAdmin) {
     return (
       <div className="text-center text-[11px] text-muted-foreground font-medium py-1.5 px-2 rounded-lg bg-muted/30">
-        <p>Tu pronóstico: {renderPickSummary(existing, match)}</p>
+        <p>Tu pronóstico: <PickSummary existing={existing} match={match} /></p>
         {resultKnown ? (
           <p className={`font-semibold mt-0.5 ${predHit ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
             {predHit ? 'Acertaste' : 'No acertaste'} · los admins no acumulan puntos
@@ -97,7 +103,7 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
       <div className="space-y-1">
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico:</p>
         <p className="text-xs font-bold text-foreground text-center">
-          {renderPickSummary(existing, match)}
+          <PickSummary existing={existing} match={match} />
         </p>
         <div className="text-center text-[11px] text-amber-600 dark:text-amber-400 font-medium py-1.5 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 space-y-0.5">
           <p>⏳ Pendiente del resultado final — si aciertas podés ganar</p>
@@ -133,33 +139,28 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
   }
 
   // Predicción nueva (v2 — 3 picks: ganador + método + marcador).
-  // Render de filas según el método REAL del partido:
-  //   - Siempre: Ganador (50), Cómo gana (50).
-  //   - Si result_method ∈ {'90', 'et'}: Marcador (100).
-  //   - Si result_method === 'pen': Marcador final (150 — suma 90+ET+pens
-  //     en una sola predicción, score_correct ya cubre ambos lados).
-  //   - Las filas muestran "⏸ no aplica" si result_method es null o si el
-  //     usuario apostó a un método distinto al real (scoreCorrect queda null
-  //     en backend, pero acá lo cubrimos también visualmente).
+  // Render de filas:
+  //   - Siempre: Ganador (50), Cómo gana (50), Marcador (100).
+  //   - Marcador muestra "⏸ no aplica" SOLO si el backend no pudo evaluar
+  //     (pred_method≠pen cuando result_method=pen). Para 90/ET el score
+  //     SIEMPRE es comparable (90 y ET comparten interpretación). Si el
+  //     backend devolvió score_correct=true/false, mostramos el desglose.
   const resultMethod = match.result_method;
-  const showScoreRow = resultMethod === '90' || resultMethod === 'et';
-  const showPenScoreRow = resultMethod === 'pen';
-  const scoreNotApplicable = resultMethod == null
-    || existing.pred_method !== resultMethod;
+  const showScoreRow = resultMethod === '90' || resultMethod === 'et' || resultMethod === 'pen';
+  // Backend devuelve score_correct=null cuando NO fue evaluable (típicamente
+  // user apostó 90/ET pero el partido fue a pen). En ese caso, "no aplica".
+  const scoreNotApplicable = existing.score_correct == null;
   return (
     <div className="space-y-1.5">
       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico</p>
       <p className="text-xs font-bold text-foreground text-center">
-        {renderPickSummary(existing, match)}
+        <PickSummary existing={existing} match={match} />
       </p>
       <div className="space-y-1">
         <PtsRow label="Ganador" correct={existing.winner_correct} pts={50} />
         <PtsRow label="Cómo gana" correct={existing.method_correct} pts={50} />
         {showScoreRow && (
           <PtsRow label="Marcador" correct={existing.score_correct} pts={100} notApplicable={scoreNotApplicable} />
-        )}
-        {showPenScoreRow && (
-          <PtsRow label="Marcador final (90+ET+pens)" correct={existing.score_correct} pts={150} notApplicable={scoreNotApplicable} />
         )}
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <span className="text-xs font-bold">Total</span>

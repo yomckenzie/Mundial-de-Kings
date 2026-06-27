@@ -55,7 +55,10 @@ export default function Home() {
 
   // Mostrar toast por cada notification no leída. Se marca como leída al
   // aparecer o al hacer click en el botón cerrar.
-  const shownNotifsRef = useRef(new Set());
+  const shownNotifsRef = useRef(null);
+  if (shownNotifsRef.current === null) {
+    shownNotifsRef.current = new Set();
+  }
   useEffect(() => {
     if (!unreadNotifs.length) return;
     unreadNotifs.forEach(n => {

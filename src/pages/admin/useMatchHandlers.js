@@ -220,23 +220,6 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       return;
     }
     const r = results.form[match.id];
-    // Guard: si el partido ya está finalizado con el mismo resultado + method
-    // + penalties, no re-ejecutar scoring.
-    if (match.status === 'finished' && match.result_team1 != null && match.result_team2 != null) {
-      const sameResult = r && Number(r.team1) === match.result_team1 && Number(r.team2) === match.result_team2;
-      const liveResolved = await resolveMethodAndPenalties(match, r);
-      const effMethod = r?.resultMethod ?? liveResolved.method;
-      const effPT1 = r?.penaltyTeam1 != null && r?.penaltyTeam1 !== '' ? Number(r.penaltyTeam1) : liveResolved.penaltyT1;
-      const effPT2 = r?.penaltyTeam2 != null && r?.penaltyTeam2 !== '' ? Number(r.penaltyTeam2) : liveResolved.penaltyT2;
-      const sameMethod = (effMethod ?? null) === (match.result_method ?? null);
-      const samePenalty =
-        (effPT1 ?? null) === (match.penalty_score_team1 ?? null) &&
-        (effPT2 ?? null) === (match.penalty_score_team2 ?? null);
-      if (sameResult && sameMethod && samePenalty) {
-        toast.info('Este partido ya fue finalizado y evaluado.');
-        return;
-      }
-    }
     if (r?.team1 === undefined || r?.team2 === undefined || r.team1 === '' || r.team2 === '') {
       toast.error('Ingresa el resultado de ambos equipos');
       return;

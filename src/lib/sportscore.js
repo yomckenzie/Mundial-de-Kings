@@ -155,12 +155,20 @@ export async function getLiveResultForMatch(match) {
   if (slug2) slugsToTry.push(slug2);
   if (!slugsToTry.length) return null;
 
-  for (const querySlug of slugsToTry) {
+  // Acumulador de la primera coincidencia encontrada (entre los slugs paralelos).
+  let matchedFixture = null;
+
+  // Procesamos los slugs en paralelo (cada uno puede fallar silenciosamente).
+  // El primer fixture que coincida con el partido (k1 vs k2) gana — los
+  // siguientes slugs se descartan al hacer `return` desde dentro del forEach.
+  // Antes era un `for await` secuencial; ahora ambos endpoints se piden a la
+  // vez y devolvemos el primer match, reduciendo la latencia p99 cuando el
+  // primer slug tarda o falla.
+  await Promise.all(slugsToTry.map(async (querySlug) => {
     try {
       const data = await _getJson(`/api/widget/team/?sport=${SPORT}&slug=${querySlug}&limit=30`);
       const fixtures = data.matches || [];
 
-      // Buscar el fixture donde el rival coincide
       for (const fx of fixtures) {
         const home = normalizeTeam(fx.home);
         const away = normalizeTeam(fx.away);
@@ -172,32 +180,35 @@ export async function getLiveResultForMatch(match) {
         const team1Score = homeIsTeam1 ? fx.home_score : fx.away_score;
         const team2Score = homeIsTeam1 ? fx.away_score : fx.home_score;
 
-        // Solo si está EN VIVO pedimos el detalle para el minuto real.
-        // (Una llamada extra por partido en vivo; los finalizados/próximos no la necesitan.)
+        // Solo si está EN VIVO o terminó por penales pedimos el detalle.
+        // (Una llamada extra por partido en vivo o con pens; el resto no la necesita.)
         // El minuto se conserva como texto crudo ("86", "90+", "90+2") — no se
         // fuerza a número porque el tiempo añadido no es numérico.
         let minute = null;
-        if (state === 'live') {
-          const detail = await _getMatchDetail(matchSlugFromUrl(fx.url));
-          const m = detail?.live_minute;
-          if (m != null && String(m).trim() !== '') minute = String(m).trim();
-        }
-
-        // Intentar leer marcador de penales del detalle (si está disponible y es 'pen')
         let penaltyScore = null;
-        if (state === 'finished' && method === 'pen') {
+        const needsDetail = state === 'live' || (state === 'finished' && method === 'pen');
+        if (needsDetail) {
           const detail = await _getMatchDetail(matchSlugFromUrl(fx.url));
-          const hs = detail?.home_score_pen ?? detail?.home_pen_score;
-          const aws = detail?.away_score_pen ?? detail?.away_pen_score;
-          if (hs != null && aws != null) {
-            penaltyScore = {
-              team1: homeIsTeam1 ? hs : aws,
-              team2: homeIsTeam1 ? aws : hs,
-            };
+          if (state === 'live') {
+            const m = detail?.live_minute;
+            if (m != null && String(m).trim() !== '') minute = String(m).trim();
+          } else {
+            const hs = detail?.home_score_pen ?? detail?.home_pen_score;
+            const aws = detail?.away_score_pen ?? detail?.away_pen_score;
+            if (hs != null && aws != null) {
+              penaltyScore = {
+                team1: homeIsTeam1 ? hs : aws,
+                team2: homeIsTeam1 ? aws : hs,
+              };
+            }
           }
         }
 
-        return {
+        // Guardamos la primera coincidencia y descartamos los demás resultados.
+        // Nota: si dos slugs encuentran match casi a la vez, puede que gane el
+        // segundo. Es aceptable porque ambos vienen de la misma fuente SportScore.
+        if (matchedFixture) return; // ya tenemos match, este forEach lo ignora
+        matchedFixture = {
           state,
           method,
           penaltyScore,
@@ -209,8 +220,9 @@ export async function getLiveResultForMatch(match) {
         };
       }
     } catch {
-      // Silencioso: si un equipo falla, intentamos el otro.
+      // Silencioso: si un equipo falla, dejamos que el otro encuentre el match.
     }
-  }
-  return null;
+  }));
+
+  return matchedFixture;
 }

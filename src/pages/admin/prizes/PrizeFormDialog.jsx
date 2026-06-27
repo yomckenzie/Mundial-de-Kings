@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,36 @@ const newRowId = () =>
 const EMPTY_FORM = { name: '', description: '', image_urls: [], points_cost: '', status: 'active', original_stock: '' };
 const EMPTY_SIZE_ROW = () => ({ id: newRowId(), size: '', stock: '' });
 
+// Construye el estado inicial del form desde initialData (o vacío si es create).
+// Mantenido fuera del componente para que sea estable entre renders.
+const buildInitialForm = (initialData) => {
+  if (!initialData) return EMPTY_FORM;
+  const legacy = initialData.image_url;
+  const list = Array.isArray(initialData.image_urls)
+    ? initialData.image_urls
+    : (legacy ? [legacy] : []);
+  return {
+    name: initialData.name || '',
+    description: initialData.description || '',
+    image_urls: list,
+    points_cost: String(initialData.points_cost ?? ''),
+    status: initialData.status || 'active',
+    original_stock: String(initialData.original_stock ?? ''),
+  };
+};
+
+const buildInitialSizeRows = (initialData) => {
+  if (!initialData) return [EMPTY_SIZE_ROW()];
+  const existingSizes = initialData.original_sizes && typeof initialData.original_sizes === 'object'
+    ? Object.entries(initialData.original_sizes).map(([size, stock]) => ({
+        id: newRowId(),
+        size,
+        stock: String(stock ?? 0),
+      }))
+    : [];
+  return existingSizes.length > 0 ? existingSizes : [EMPTY_SIZE_ROW()];
+};
+
 /**
  * Diálogo controlado para crear/editar un premio.
  *
@@ -26,8 +56,11 @@ const EMPTY_SIZE_ROW = () => ({ id: newRowId(), size: '', stock: '' });
  *  - 'create' (default): form vacío, al submit llama onSubmit(payload)
  *  - 'edit': form prellenado con initialData, al submit llama onSubmit(payload, initialData.id)
  *
- * Estado interno (form + sizeRows + uploading) se resetea cada vez que se abre
- * o cuando initialData cambia (el useEffect en la apertura detecta cambio de premio).
+ * El reset del form al cambiar de premio se hace con el `key` prop del padre
+ * (`<PrizeFormDialog key={initialData?.id ?? 'new'} ... />`) — React remonta
+ * el componente cuando cambia la key, así no necesitamos useEffect para
+ * sincronizar props con state (que mostraba valores stale en un render
+ * intermedio).
  */
 export default function PrizeFormDialog({
   open,
@@ -37,42 +70,8 @@ export default function PrizeFormDialog({
   isPending = false,
 }) {
   const isEdit = !!initialData;
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [sizeRows, setSizeRows] = useState([EMPTY_SIZE_ROW()]);
-
-  // Al abrir, popular desde initialData (edit) o resetear a vacío (create).
-  // También al cambiar de un premio a otro en el admin.
-  useEffect(() => {
-    if (!open) return;
-    if (initialData) {
-      // Aceptar image_urls (nuevo formato) o image_url (legacy) para no romper
-      // premios existentes con una sola imagen.
-      const legacy = initialData.image_url;
-      const list = Array.isArray(initialData.image_urls)
-        ? initialData.image_urls
-        : (legacy ? [legacy] : []);
-      setForm({
-        name: initialData.name || '',
-        description: initialData.description || '',
-        image_urls: list,
-        points_cost: String(initialData.points_cost ?? ''),
-        status: initialData.status || 'active',
-        original_stock: String(initialData.original_stock ?? ''),
-      });
-      // Pre-poblar tallas desde original_sizes (preserva el stock original)
-      const existingSizes = initialData.original_sizes && typeof initialData.original_sizes === 'object'
-        ? Object.entries(initialData.original_sizes).map(([size, stock]) => ({
-            id: newRowId(),
-            size,
-            stock: String(stock ?? 0),
-          }))
-        : [];
-      setSizeRows(existingSizes.length > 0 ? existingSizes : [EMPTY_SIZE_ROW()]);
-    } else {
-      setForm(EMPTY_FORM);
-      setSizeRows([EMPTY_SIZE_ROW()]);
-    }
-  }, [open, initialData]);
+  const [form, setForm] = useState(() => buildInitialForm(initialData));
+  const [sizeRows, setSizeRows] = useState(() => buildInitialSizeRows(initialData));
 
   const addSizeRow = () => setSizeRows(prev => [...prev, EMPTY_SIZE_ROW()]);
   const removeSizeRow = (id) => setSizeRows(prev => prev.filter(r => r.id !== id));
