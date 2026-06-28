@@ -95,16 +95,16 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
             <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-medium">{match.group_stage}</p>
           )}
 
-          {/* Teams, Score & Prediction */}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-1.5 sm:gap-3 md:gap-4 py-4 items-start">
+          {/* Teams & Score header */}
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:gap-3 md:gap-4 py-3 sm:py-4 items-start">
             {/* Team 1 */}
             <div className="flex flex-col items-center gap-1.5 min-w-0">
               <TeamFlag team={match.team1} isLive={isLive} size="hero" />
               <span className="font-bold text-xs sm:text-base md:text-lg text-center leading-tight break-words w-full">{match.team1}</span>
             </div>
 
-            {/* Center column: Score + Prediction */}
-            <div className="flex flex-col items-center gap-3 w-[140px] sm:w-[160px] md:min-w-[180px]">
+            {/* Center column: Score + VS (sin form) */}
+            <div className="flex flex-col items-center gap-1 w-[120px] sm:w-[160px] md:min-w-[180px]">
               {/* Score / VS */}
               <div className="flex flex-col items-center gap-1">
                 {match.status === 'finished' || isLive || pendingConfirm ? (
@@ -163,12 +163,18 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                   </div>
                 )}
               </div>
+            </div>
+            {/* Fin center column (score/VS) */}
+          </div>
+          {/* Fin HEADER (grid de banderas + marcador) */}
 
-              {/* Prediction - compact & centered */}
-              {isLive ? (
-                <div className="space-y-2 w-full">
-                  <div className="text-center text-[11px] text-muted-foreground flex items-center justify-center gap-1 py-1.5 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          {/* FORM SECTION — full-width, debajo del header */}
+          <div className="border-t border-border/50 -mx-4 sm:-mx-5 px-4 sm:px-5 pt-3 pb-1">
+            {/* Prediction - full width */}
+            {isLive ? (
+              <div className="space-y-2 w-full">
+                <div className="text-center text-[11px] text-muted-foreground flex items-center justify-center gap-1 py-1.5 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
                     Partido en curso
                   </div>
                   {existing && (
@@ -411,13 +417,13 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                 </div>
               )}
             </div>
+            {/* Fin FORM SECTION */}
 
             {/* Team 2 */}
             <div className="flex flex-col items-center gap-1.5 min-w-0">
               <TeamFlag team={match.team2} isLive={isLive} size="hero" />
               <span className="font-bold text-xs sm:text-base md:text-lg text-center leading-tight break-words w-full">{match.team2}</span>
             </div>
-          </div>
         </CardContent>
       </Card>
     </m.div>
