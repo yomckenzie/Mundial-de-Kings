@@ -7,6 +7,14 @@ import { db } from '@/lib/db';
 import { isValidTransition } from './matchTransitions';
 import { toast } from 'sonner';
 
+// FIX (bug v2-post-28): el modelo v2 (método + penales) solo aplica desde el
+// 28 jun 2026. Partidos anteriores usan el modelo legacy v1 (solo marcador)
+// y NO deben requerir método/penales al publicar.
+const V2_ACTIVATION_DATE = '2026-06-28';
+function isV2Match(match) {
+  return !!match?.match_date && match.match_date >= V2_ACTIVATION_DATE;
+}
+
 // Resuelve method + penales desde el form, con fallback al auto-fill desde
 // el proveedor live (sportscore). El form tiene prioridad porque es lo que
 // el admin acaba de tipear; el proveedor live solo sirve para partidos ya
@@ -227,9 +235,12 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     const resultTeam1 = Number(r.team1);
     const resultTeam2 = Number(r.team2);
     const { method: resultMethod, penaltyT1, penaltyT2 } = await resolveMethodAndPenalties(match, r);
+    const isV2 = isV2Match(match);
 
     // Validar: si el método es 'pen', los penales son obligatorios.
-    if (resultMethod === 'pen' && (penaltyT1 == null || penaltyT2 == null)) {
+    // FIX (bug v2-post-28): solo aplica a partidos v2 (post 28 jun). En v1
+    // el modelo no usa penales.
+    if (isV2 && resultMethod === 'pen' && (penaltyT1 == null || penaltyT2 == null)) {
       toast.error('Si el partido terminó en penales, completa el marcador de penales.');
       return;
     }
@@ -240,7 +251,10 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     // resolveMethodAndPenalties es fallback defensivo, pero la UI ya bloquea
     // el botón cuando falta, así que este caso solo se da si alguien publica
     // sin método por API directa — devolvemos un error claro igual.
-    if (forceFinish && resultMethod == null) {
+    //
+    // FIX (bug v2-post-28): solo aplica a partidos v2. Los legacy v1 no
+    // usan result_method y deben poder publicarse con solo el marcador.
+    if (forceFinish && isV2 && resultMethod == null) {
       toast.error('Elegí cómo terminó el partido (90 min / T. extra / Penales) antes de publicar.');
       return;
     }
@@ -257,10 +271,14 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     // mostraba "Cómo gana ❌ 0" aunque el pick fuera correcto).
     if (match.status === 'live' && !forceFinish) {
       const update = { result_team1: resultTeam1, result_team2: resultTeam2 };
-      if (resultMethod != null) update.result_method = resultMethod;
-      if (resultMethod === 'pen') {
-        update.penalty_score_team1 = penaltyT1;
-        update.penalty_score_team2 = penaltyT2;
+      // FIX (bug v2-post-28): para partidos legacy v1 no escribimos
+      // result_method ni penalty_score_* — esos campos son del modelo v2.
+      if (isV2) {
+        if (resultMethod != null) update.result_method = resultMethod;
+        if (resultMethod === 'pen') {
+          update.penalty_score_team1 = penaltyT1;
+          update.penalty_score_team2 = penaltyT2;
+        }
       }
       await api.entities.Match.update(match.id, update);
       setResults(prev => {
@@ -277,16 +295,26 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       return;
     }
 
-    await api.entities.Match.update(match.id, {
+    // FIX (bug v2-post-28): para partidos legacy v1 solo persistimos el
+    // marcador. result_method y penalty_score_* son del modelo v2 y deben
+    // quedar null en la BD para que el UI no muestre "90 min / T. extra" en
+    // partidos viejos.
+    const finishedUpdate = {
       result_team1: resultTeam1,
       result_team2: resultTeam2,
-      result_method: resultMethod,
-      penalty_score_team1: penaltyT1,
-      penalty_score_team2: penaltyT2,
       status: 'finished',
-    });
+    };
+    if (isV2) {
+      finishedUpdate.result_method = resultMethod;
+      finishedUpdate.penalty_score_team1 = penaltyT1;
+      finishedUpdate.penalty_score_team2 = penaltyT2;
+    }
+    await api.entities.Match.update(match.id, finishedUpdate);
+    // Para evaluar partidos v1 pasamos method/penalty null — el evaluador ya
+    // detecta el modelo por la presencia de pred_score_team1/2 (v2) o
+    // pred_team1/2 (v1).
     const evalResult = await evaluateMatchPredictions(
-      match.id, resultTeam1, resultTeam2, resultMethod, penaltyT1, penaltyT2,
+      match.id, resultTeam1, resultTeam2, isV2 ? resultMethod : null, isV2 ? penaltyT1 : null, isV2 ? penaltyT2 : null,
     );
     setResults(prev => {
       const { [match.id]: _, ...rest } = prev.form;
@@ -327,22 +355,33 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
         const resultTeam1 = Number(r.team1);
         const resultTeam2 = Number(r.team2);
         const { method: resultMethod, penaltyT1, penaltyT2 } = await resolveMethodAndPenalties(match, r);
+        const isV2 = isV2Match(match);
         // Si el método declarado es 'pen' pero no hay penales, saltear este
         // partido — un resultado a penales sin penales es inválido.
-        if (resultMethod === 'pen' && (penaltyT1 == null || penaltyT2 == null)) {
+        // FIX (bug v2-post-28): solo aplica a partidos v2. Los legacy v1 no
+        // usan penales.
+        if (isV2 && resultMethod === 'pen' && (penaltyT1 == null || penaltyT2 == null)) {
           console.warn(`[batch] Partido ${matchId}: método=pen pero penales vacíos, se saltea`);
           return;
         }
-        await api.entities.Match.update(matchId, {
+        // FIX (bug v2-post-28): partidos legacy v1 no deben persistir
+        // result_method ni penalty_score_* — son campos del modelo v2.
+        const update = {
           result_team1: resultTeam1,
           result_team2: resultTeam2,
-          result_method: resultMethod,
-          penalty_score_team1: penaltyT1,
-          penalty_score_team2: penaltyT2,
           status: 'finished',
-        });
+        };
+        if (isV2) {
+          update.result_method = resultMethod;
+          update.penalty_score_team1 = penaltyT1;
+          update.penalty_score_team2 = penaltyT2;
+        }
+        await api.entities.Match.update(matchId, update);
         const evalResult = await evaluateMatchPredictions(
-          matchId, resultTeam1, resultTeam2, resultMethod, penaltyT1, penaltyT2,
+          matchId, resultTeam1, resultTeam2,
+          isV2 ? resultMethod : null,
+          isV2 ? penaltyT1 : null,
+          isV2 ? penaltyT2 : null,
         );
         totalCorrect += evalResult.correct;
         return matchId;
