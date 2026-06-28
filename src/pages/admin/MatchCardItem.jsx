@@ -50,6 +50,15 @@ function canPublishResult(match) {
   return match.status === 'live' || match.status === 'finished';
 }
 
+// FIX (bug v2-post-28): el modelo v2 (3 picks, requiere método de cierre)
+// solo aplica a partidos del 28 jun 2026 en adelante. Antes de esa fecha
+// los partidos usan el modelo v1 (1 pick: ganador + marcador exacto, 100 pts)
+// y NO deben pedir método al admin ni deshabilitar el botón Publicar.
+const V2_ACTIVATION_DATE = '2026-06-28';
+function isV2Match(match) {
+  return !!match?.match_date && match.match_date >= V2_ACTIVATION_DATE;
+}
+
 // Movido fuera del componente: es un valor estático (no usa state ni props),
 // reconstruirlo en cada render desperdicia trabajo y rompe memoización de hijos.
 const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
@@ -63,6 +72,7 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
 
   const allowedNext = VALID_TRANSITIONS[match.status] || new Set();
   const selectableStatuses = ALL_STATUSES.filter(s => s === match.status || allowedNext.has(s));
+  const isV2 = isV2Match(match);
 
   return (
     <Card className={`mb-2 ${match.status === 'live' && !pendingConfirm ? 'ring-2 ring-red-500/50' : ''} ${pendingConfirm ? 'ring-2 ring-amber-400/70 bg-amber-50/40 dark:bg-amber-950/20' : ''}`}>
@@ -186,8 +196,13 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
                     // FIX (bug v2-79): método obligatorio al publicar resultado.
                     // Sin result_method en la BD, el breakdown muestra 'Cómo gana ❌ 0'
                     // aunque el pick sea correcto.
-                    const methodMissing = resultMethod == null;
-                    const penaltyMissing = resultMethod === 'pen' && (!formEntry.penaltyTeam1 || !formEntry.penaltyTeam2);
+                    //
+                    // FIX (bug v2-post-28): método solo se exige en partidos v2
+                    // (>= 28 jun 2026). En partidos legacy v1 el admin no tiene
+                    // por qué elegir cómo terminó — el modelo anterior ya cubre
+                    // el resultado con solo marcador + ganador.
+                    const methodMissing = isV2 && resultMethod == null;
+                    const penaltyMissing = isV2 && resultMethod === 'pen' && (!formEntry.penaltyTeam1 || !formEntry.penaltyTeam2);
                     const teamMissing = !formEntry.team1 || !formEntry.team2;
                     const disabled = teamMissing || methodMissing || penaltyMissing;
                     const disabledReason = teamMissing
@@ -234,8 +249,10 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
           {/* Selector de método + marcador de penales (Task 5 · betting-3ways).
               Solo visible cuando el partido puede recibir resultado (live/finished
               o por confirmar). Se renderiza en su propia línea debajo del marcador
-              para no romper el layout horizontal de la fila. */}
-          {(canPublishResult(match) || pendingConfirm) && (
+              para no romper el layout horizontal de la fila.
+              FIX (bug v2-post-28): partidos legacy v1 (pre 28 jun 2026) NO
+              muestran este selector — el modelo v1 no usa result_method. */}
+          {(canPublishResult(match) || pendingConfirm) && isV2 && (
             <div className="flex flex-wrap items-center gap-2 w-full mt-1">
               <Label className="text-xs text-muted-foreground">Cómo terminó:</Label>
               <Select
@@ -272,8 +289,8 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
           )}
 
           {/* Inputs de penales — solo aparecen si el admin eligió (o el form
-              ya tiene) método = 'pen'. */}
-          {(canPublishResult(match) || pendingConfirm) && results.form[match.id]?.resultMethod === 'pen' && (
+              ya tiene) método = 'pen'. Y el partido es v2 (post-28 jun). */}
+          {(canPublishResult(match) || pendingConfirm) && isV2 && results.form[match.id]?.resultMethod === 'pen' && (
             <div className="flex flex-wrap items-center gap-2 w-full mt-1">
               <Label className="text-xs text-muted-foreground">Penales:</Label>
               <Input
