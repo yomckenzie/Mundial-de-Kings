@@ -107,7 +107,7 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
         </p>
         <div className="text-center text-[11px] text-amber-600 dark:text-amber-400 font-medium py-1.5 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 space-y-0.5">
           <p>⏳ Pendiente del resultado final — si aciertas podés ganar</p>
-          <p className="font-bold">hasta 250 pts (si va a penales)</p>
+          <p className="font-bold">hasta 200 pts (los 3 picks correctos)</p>
         </div>
       </div>
     );

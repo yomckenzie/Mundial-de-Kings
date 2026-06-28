@@ -295,6 +295,10 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                           </Button>
                         ))}
                       </div>
+                      {/* FIX (bug v2-gate-28jun): texto explicando que ganador es gate */}
+                      <p className="text-[9px] text-amber-700/90 dark:text-amber-400/80 leading-snug text-center px-1 italic">
+                        Si no aciertas el ganador, no sumas ningún puntaje
+                      </p>
                     </div>
 
                     {/* Paso 2: ¿Cómo gana? */}
@@ -303,7 +307,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">¿Cómo gana?</p>
                         <span className="inline-flex items-center text-[10px] font-bold leading-none text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/60 dark:border-amber-700/50 rounded-full px-1.5 py-0.5 tabular-nums shrink-0 whitespace-nowrap">+50 pts</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-3 gap-1.5">
                         {[
                           { value: '90', label: '90 min' },
                           { value: 'et', label: 'T. extra' },
@@ -313,7 +317,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                             key={opt.value}
                             size="sm"
                             variant={form.pred_method === opt.value ? 'default' : 'outline'}
-                            className="h-8 text-xs px-1"
+                            className="h-8 text-[11px] sm:text-xs px-1 whitespace-nowrap"
                             onClick={() => handlePredict(match.id, 'pred_method', opt.value)}
                           >
                             {opt.label}
@@ -322,7 +326,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                       </div>
                       <div className="text-[9px] text-muted-foreground/80 leading-tight text-center px-1 space-y-0.5">
                         <div>90 min = 90 + tiempo de adición</div>
-                        <div>T. extra = 30 min</div>
+                        <div>T. extra = 30 min adicionales</div>
                         <div>Penales = definición desde los 11m</div>
                       </div>
                     </div>
@@ -394,7 +398,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                     </Button>
 
                     <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-center">
-                      Hasta <strong>200 pts</strong> (250 si va a penales)
+                      Hasta <strong>200 pts</strong> si aciertas los 3 picks
                     </div>
                     </>
                     )}
