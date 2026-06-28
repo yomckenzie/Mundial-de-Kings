@@ -174,8 +174,10 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
           </div>
           {/* Fin HEADER (grid de banderas + marcador) */}
 
-          {/* FORM SECTION — full-width, debajo del header */}
-          <div className="border-t border-border/50 -mx-4 sm:-mx-5 px-4 sm:px-5 pt-3 pb-1">
+          {/* FORM SECTION — contenedor centrado y con ancho limitado en desktop,
+              full-width en móvil (donde sí queremos que ocupe todo el ancho) */}
+          <div className="border-t border-border/50 -mx-4 sm:-mx-5 md:mx-0 px-4 sm:px-5 md:px-0 pt-3 pb-1">
+            <div className="md:max-w-md md:mx-auto">
             {/* Prediction - full width */}
             {isLive ? (
               <div className="space-y-2 w-full">
@@ -422,6 +424,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                   Pronósticos cerrados
                 </div>
               )}
+            </div>
             </div>
             {/* Fin FORM SECTION */}
         </CardContent>
