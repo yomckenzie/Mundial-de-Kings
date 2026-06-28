@@ -47,8 +47,12 @@ export function scoreV2(pred, result) {
   const actualWinner = deriveWinner(team1, team2, method, penaltyT1, penaltyT2);
   const winnerCorrect = actualWinner != null && pred.pred_winner === actualWinner;
 
-  // Método correcto
-  const methodCorrect = pred.pred_method === method;
+  // Método correcto. null si el admin no publicó método (no es evaluable).
+  // Si el usuario tampoco eligió método, queda null también (no penaliza).
+  let methodCorrect = null;
+  if (method != null && pred.pred_method != null) {
+    methodCorrect = pred.pred_method === method;
+  }
 
   // Score pick — REQUIERE winner correcto
   let scoreCorrect = null;
@@ -131,7 +135,7 @@ export async function evaluateMatchPredictions(
   // 1. Cargar pronósticos del partido
   const { data: allPredictions, error: predErr } = await supabase
     .from('predictions')
-    .select('id, user_email, pred_winner, pred_method, pred_penalty_team1, pred_penalty_team2, pred_score_team1, pred_score_team2, pred_pen_team1, pred_pen_team2')
+    .select('id, user_email, pred_team1, pred_team2, pred_winner, pred_method, pred_penalty_team1, pred_penalty_team2, pred_score_team1, pred_score_team2, pred_pen_team1, pred_pen_team2')
     .eq('match_id', matchId);
 
   if (predErr) {
@@ -176,38 +180,29 @@ export async function evaluateMatchPredictions(
       penaltyCorrect = null; // v2 no usa penalty_correct
       pointsEarned = r.points;
     } else {
-      // v1 legacy: reglas del modelo anterior (50 winner + 50 method + 50 penalty)
-      // Componente 1: ganador (null si pred_winner es null)
+      // v1 legacy (pre-28 jun 2026): el form del usuario solo guardaba
+      // `pred_team1` y `pred_team2` con el marcador final pronosticado.
+      // NO usaba pred_winner ni pred_method ni pred_penalty_* (esos son del v2).
+      //
+      // Reglas del modelo v1 (100 pts por marcador exacto):
+      //   - Si el usuario acertó el marcador exacto (pred_team1/2 == team1/2)
+      //     → 100 pts.
+      //   - Si no, 0 pts. (No hay winner/method/pick por separado.)
+      //
+      // FIX (bug v1-rdc): antes este branch revisaba pred_winner + pred_method
+      // + pred_penalty_*, todos null para v1, así que SIEMPRE daba 0 pts
+      // aunque el usuario hubiera acertado el marcador.
+      const v1ExactScoreCorrect =
+        pred.pred_team1 != null && pred.pred_team2 != null &&
+        pred.pred_team1 === resultTeam1 && pred.pred_team2 === resultTeam2;
+
       winnerCorrect = null;
-      if (pred.pred_winner != null) {
-        winnerCorrect = winner != null && pred.pred_winner === winner;
-      }
-
-      // Componente 2: método (null si alguno es null)
       methodCorrect = null;
-      if (resultMethod != null && pred.pred_method != null) {
-        methodCorrect = pred.pred_method === resultMethod;
-      }
-
-      // Componente 3: penal (solo si ambos lados apostaron a pen)
-      penaltyCorrect = null;
-      if (resultMethod === 'pen' && pred.pred_method === 'pen') {
-        penaltyCorrect =
-          pred.pred_penalty_team1 != null &&
-          pred.pred_penalty_team2 != null &&
-          pred.pred_penalty_team1 === penaltyScoreT1 &&
-          pred.pred_penalty_team2 === penaltyScoreT2;
-      }
-
-      pointsEarned =
-        (winnerCorrect === true ? POINTS_WINNER : 0) +
-        (methodCorrect === true ? POINTS_METHOD : 0) +
-        (penaltyCorrect === true ? POINTS_PENALTY_LEGACY : 0);
-
-      // Para v1, scoreCorrect = winner && method && penalty (legacy simplification)
-      scoreCorrect = null;
+      scoreCorrect = v1ExactScoreCorrect;
       prePenCorrect = null;
       penCorrect = null;
+      penaltyCorrect = null;
+      pointsEarned = v1ExactScoreCorrect ? 100 : 0;
     }
 
     if (pointsEarned > 0) correctEmails.add(pred.user_email);
