@@ -59,14 +59,13 @@ export function scoreV2(pred, result) {
   let prePenCorrect = null;
   let penCorrect = null;
 
-  // Marcador es un componente INDEPENDIENTE. La evaluación requiere que la
-  // CATEGORÍA del método coincida (90/ET comparten "score exacto"; pen es
-  // "score total 90+ET+pens" — categorías distintas, no comparables):
+  // Marcador: requiere que la CATEGORÍA del método coincida (90/ET comparten
+  // "score exacto"; pen es "score total 90+ET+pens" — categorías distintas,
+  // no comparables):
   //   - actual 90/ET + pred 90/ET → comparar pred_score vs score exacto
   //   - actual pen  + pred pen    → comparar pred_score vs total (90+ET+pens)
   //   - Cualquier cruce (90/ET vs pen o viceversa) → scoreCorrect queda null
   //     (interpretaciones distintas, no se puede comparar).
-  // NO requiere winnerCorrect — los 3 picks son independientes.
   if ((method === '90' || method === 'et') && (pred.pred_method === '90' || pred.pred_method === 'et')) {
     scoreCorrect = pred.pred_score_team1 === team1 && pred.pred_score_team2 === team2;
   } else if (method === 'pen' && pred.pred_method === 'pen') {
@@ -77,13 +76,23 @@ export function scoreV2(pred, result) {
     penCorrect = null;
   }
 
-  // Puntos
+  // Puntos — FIX (bug v2-gate-28jun): el ganador es GATE, no componente
+  // independiente. Si el usuario NO acertó el ganador, NO suma método ni
+  // marcador (aunque coincidan por casualidad). Esto evita que alguien gane
+  // puntos de marcador prediciendo un resultado que no pasó.
+  //
+  // Si acierta el ganador: método (+50) y marcador (+100) suman independiente
+  // entre sí — el método fallar NO bloquea al marcador, y viceversa.
+  //   - winner ✓ + method ✓ + score ✓ → 200 pts (máximo)
+  //   - winner ✓ + method ✗ + score ✓ → 150 pts (ejemplo del usuario)
+  //   - winner ✓ + method ✓ + score ✗ → 100 pts
+  //   - winner ✗ + cualquier method/score → 0 pts
   let points = 0;
-  if (winnerCorrect) points += POINTS_WINNER;
-  if (methodCorrect) points += POINTS_METHOD;
-  // Marcador: 100 pts si scoreCorrect, independiente del método del partido
-  // (siempre vale 100, sea 90/ET o Pen). Pre-pen fue eliminado del modelo.
-  if (scoreCorrect) points += POINTS_SCORE;
+  if (winnerCorrect) {
+    points += POINTS_WINNER;          // 50
+    if (methodCorrect) points += POINTS_METHOD;  // 50
+    if (scoreCorrect) points += POINTS_SCORE;    // 100
+  }
 
   return { winnerCorrect, methodCorrect, scoreCorrect, prePenCorrect, penCorrect, points };
 }

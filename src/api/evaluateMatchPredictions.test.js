@@ -318,7 +318,8 @@ describe('evaluateMatchPredictions', () => {
     expect(up.winner_correct).toBe(false); // alguien ganó (visitante)
     expect(up.method_correct).toBe(true);
     expect(up.score_correct).toBe(true);
-    expect(up.points_earned).toBe(150); // método 50 + score 100
+    // FIX (bug v2-gate-28jun): ganador mal → 0 pts aunque método y score acierten.
+    expect(up.points_earned).toBe(0);
   });
 
   it('result_method null sin penales → method_correct null, suma solo ganador', async () => {
@@ -468,9 +469,10 @@ describe('scoreV2 — 90 min', () => {
     expect(r.points).toBe(50);
   });
 
-  it('solo método correcto → 50 pts (winner mal, score bien → 150 pts con regla independiente)', () => {
-    // Picks independientes: si method y score aciertan aunque winner no,
-    // suman 50 + 100 = 150 pts. Score NO requiere winner correcto.
+  it('ganador mal → 0 pts aunque método y score acierten (gate)', () => {
+    // FIX (bug v2-gate-28jun): el ganador es GATE. Aunque method y score
+    // coincidan, si winner es incorrecto el resto no suma. Antes esta
+    // combinación daba 150 pts (picks independientes).
     const r = scoreV2(
       { ...basePred, pred_winner: TEAM2 },
       { team1: 2, team2: 1, method: '90' },
@@ -478,13 +480,13 @@ describe('scoreV2 — 90 min', () => {
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
     expect(r.scoreCorrect).toBe(true);
-    expect(r.points).toBe(150); // 50 method + 100 score
+    expect(r.points).toBe(0);
   });
 
-  it('score correcto con ganador incorrecto → 150 pts (picks independientes)', () => {
+  it('score correcto con ganador incorrecto → 0 pts (gate)', () => {
     // Caso: usuario predijo Visitante 2-1 y el real fue Local 2-1.
-    // Score es numéricamente igual pero winner falla. Como los picks son
-    // independientes, score suma 100 igual. Total: 50 (method) + 100 (score) = 150.
+    // Score numéricamente igual pero winner falla → con el gate, 0 pts
+    // (antes daba 150).
     const r = scoreV2(
       { ...basePred, pred_winner: TEAM2 },
       { team1: 2, team2: 1, method: '90' },
@@ -492,7 +494,34 @@ describe('scoreV2 — 90 min', () => {
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
     expect(r.scoreCorrect).toBe(true);
+    expect(r.points).toBe(0);
+  });
+
+  it('ganador ✓ + método ✗ + score ✓ → 150 pts (caso del usuario)', () => {
+    // Ejemplo real: predijiste ganador correcto y marcador 2-1 exacto, pero
+    // elegiste método "90" y terminó en tiempo extra. Score gana 100, método
+    // 0, ganador 50 → 150 pts total.
+    const r = scoreV2(
+      { ...basePred, pred_method: '90' },
+      { team1: 2, team2: 1, method: 'et' },
+    );
+    expect(r.winnerCorrect).toBe(true);
+    expect(r.methodCorrect).toBe(false);
+    expect(r.scoreCorrect).toBe(true);
     expect(r.points).toBe(150);
+  });
+
+  it('ganador ✓ + método ✓ + score ✗ → 100 pts (independiente entre method/score)', () => {
+    // El método y el marcador suman independiente entre sí dentro del gate
+    // del ganador. Si método acierta pero score falla → 50+50+0 = 100.
+    const r = scoreV2(
+      { ...basePred, pred_score_team1: 3, pred_score_team2: 2 },
+      { team1: 2, team2: 1, method: '90' },
+    );
+    expect(r.winnerCorrect).toBe(true);
+    expect(r.methodCorrect).toBe(true);
+    expect(r.scoreCorrect).toBe(false);
+    expect(r.points).toBe(100);
   });
 
   it('ninguno correcto → 0 pts', () => {
@@ -503,19 +532,20 @@ describe('scoreV2 — 90 min', () => {
     expect(r.points).toBe(0);
   });
 
-  it('pred ET con score igual al 90 real → scoreCorrect=true (90/ET misma categoría)', () => {
+  it('pred ET con score igual al 90 real → scoreCorrect=true pero 0 pts por gate', () => {
     // Caso reportado por el usuario: predijo 'et' con 0-1, el real fue 90 con 0-1.
     // 90 y ET comparten interpretación (score exacto), así que el scoreMatch.
-    // Winner mal (esperaba Local, ganó Visitante) — no afecta al marcador.
-    // Total: 50 method + 100 score = 150 pts.
+    // Winner mal (esperaba Local, ganó Visitante) → con el gate, 0 pts aunque
+    // el método y el marcador coincidan.
     const r = scoreV2(
       { pred_winner: TEAM1, pred_method: 'et', pred_score_team1: 0, pred_score_team2: 1 },
       { team1: 0, team2: 1, method: '90' },
     );
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(false); // 'et' !== '90' — categorías OK pero no idéntico
-    expect(r.scoreCorrect).toBe(true);   // ← score sí match
-    expect(r.points).toBe(100); // solo score (50 winner off, 50 method off)
+    expect(r.scoreCorrect).toBe(true);   // ← score sí match (no requiere winner)
+    // FIX (bug v2-gate-28jun): winner mal → 0 pts totales
+    expect(r.points).toBe(0);
   });
 
   it('pred pen con score 1-1 + real 90 con score 1-1 → scoreCorrect=null (categorías distintas)', () => {
@@ -541,7 +571,9 @@ describe('scoreV2 — tiempo extra', () => {
     expect(r.points).toBe(200);
   });
 
-  it('método correcto pero ganador incorrecto → 150 pts (picks independientes)', () => {
+  it('método correcto pero ganador incorrecto → 0 pts (gate)', () => {
+    // FIX (bug v2-gate-28jun): ganador es GATE. Si winner mal, no suman
+    // los otros picks aunque coincidan.
     const r = scoreV2(
       { pred_winner: TEAM2, pred_method: 'et', pred_score_team1: 3, pred_score_team2: 2 },
       { team1: 3, team2: 2, method: 'et' },
@@ -549,7 +581,7 @@ describe('scoreV2 — tiempo extra', () => {
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
     expect(r.scoreCorrect).toBe(true);
-    expect(r.points).toBe(150); // 50 method + 100 score
+    expect(r.points).toBe(0);
   });
 });
 
@@ -582,8 +614,8 @@ describe('scoreV2 — penales (v2 simplificado: pred_score = total 90+ET+pens)',
     expect(r.points).toBe(100); // 50 winner + 50 method
   });
 
-  it('total correcto pero winner mal → 150 pts (picks independientes)', () => {
-    // Picks independientes: winner mal, pero method y score bien → 50 + 100 = 150.
+  it('total correcto pero winner mal → 0 pts (gate)', () => {
+    // FIX (bug v2-gate-28jun): ganador es GATE. Picks no suman sin winner correcto.
     const r = scoreV2(
       { ...basePred, pred_winner: TEAM2 },
       { team1: 1, team2: 1, method: 'pen', penaltyT1: 4, penaltyT2: 3 },
@@ -591,7 +623,7 @@ describe('scoreV2 — penales (v2 simplificado: pred_score = total 90+ET+pens)',
     expect(r.winnerCorrect).toBe(false);
     expect(r.methodCorrect).toBe(true);
     expect(r.scoreCorrect).toBe(true);
-    expect(r.points).toBe(150);
+    expect(r.points).toBe(0);
   });
 
   it('total correcto, método incorrecto → 50 pts (score null por mismatch de método)', () => {

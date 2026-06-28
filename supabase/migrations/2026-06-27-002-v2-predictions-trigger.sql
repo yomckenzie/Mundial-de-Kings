@@ -104,11 +104,15 @@ BEGIN
   NEW.pre_pen_correct := NULL;
   NEW.pen_correct     := NULL;
 
-  -- Puntos: 50 + 50 + 100
+  -- Puntos: ganador es GATE (bug v2-gate-28jun). Si winner mal → 0 pts
+  -- total (método y marcador no suman aunque coincidan por casualidad).
+  -- Si winner correcto → método (+50) y marcador (+100) suman independiente.
   v_points := 0;
-  IF v_winner_correct THEN v_points := v_points + 50; END IF;
-  IF v_method_correct THEN v_points := v_points + 50; END IF;
-  IF v_score_correct  THEN v_points := v_points + 100; END IF;
+  IF v_winner_correct THEN
+    v_points := v_points + 50;
+    IF v_method_correct THEN v_points := v_points + 50; END IF;
+    IF v_score_correct  THEN v_points := v_points + 100; END IF;
+  END IF;
 
   NEW.points_earned := v_points;
   NEW.is_correct    := v_points > 0;
