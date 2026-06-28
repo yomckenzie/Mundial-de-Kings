@@ -96,7 +96,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
           )}
 
           {/* Teams & Score header */}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:gap-3 md:gap-4 py-3 sm:py-4 items-start">
+          <div className="grid grid-cols-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:gap-3 md:gap-4 py-3 sm:py-4 items-center sm:items-start">
             {/* Team 1 */}
             <div className="flex flex-col items-center gap-1.5 min-w-0">
               <TeamFlag team={match.team1} isLive={isLive} size="hero" />
@@ -104,7 +104,7 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
             </div>
 
             {/* Center column: Score + VS (sin form) */}
-            <div className="flex flex-col items-center gap-1 w-[120px] sm:w-[160px] md:min-w-[180px]">
+            <div className="flex flex-col items-center gap-1 w-auto sm:w-[160px] md:min-w-[180px]">
               {/* Score / VS */}
               <div className="flex flex-col items-center gap-1">
                 {match.status === 'finished' || isLive || pendingConfirm ? (
