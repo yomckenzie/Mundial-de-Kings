@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { m } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy, TrendingUp, Gift } from 'lucide-react';
+import { Trophy, TrendingUp, Gift, Info } from 'lucide-react';
 import { api } from '@/api/client';
 import PrizeCard from './prizes/PrizeCard';
 
@@ -106,6 +106,26 @@ export default function Prizes() {
             </span>
           </m.div>
         )}
+      </m.div>
+
+      {/* Banner informativo: canje no afecta el ranking */}
+      <m.div
+        variants={itemVariants}
+        className="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 border border-blue-300/40 dark:border-blue-700/40 rounded-xl px-4 py-3 flex items-start gap-3"
+      >
+        <div className="shrink-0 mt-0.5">
+          <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+        </div>
+        <div className="text-sm leading-relaxed">
+          <p className="font-semibold text-foreground mb-0.5">
+            🎁 Reclama tus premios sin miedo
+          </p>
+          <p className="text-muted-foreground">
+            <strong className="text-foreground">Canjear no afecta tu posición en el Ranking</strong>.
+            Tus puntos para el ranking se mantienen; solo usas una copia de tus puntos para reclamar el premio.
+            Si tienes puntos disponibles, ¡adelante!
+          </p>
+        </div>
       </m.div>
 
       {/* Points progress bar */}
