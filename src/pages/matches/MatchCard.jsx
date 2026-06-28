@@ -165,6 +165,12 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
               </div>
             </div>
             {/* Fin center column (score/VS) */}
+
+            {/* Team 2 — DENTRO del grid header */}
+            <div className="flex flex-col items-center gap-1.5 min-w-0">
+              <TeamFlag team={match.team2} isLive={isLive} size="hero" />
+              <span className="font-bold text-xs sm:text-base md:text-lg text-center leading-tight break-words w-full">{match.team2}</span>
+            </div>
           </div>
           {/* Fin HEADER (grid de banderas + marcador) */}
 
@@ -418,12 +424,6 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
               )}
             </div>
             {/* Fin FORM SECTION */}
-
-            {/* Team 2 */}
-            <div className="flex flex-col items-center gap-1.5 min-w-0">
-              <TeamFlag team={match.team2} isLive={isLive} size="hero" />
-              <span className="font-bold text-xs sm:text-base md:text-lg text-center leading-tight break-words w-full">{match.team2}</span>
-            </div>
         </CardContent>
       </Card>
     </m.div>
