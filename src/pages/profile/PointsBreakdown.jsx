@@ -1,7 +1,13 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { Award, Target, Star, UserPlus, Gift, TrendingUp, Trophy } from 'lucide-react';
+import { Award, Target, Star, UserPlus, Gift, TrendingUp, Trophy, Info } from 'lucide-react';
 
-export default function PointsBreakdown({ predictionPoints, bonusPoints, referralPoints, totalSpent, totalPoints, availablePoints, accuracy, correctPreds, scoredPreds }) {
+export default function PointsBreakdown({
+  predictionPoints, bonusPoints, referralPoints, totalSpent, totalPoints, availablePoints,
+  accuracy, correctPreds, scoredPreds,
+  v1Points = 0, v2Points = 0,
+  v1Aciertos = 0, v1Total = 0,
+  v2WinnerAciertos = 0, v2MethodAciertos = 0, v2ScoreAciertos = 0, v2Total = 0,
+}) {
   return (
     <Card className="overflow-hidden gradient-border">
       <CardContent className="p-4 md:p-5 space-y-3">
@@ -22,6 +28,46 @@ export default function PointsBreakdown({ predictionPoints, bonusPoints, referra
           </div>
           <span className="font-bold text-lg">{predictionPoints} pts</span>
         </div>
+
+        {/* Sub-desglose del modelo: v1 (legacy pre-28 jun) vs v2 (≥ 28 jun) */}
+        {(v1Total > 0 || v2Total > 0) && (
+          <div className="ml-3 sm:ml-4 pl-3 sm:pl-4 border-l-2 border-border/50 space-y-1.5 text-xs">
+            {v1Total > 0 && (
+              <div className="flex items-center justify-between py-1 px-2 rounded bg-muted/30">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-muted-foreground">v1</span>
+                  <span className="text-muted-foreground/80">(pre-28 jun, marcador exacto 100 pts)</span>
+                </div>
+                <span className="font-semibold tabular-nums">{v1Points} pts · {v1Aciertos}/{v1Total}</span>
+              </div>
+            )}
+            {v2Total > 0 && (
+              <div className="flex items-center justify-between py-1 px-2 rounded bg-muted/30">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-foreground">v2</span>
+                  <span className="text-muted-foreground/80">(≥ 28 jun, 3 picks · gate del ganador)</span>
+                </div>
+                <span className="font-semibold tabular-nums">{v2Points} pts</span>
+              </div>
+            )}
+            {v2Total > 0 && (
+              <div className="grid grid-cols-3 gap-1 mt-1">
+                <div className="flex flex-col items-center py-1 px-1 rounded bg-primary/5 text-center">
+                  <span className="text-[10px] text-muted-foreground leading-tight">Ganador</span>
+                  <span className="font-semibold tabular-nums text-foreground">{v2WinnerAciertos}/{v2Total}</span>
+                </div>
+                <div className="flex flex-col items-center py-1 px-1 rounded bg-primary/5 text-center">
+                  <span className="text-[10px] text-muted-foreground leading-tight">Método</span>
+                  <span className="font-semibold tabular-nums text-foreground">{v2MethodAciertos}/{v2Total}</span>
+                </div>
+                <div className="flex flex-col items-center py-1 px-1 rounded bg-primary/5 text-center">
+                  <span className="text-[10px] text-muted-foreground leading-tight">Marcador</span>
+                  <span className="font-semibold tabular-nums text-foreground">{v2ScoreAciertos}/{v2Total}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-2.5">

@@ -160,27 +160,53 @@ export default function AdminPredictions() {
 
           {isLoading ? <p className="text-muted-foreground">Cargando...</p> : (
             <div className="space-y-2">
-              {filteredRows.map(({ p, match, st }) => (
-                <Card key={p.id}>
-                  <CardContent className="p-3 text-sm flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{userLabel(p.user_email)}</p>
-                      <p className="text-muted-foreground text-xs">{p.user_email}</p>
-                      <p className="text-muted-foreground">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
-                      <p>Pronóstico: <strong>{p.pred_team1} - {p.pred_team2}</strong></p>
-                    </div>
-                    {st === 'pendiente' ? (
-                      <Badge variant="outline">Pendiente</Badge>
-                    ) : (
-                      <Badge className={st === 'ganó' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}>
-                        {st === 'ganó'
-                          ? <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />+100</span>
-                          : <span className="flex items-center gap-1"><X className="w-3 h-3" />0</span>}
-                      </Badge>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+              {filteredRows.map(({ p, match, st }) => {
+                const isV2 = p.pred_score_team1 != null || p.pred_score_team2 != null;
+                const winnerLabel = p.pred_winner === '1' ? (match?.team1 || 'Local')
+                  : p.pred_winner === '2' ? (match?.team2 || 'Visitante')
+                  : p.pred_winner === 'X' ? 'Empate' : null;
+                const methodLabel = p.pred_method === '90' ? '90 min'
+                  : p.pred_method === 'et' ? 'T. extra'
+                  : p.pred_method === 'pen' ? 'Penales' : null;
+                const score = isV2
+                  ? `${p.pred_score_team1}-${p.pred_score_team2}`
+                  : (p.pred_team1 != null ? `${p.pred_team1}-${p.pred_team2}` : null);
+                return (
+                  <Card key={p.id}>
+                    <CardContent className="p-3 text-sm flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{userLabel(p.user_email)}</p>
+                        <p className="text-muted-foreground text-xs">{p.user_email}</p>
+                        <p className="text-muted-foreground">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
+                        {/* Mini-desglose de picks (v1 + v2) */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs mt-1">
+                          {winnerLabel && (
+                            <span className="text-muted-foreground">🏆 <span className="font-medium text-foreground">{winnerLabel}</span></span>
+                          )}
+                          {methodLabel && (
+                            <span className="text-muted-foreground">⏱ <span className="font-medium text-foreground">{methodLabel}</span></span>
+                          )}
+                          {score && (
+                            <span className="text-muted-foreground">⚽ <span className="font-medium text-foreground">{score}</span></span>
+                          )}
+                          {!winnerLabel && !methodLabel && !score && (
+                            <span className="text-muted-foreground italic">Pronóstico: —</span>
+                          )}
+                        </div>
+                      </div>
+                      {st === 'pendiente' ? (
+                        <Badge variant="outline">Pendiente</Badge>
+                      ) : (
+                        <Badge className={st === 'ganó' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}>
+                          {st === 'ganó'
+                            ? <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />+{p.points_earned || 100}</span>
+                            : <span className="flex items-center gap-1"><X className="w-3 h-3" />0</span>}
+                        </Badge>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </>

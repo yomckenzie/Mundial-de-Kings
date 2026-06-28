@@ -71,6 +71,34 @@ export default function AdminUsers() {
     return map;
   }, [predictions]);
 
+  // Desglose v1 vs v2 por email. v1 = pre-28 jun (marcador exacto 100 pts);
+  // v2 = ≥ 28 jun (3 picks independientes, gate del ganador).
+  const breakdownMap = useMemo(() => {
+    const map = {};
+    predictions.forEach(p => {
+      if (!p.scored) return;
+      const isV2 = p.pred_score_team1 != null || p.pred_score_team2 != null;
+      const m = map[p.user_email] || {
+        v1Points: 0, v1Total: 0, v1Aciertos: 0,
+        v2Points: 0, v2Total: 0,
+        v2Winner: 0, v2Method: 0, v2Score: 0,
+      };
+      if (isV2) {
+        m.v2Total += 1;
+        m.v2Points += p.points_earned || 0;
+        if (p.winner_correct === true) m.v2Winner += 1;
+        if (p.method_correct === true) m.v2Method += 1;
+        if (p.score_correct === true) m.v2Score += 1;
+      } else {
+        m.v1Total += 1;
+        m.v1Points += p.points_earned || 0;
+        if ((p.points_earned || 0) > 0) m.v1Aciertos += 1;
+      }
+      map[p.user_email] = m;
+    });
+    return map;
+  }, [predictions]);
+
   const canjesMap = useMemo(() => {
     const map = {};
     redemptions.forEach(r => {
@@ -267,6 +295,7 @@ export default function AdminUsers() {
             aciertosMap={aciertosMap}
             canjesMap={canjesMap}
             referredCountMap={referredCountMap}
+            breakdownMap={breakdownMap}
             onGrantPoints={(user) => setUi(prev => ({ ...prev, grantUser: user }))}
             onDelete={(user) => setUi(prev => ({ ...prev, deleteUser: user }))}
           />

@@ -2,7 +2,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Gift, Trash2 } from 'lucide-react';
 
-export default function UserCard({ user, aciertosMap, canjesMap, referredCountMap, onGrantPoints, onDelete }) {
+export default function UserCard({ user, aciertosMap, canjesMap, referredCountMap, breakdownMap, onGrantPoints, onDelete }) {
+  const br = breakdownMap?.[user.email];
+  const hasBreakdown = br && (br.v1Total > 0 || br.v2Total > 0);
   return (
     <Card>
       <CardContent className="p-3 text-sm">
@@ -43,6 +45,44 @@ export default function UserCard({ user, aciertosMap, canjesMap, referredCountMa
             <p className="font-medium">{canjesMap[user.email] || 0}</p>
           </div>
         </div>
+
+        {/* Sub-desglose v1 vs v2 (solo si el usuario tiene pronósticos scored) */}
+        {hasBreakdown && (
+          <div className="mt-2 pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-muted-foreground font-medium">Desglose por modelo</span>
+              <span className="font-semibold tabular-nums">{user.prediction_points || 0} pts total</span>
+            </div>
+            {br.v1Total > 0 && (
+              <div className="flex items-center justify-between text-xs py-0.5 px-1.5 rounded bg-muted/30">
+                <span className="text-muted-foreground">v1 (pre-28 jun, marcador exacto 100 pts)</span>
+                <span className="font-semibold tabular-nums">{br.v1Points} pts · {br.v1Aciertos}/{br.v1Total}</span>
+              </div>
+            )}
+            {br.v2Total > 0 && (
+              <>
+                <div className="flex items-center justify-between text-xs py-0.5 px-1.5 rounded bg-muted/30 mt-1">
+                  <span className="text-foreground font-medium">v2 (≥ 28 jun, 3 picks · gate del ganador)</span>
+                  <span className="font-semibold tabular-nums">{br.v2Points} pts</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1 mt-1">
+                  <div className="flex flex-col items-center py-0.5 px-1 rounded bg-primary/5 text-center">
+                    <span className="text-[10px] text-muted-foreground leading-tight">Ganador</span>
+                    <span className="font-semibold tabular-nums text-foreground">{br.v2Winner}/{br.v2Total}</span>
+                  </div>
+                  <div className="flex flex-col items-center py-0.5 px-1 rounded bg-primary/5 text-center">
+                    <span className="text-[10px] text-muted-foreground leading-tight">Método</span>
+                    <span className="font-semibold tabular-nums text-foreground">{br.v2Method}/{br.v2Total}</span>
+                  </div>
+                  <div className="flex flex-col items-center py-0.5 px-1 rounded bg-primary/5 text-center">
+                    <span className="text-[10px] text-muted-foreground leading-tight">Marcador</span>
+                    <span className="font-semibold tabular-nums text-foreground">{br.v2Score}/{br.v2Total}</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
           <div>
             <p className="text-muted-foreground text-xs">Código referido</p>

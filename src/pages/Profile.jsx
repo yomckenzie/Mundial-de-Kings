@@ -212,6 +212,17 @@ export default function Profile() {
   const availablePoints = Math.max(0, totalPoints - totalSpent);
   const accuracy = scoredPreds.length > 0 ? Math.round((correctPreds.length / scoredPreds.length) * 100) : 0;
 
+  // Desglose por modelo (v1 vs v2). v1 = pre-28 jun (sin pred_score_team1/2);
+  // v2 = ≥ 28 jun (con pred_score_team1/2).
+  const v1Scored = predictions.filter(p => p.scored && p.pred_score_team1 == null && p.pred_score_team2 == null);
+  const v2Scored = predictions.filter(p => p.scored && p.pred_score_team1 != null);
+  const v1Points = v1Scored.reduce((sum, p) => sum + (p.points_earned || 0), 0);
+  const v2Points = v2Scored.reduce((sum, p) => sum + (p.points_earned || 0), 0);
+  const v1Aciertos = v1Scored.filter(p => (p.points_earned || 0) > 0).length;
+  const v2WinnerAciertos = v2Scored.filter(p => p.winner_correct === true).length;
+  const v2MethodAciertos = v2Scored.filter(p => p.method_correct === true).length;
+  const v2ScoreAciertos = v2Scored.filter(p => p.score_correct === true).length;
+
   const isLoading = loadingPreds || loadingRedeems;
 
   return (
@@ -240,6 +251,14 @@ export default function Profile() {
           accuracy={accuracy}
           correctPreds={correctPreds}
           scoredPreds={scoredPreds}
+          v1Points={v1Points}
+          v2Points={v2Points}
+          v1Aciertos={v1Aciertos}
+          v1Total={v1Scored.length}
+          v2WinnerAciertos={v2WinnerAciertos}
+          v2MethodAciertos={v2MethodAciertos}
+          v2ScoreAciertos={v2ScoreAciertos}
+          v2Total={v2Scored.length}
         />
       </m.div>
 
