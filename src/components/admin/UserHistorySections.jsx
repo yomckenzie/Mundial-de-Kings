@@ -15,30 +15,153 @@ const statusColors = {
   delivered: 'bg-accent text-accent-foreground',
 };
 
+// Constantes de puntos v2 (deben coincidir con evaluateMatchPredictions.js)
+const POINTS_WINNER = 50;
+const POINTS_METHOD = 50;
+const POINTS_SCORE = 100;
+
+// Deriva el ganador real del partido (espejo de deriveWinner en evaluateMatchPredictions.js).
+function deriveRealWinner(match) {
+  if (!match || match.result_team1 == null || match.result_team2 == null) return null;
+  if (match.result_team1 > match.result_team2) return '1';
+  if (match.result_team1 < match.result_team2) return '2';
+  // Empate en 90+ET: si fue a penales, decide el ganador por penales.
+  if (match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null) {
+    if (match.penalty_score_team1 > match.penalty_score_team2) return '1';
+    if (match.penalty_score_team1 < match.penalty_score_team2) return '2';
+  }
+  return 'X';
+}
+
+function realMethodLabel(match) {
+  if (!match?.result_method) return null;
+  if (match.result_method === '90') return '90 min';
+  if (match.result_method === 'et') return 'T. extra';
+  if (match.result_method === 'pen') return 'Penales';
+  return null;
+}
+
+function winnerTeamName(match, w) {
+  if (!match) return '—';
+  if (w === '1') return match.team1 || 'Local';
+  if (w === '2') return match.team2 || 'Visitante';
+  if (w === 'X') return 'Empate';
+  return '—';
+}
+
+function PickPill({ icon, label, pts, correct }) {
+  // pts: número (50/100) si el pick acertó, 0 si falló, null si no es evaluable
+  let tag, color;
+  if (pts != null && pts > 0) {
+    tag = `+${pts}`;
+    color = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+  } else if (pts === 0) {
+    tag = '0';
+    color = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300';
+  } else {
+    tag = '—';
+    color = 'bg-muted text-muted-foreground';
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>
+      <span>{icon}</span>
+      <span>{label}</span>
+      <span className="font-bold tabular-nums">{tag}</span>
+    </span>
+  );
+}
+
 export function PredictionsHistory({ predictions, matchMap }) {
   if (predictions.length === 0) {
     return <p className="text-sm text-muted-foreground py-2 text-center">Sin pronósticos</p>;
   }
   return predictions.map(pred => {
     const match = matchMap[pred.match_id];
+    const isV2 = pred.pred_score_team1 != null || pred.pred_score_team2 != null;
+
+    // Picks (lo que el usuario eligió)
+    const winnerLabel = pred.pred_winner === '1' ? (match?.team1 || 'Local')
+      : pred.pred_winner === '2' ? (match?.team2 || 'Visitante')
+      : pred.pred_winner === 'X' ? 'Empate' : null;
+    const methodLabel = pred.pred_method === '90' ? '90 min'
+      : pred.pred_method === 'et' ? 'T. extra'
+      : pred.pred_method === 'pen' ? 'Penales' : null;
+    const score = isV2
+      ? `${pred.pred_score_team1}-${pred.pred_score_team2}`
+      : (pred.pred_team1 != null ? `${pred.pred_team1}-${pred.pred_team2}` : null);
+
+    // Flags correct_ del pronóstico (null si no aplica o no evaluable)
+    const winnerFlag = pred.winner_correct;
+    const methodFlag = pred.method_correct;
+    const scoreFlag = pred.score_correct;
+
+    const hasAnyPick = winnerLabel || methodLabel || score;
+
+    // Resultado real (solo si el partido está finalizado)
+    const hasResult = match?.status === 'finished'
+      && match?.result_team1 != null
+      && match?.result_team2 != null;
+    const realWinner = hasResult ? deriveRealWinner(match) : null;
+    const realMethodText = hasResult ? realMethodLabel(match) : null;
+
     return (
-      <div key={pred.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
-        <div className="min-w-0 flex-1">
+      <div key={pred.id} className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-muted/30 text-sm">
+        <div className="min-w-0 flex-1 space-y-1">
           <p className="text-xs font-medium truncate">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
-          <p className="text-xs text-muted-foreground">
-            Pronóstico: <strong>{pred.pred_team1} - {pred.pred_team2}</strong>
-            {match?.status === 'finished' && <> · Real: {match.result_team1} - {match.result_team2}</>}
-          </p>
+
+          {/* Pronóstico del usuario con mini-desglose de puntos */}
+          {hasAnyPick ? (
+            <div className="flex flex-wrap items-center gap-1 text-[11px]">
+              {isV2 ? (
+                <>
+                  {winnerLabel && (
+                    <PickPill icon="🏆" label={winnerLabel} pts={winnerFlag === true ? POINTS_WINNER : (winnerFlag === false ? 0 : null)} correct={winnerFlag === true} />
+                  )}
+                  {methodLabel && (
+                    <PickPill icon="⏱" label={methodLabel} pts={methodFlag === true ? POINTS_METHOD : (methodFlag === false ? 0 : null)} correct={methodFlag === true} />
+                  )}
+                  {score && (
+                    <PickPill icon="⚽" label={score} pts={scoreFlag === true ? POINTS_SCORE : (scoreFlag === false ? 0 : null)} correct={scoreFlag === true} />
+                  )}
+                </>
+              ) : (
+                score && (
+                  <PickPill icon="⚽" label={score} pts={scoreFlag === true ? 100 : (scoreFlag === false ? 0 : null)} correct={scoreFlag === true} />
+                )
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground italic">Pronóstico: —</p>
+          )}
+
+          {/* Real: Ganador · Método · Marcador real */}
+          {hasResult && (
+            <p className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-1.5">
+              <span>Real:</span>
+              <span className="font-medium text-foreground">{realWinner === '1' ? match.team1 : realWinner === '2' ? match.team2 : 'Empate'}</span>
+              <span>·</span>
+              <span>{realMethodText || 'Sin método publicado'}</span>
+              <span>·</span>
+              <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
+            </p>
+          )}
         </div>
-        <div className="shrink-0 ml-2">
+
+        {/* Total sumado (badge) */}
+        <div className="shrink-0 ml-2 flex flex-col items-end gap-0.5">
           {pred.scored ? (
-            pred.is_correct ? (
-              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-0 text-xs">+100</Badge>
+            pred.is_correct || (pred.points_earned || 0) > 0 ? (
+              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-0 text-xs font-bold">
+                +{pred.points_earned || 0}
+              </Badge>
             ) : (
               <Badge variant="outline" className="text-xs text-muted-foreground">0</Badge>
             )
           ) : (
             <Clock className="w-3.5 h-3.5 text-muted-foreground/40" />
+          )}
+          {pred.scored && (
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wide">pts</span>
           )}
         </div>
       </div>

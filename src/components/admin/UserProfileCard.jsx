@@ -97,7 +97,13 @@ export default function UserProfileCard({ user, open, onClose }) {
   const correctPreds = predictions.filter(p => p.is_correct);
   const scoredPreds = predictions.filter(p => p.scored);
   const accuracy = scoredPreds.length > 0 ? Math.round((correctPreds.length / scoredPreds.length) * 100) : 0;
-  const totalSpent = redemptions.reduce((sum, r) => sum + (r.points_spent || 0), 0);
+  // Canjes que SÍ descuentan saldo: pending (comprometido), approved (aprobado), delivered (entregado).
+  // 'rejected' NO descuenta — el admin rechazó el canje y devolvió los puntos.
+  const totalSpent = redemptions
+    .filter(r => ['pending', 'approved', 'delivered'].includes(r.status))
+    .reduce((sum, r) => sum + (r.points_spent || 0), 0);
+  const totalPoints = user.total_points || 0;
+  const availablePoints = Math.max(0, totalPoints - totalSpent);
 
   const initials = (user.full_name || user.email || '?')
     .split(' ')
@@ -303,8 +309,16 @@ export default function UserProfileCard({ user, open, onClose }) {
               <span className="text-right font-medium">{userCommissions.length} · {totalCommissions} pts</span>
               <span className="text-muted-foreground">Canjes realizados</span>
               <span className="text-right font-medium">{redemptions.length} · -{totalSpent} pts</span>
-              <span className="text-muted-foreground font-semibold border-t border-border/50 pt-1 mt-1">Total</span>
-              <span className="text-right font-bold border-t border-border/50 pt-1 mt-1">{user.total_points || 0} pts</span>
+              <span className="text-muted-foreground font-semibold border-t border-border/50 pt-1 mt-1">Total ganado</span>
+              <span className="text-right font-bold border-t border-border/50 pt-1 mt-1">{totalPoints} pts</span>
+              {totalSpent > 0 && (
+                <>
+                  <span className="text-muted-foreground">− Canjeados</span>
+                  <span className="text-right font-medium text-red-600 dark:text-red-400">-{totalSpent} pts</span>
+                  <span className="text-foreground font-bold border-t-2 border-primary/30 pt-1 mt-1">Disponibles para canjear</span>
+                  <span className="text-right font-black text-primary text-base border-t-2 border-primary/30 pt-1 mt-1">{availablePoints} pts</span>
+                </>
+              )}
             </div>
           </div>
         </div>
