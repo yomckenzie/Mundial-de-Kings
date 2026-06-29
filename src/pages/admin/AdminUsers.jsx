@@ -12,57 +12,25 @@ import UserPagination from './UserPagination';
 
 const PAGE_SIZE = 20;
 
-export default function AdminUsers() {
-  const [ui, setUi] = useState({
-    search: '',
-    page: 0,
-    showFilters: false,
-    grantUser: null,
-    deleteUser: null,
-    deletingUser: false,
-    customReferrer: { open: false, name: '', code: '', points: '' },
-    filters: {
-      dateFrom: '',
-      dateTo: '',
-      minPoints: '',
-      maxPoints: '',
-      minAciertos: '',
-      maxAciertos: '',
-      minCanjes: '',
-      maxCanjes: '',
-    },
-  });
+const EMPTY_FILTERS = {
+  dateFrom: '',
+  dateTo: '',
+  minPoints: '',
+  maxPoints: '',
+  minAciertos: '',
+  maxAciertos: '',
+  minCanjes: '',
+  maxCanjes: '',
+};
 
-  const queryClient = useQueryClient();
-
-  const { data: users = [], isLoading: loadingUsers } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: () => api.entities.User.list('-created_date'),
-  });
-
-  const { data: predictions = [] } = useQuery({
-    queryKey: ['admin-predictions-all'],
-    queryFn: () => api.entities.Prediction.list(),
-  });
-
-  const { data: redemptions = [] } = useQuery({
-    queryKey: ['admin-redemptions-all'],
-    queryFn: () => api.entities.Redemption.list(),
-  });
-
-  const { data: referrals = [] } = useQuery({
-    queryKey: ['admin-referrals-list'],
-    queryFn: () => api.entities.Referral.list(),
-  });
-
-  // Conteo de referidos por email
+// Hook: estadísticas agregadas por usuario (referidos, aciertos, canjes, breakdown v1/v2)
+function useUserStats(predictions, redemptions, referrals) {
   const referredCountMap = useMemo(() => {
     const map = {};
     referrals.forEach(r => { map[r.referrer_email] = (map[r.referrer_email] || 0) + 1; });
     return map;
   }, [referrals]);
 
-  // Mapas de aciertos y canjes por email
   const aciertosMap = useMemo(() => {
     const map = {};
     predictions.forEach(p => {
@@ -107,6 +75,97 @@ export default function AdminUsers() {
     return map;
   }, [redemptions]);
 
+  return { referredCountMap, aciertosMap, breakdownMap, canjesMap };
+}
+
+// Hook: filtra y pagina usuarios según búsqueda + filtros
+function useFilteredUsers(users, { search, filters }, aciertosMap, canjesMap) {
+  const filtered = useMemo(() => {
+    return users.filter(u => {
+      // Búsqueda por texto
+      if (search) {
+        const s = search.toLowerCase();
+        if (!(
+          u.full_name?.toLowerCase().includes(s) ||
+          u.cedula?.toLowerCase().includes(s) ||
+          u.email?.toLowerCase().includes(s) ||
+          u.instagram?.toLowerCase().includes(s)
+        )) return false;
+      }
+
+      // Fecha de registro
+      if (filters.dateFrom && u.created_date && new Date(u.created_date) < new Date(filters.dateFrom)) return false;
+      if (filters.dateTo && u.created_date && new Date(u.created_date) > new Date(filters.dateTo + 'T23:59:59')) return false;
+
+      // Puntos
+      const pts = u.total_points || 0;
+      if (filters.minPoints !== '' && pts < Number(filters.minPoints)) return false;
+      if (filters.maxPoints !== '' && pts > Number(filters.maxPoints)) return false;
+
+      // Aciertos
+      const aciertos = aciertosMap[u.email] || 0;
+      if (filters.minAciertos !== '' && aciertos < Number(filters.minAciertos)) return false;
+      if (filters.maxAciertos !== '' && aciertos > Number(filters.maxAciertos)) return false;
+
+      // Canjes
+      const canjes = canjesMap[u.email] || 0;
+      if (filters.minCanjes !== '' && canjes < Number(filters.minCanjes)) return false;
+      if (filters.maxCanjes !== '' && canjes > Number(filters.maxCanjes)) return false;
+
+      return true;
+    });
+  }, [users, search, filters, aciertosMap, canjesMap]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+
+  const paginate = useCallback((page) => {
+    return filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  }, [filtered]);
+
+  return { filtered, totalPages, paginate };
+}
+
+export default function AdminUsers() {
+  const [ui, setUi] = useState({
+    search: '',
+    page: 0,
+    showFilters: false,
+    grantUser: null,
+    deleteUser: null,
+    deletingUser: false,
+    customReferrer: { open: false, name: '', code: '', points: '' },
+    filters: { ...EMPTY_FILTERS },
+  });
+
+  const queryClient = useQueryClient();
+
+  const { data: users = [], isLoading: loadingUsers } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: () => api.entities.User.list('-created_date'),
+  });
+
+  const { data: predictions = [] } = useQuery({
+    queryKey: ['admin-predictions-all'],
+    queryFn: () => api.entities.Prediction.list(),
+  });
+
+  const { data: redemptions = [] } = useQuery({
+    queryKey: ['admin-redemptions-all'],
+    queryFn: () => api.entities.Redemption.list(),
+  });
+
+  const { data: referrals = [] } = useQuery({
+    queryKey: ['admin-referrals-list'],
+    queryFn: () => api.entities.Referral.list(),
+  });
+
+  const { referredCountMap, aciertosMap, breakdownMap, canjesMap } = useUserStats(predictions, redemptions, referrals);
+
+  const { filtered, totalPages, paginate } = useFilteredUsers(users, { search: ui.search, filters: ui.filters }, aciertosMap, canjesMap);
+  const paged = paginate(ui.page);
+
+  const hasActiveFilters = Object.values(ui.filters).some(v => v !== '');
+
   const setFilter = (key, value) => {
     setUi(prev => ({ ...prev, filters: { ...prev.filters, [key]: value } }));
   };
@@ -115,12 +174,7 @@ export default function AdminUsers() {
     setUi(prev => ({
       ...prev,
       page: 0,
-      filters: {
-        dateFrom: '', dateTo: '',
-        minPoints: '', maxPoints: '',
-        minAciertos: '', maxAciertos: '',
-        minCanjes: '', maxCanjes: '',
-      },
+      filters: { ...EMPTY_FILTERS },
     }));
   };
 
@@ -194,47 +248,6 @@ export default function AdminUsers() {
     }
   }, [ui.deleteUser, queryClient]);
 
-  const hasActiveFilters = Object.values(ui.filters).some(v => v !== '');
-
-  const filtered = useMemo(() => {
-    return users.filter(u => {
-      // Búsqueda por texto
-      if (ui.search) {
-        const s = ui.search.toLowerCase();
-        if (!(
-          u.full_name?.toLowerCase().includes(s) ||
-          u.cedula?.toLowerCase().includes(s) ||
-          u.email?.toLowerCase().includes(s) ||
-          u.instagram?.toLowerCase().includes(s)
-        )) return false;
-      }
-
-      // Fecha de registro
-      if (ui.filters.dateFrom && u.created_date && new Date(u.created_date) < new Date(ui.filters.dateFrom)) return false;
-      if (ui.filters.dateTo && u.created_date && new Date(u.created_date) > new Date(ui.filters.dateTo + 'T23:59:59')) return false;
-
-      // Puntos
-      const pts = u.total_points || 0;
-      if (ui.filters.minPoints !== '' && pts < Number(ui.filters.minPoints)) return false;
-      if (ui.filters.maxPoints !== '' && pts > Number(ui.filters.maxPoints)) return false;
-
-      // Aciertos
-      const aciertos = aciertosMap[u.email] || 0;
-      if (ui.filters.minAciertos !== '' && aciertos < Number(ui.filters.minAciertos)) return false;
-      if (ui.filters.maxAciertos !== '' && aciertos > Number(ui.filters.maxAciertos)) return false;
-
-      // Canjes
-      const canjes = canjesMap[u.email] || 0;
-      if (ui.filters.minCanjes !== '' && canjes < Number(ui.filters.minCanjes)) return false;
-      if (ui.filters.maxCanjes !== '' && canjes > Number(ui.filters.maxCanjes)) return false;
-
-      return true;
-    });
-  }, [users, ui.search, ui.filters, aciertosMap, canjesMap]);
-
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paged = filtered.slice(ui.page * PAGE_SIZE, (ui.page + 1) * PAGE_SIZE);
-
   const exportCSV = () => {
     const headers = ['Nombre', 'Cédula', 'Correo', 'Instagram', 'TikTok', 'Puntos', 'Aciertos', 'Canjes', 'Fecha Registro'];
     const rows = filtered.map(u => [
@@ -249,11 +262,11 @@ export default function AdminUsers() {
       u.created_date ? new Date(u.created_date).toLocaleDateString('es-PA') : '',
     ]);
     const csvSafe = (v) => {
-    const s = String(v);
-    const escaped = s.replace(/\"/g, '""');
-    return s.match(/^[=+\-@]/) ? `"\'${escaped}"` : `"${escaped}"`;
-  };
-  const csv = [headers, ...rows].map(r => r.map(csvSafe).join(',')).join('\\n');
+      const s = String(v);
+      const escaped = s.replace(/"/g, '""');
+      return s.match(/^[=+\-@]/) ? `"\'${escaped}"` : `"${escaped}"`;
+    };
+    const csv = [headers, ...rows].map(r => r.map(csvSafe).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);

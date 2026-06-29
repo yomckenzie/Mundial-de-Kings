@@ -4,7 +4,7 @@ import { api } from '@/api/client';
 import { evaluateMatchPredictions } from '@/api/evaluateMatchPredictions';
 import { getLiveResultForMatch } from '@/lib/sportscore';
 import { db } from '@/lib/db';
-import { isValidTransition } from './matchTransitions';
+import { isValidTransition } from '../pages/admin/matchTransitions';
 import { toast } from 'sonner';
 
 // FIX (bug v2-post-28): el modelo v2 (método + penales) solo aplica desde el

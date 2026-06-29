@@ -27,18 +27,9 @@ export default function ResetPassword() {
   });
 
   useEffect(() => {
-    // El estado 'invalid' ya viene del inicializador si no hay supabase o si
-    // el hash trae error. Aquí solo corremos verificaciones async y actualizamos
-    // a 'ready'/'invalid' según el resultado.
-
-    // 0. Si el enlace regresó con un error en el hash (p. ej. el token de
-    //    {{ .ConfirmationURL }} fue consumido por el escáner del proveedor de
-    //    correo), el enlace ya no sirve: mostrar "enlace inválido".
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    if (hashParams.get('error')) {
-      setSessionState('invalid');
-      return;
-    }
+    // El estado 'invalid' ya viene del lazy initializer si no hay supabase o
+    // si el hash trae error. Aquí solo corremos verificaciones async y
+    // actualizamos a 'ready'/'invalid' según el resultado de la red.
 
     // 1. Flujo recomendado: token_hash en la query → verificar en el cliente.
     //    La verificación ocurre vía JS, así que el pre-cargado del correo

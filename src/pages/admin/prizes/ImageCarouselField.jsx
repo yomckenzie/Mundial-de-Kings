@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useReducer, useRef, useEffect } from 'react';
 import { Plus, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -27,12 +27,30 @@ import ImagePickerDialog from './ImagePickerDialog';
  */
 const EMPTY_URLS = [];
 
+// FIX (react-doctor): useReducer para agrupar 4 useState relacionados (activeIndex,
+// dragOffset, isDragging, viewportWidth). Antes cada drag/click disparaba
+// renders separados; ahora un solo dispatch → un solo render. El 5to state
+// (`uploading`) queda fuera porque es ortogonal al carrusel.
+const carouselReducer = (state, action) => {
+  switch (action.type) {
+    case 'DRAG_START': return { ...state, isDragging: true, dragOffset: 0 };
+    case 'DRAG_MOVE':  return { ...state, dragOffset: action.offset };
+    case 'DRAG_END':   return { ...state, isDragging: false, dragOffset: 0 };
+    case 'SET_WIDTH':  return { ...state, viewportWidth: action.width };
+    case 'GO':         return { ...state, activeIndex: action.index };
+    case 'RESET_INDEX': return { ...state, activeIndex: 0, dragOffset: 0, isDragging: false };
+    default: return state;
+  }
+};
+const CAROUSEL_INITIAL = { activeIndex: 0, dragOffset: 0, isDragging: false, viewportWidth: 0 };
+
 export default function ImageCarouselField({ imageUrls = EMPTY_URLS, onChange, disabled = false }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [viewportWidth, setViewportWidth] = useState(0);
+  const [uploading, setUploading] = useReducer((s, v) => v ? true : s, false);
+  const [{ activeIndex, dragOffset, isDragging, viewportWidth }, dispatchCarousel] = useReducer(carouselReducer, CAROUSEL_INITIAL);
+  const setActiveIndex = (i) => dispatchCarousel({ type: 'GO', index: typeof i === 'function' ? i(activeIndex) : i });
+  const setDragOffset = (v) => dispatchCarousel({ type: 'DRAG_MOVE', offset: typeof v === 'function' ? v(dragOffset) : v });
+  const setIsDragging = (v) => dispatchCarousel({ type: v ? 'DRAG_START' : 'DRAG_END' });
+  const setViewportWidth = (v) => dispatchCarousel({ type: 'SET_WIDTH', width: v });
 
   const startXRef = useRef(0);
   const fileInputRef = useRef(null);
@@ -66,7 +84,8 @@ export default function ImageCarouselField({ imageUrls = EMPTY_URLS, onChange, d
   const safeActiveIndex = activeIndex >= totalSlots ? Math.max(0, totalSlots - 1) : activeIndex;
 
   useEffect(() => {
-    return () => { if (roRef.current) roRef.current.disconnect(); };
+    const ro = roRef.current;
+    return () => { if (ro) ro.disconnect(); };
   }, []);
 
   // ─── Upload ───────────────────────────────────────────────

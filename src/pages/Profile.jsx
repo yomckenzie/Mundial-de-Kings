@@ -36,6 +36,167 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } }
 };
 
+const tabMotionProps = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+  transition: { duration: 0.2 },
+};
+
+function NotLoggedIn() {
+  return (
+    <m.div
+      className="text-center py-16 space-y-4"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      <User className="w-14 h-14 text-muted-foreground/20 mx-auto" />
+      <h1 className="font-display text-3xl tracking-wide">MI PERFIL</h1>
+      <p className="text-muted-foreground">Inicia sesión para ver tu perfil.</p>
+      <Link to="/login">
+        <Button className="gap-2 mt-2">
+          <LogIn className="w-4 h-4" />
+          Iniciar sesión
+        </Button>
+      </Link>
+    </m.div>
+  );
+}
+
+function StatsRow({ predictionsCount, correctCount, totalPoints }) {
+  return (
+    <m.div variants={itemVariants}>
+      <ProfileStats
+        predictionsCount={predictionsCount}
+        correctCount={correctCount}
+        totalPoints={totalPoints}
+      />
+    </m.div>
+  );
+}
+
+function PointsBreakdownSection(props) {
+  return (
+    <m.div variants={itemVariants}>
+      <PointsBreakdown
+        predictionPoints={props.predictionPoints}
+        bonusPoints={props.bonusPoints}
+        referralPoints={props.referralPoints}
+        totalSpent={props.totalSpent}
+        totalPoints={props.totalPoints}
+        availablePoints={props.availablePoints}
+        accuracy={props.accuracy}
+        correctPreds={props.correctPreds}
+        scoredPreds={props.scoredPreds}
+        v1Points={props.v1Points}
+        v2Points={props.v2Points}
+        v1Aciertos={props.v1Aciertos}
+        v1Total={props.v1Total}
+        v2WinnerAciertos={props.v2WinnerAciertos}
+        v2MethodAciertos={props.v2MethodAciertos}
+        v2ScoreAciertos={props.v2ScoreAciertos}
+        v2Total={props.v2Total}
+      />
+    </m.div>
+  );
+}
+
+function PersonalDataSection({ user, editingField, editValue, onStartEdit, onChange, onSave, onCancel }) {
+  return (
+    <m.div variants={itemVariants}>
+      <PersonalData
+        user={user}
+        editingField={editingField}
+        editValue={editValue}
+        onStartEdit={onStartEdit}
+        onChange={onChange}
+        onSave={onSave}
+        onCancel={onCancel}
+      />
+    </m.div>
+  );
+}
+
+function TabsBar({ activeTab, onChange }) {
+  return (
+    <div className="flex items-center gap-1 border-b border-border mb-4">
+      {tabs.map(tab => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition border-b-2 -mb-[1px] ${
+            activeTab === tab.id
+              ? 'border-secondary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <tab.icon className="w-4 h-4" />
+          <span className="hidden sm:inline">{tab.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TabContent({ activeTab, props }) {
+  if (activeTab === 'overview') {
+    return (
+      <m.div key="overview" {...tabMotionProps} className="space-y-4">
+        <OverviewTab
+          bonuses={props.bonuses}
+          myCommissions={props.myCommissions}
+          allUsers={props.allUsers}
+          matchMap={props.matchMap}
+          predictions={props.predictions}
+          redemptions={props.redemptions}
+        />
+      </m.div>
+    );
+  }
+  if (activeTab === 'predictions') {
+    return (
+      <m.div key="predictions" {...tabMotionProps}>
+        <PredictionsTab
+          predictions={props.predictions}
+          matchMap={props.matchMap}
+          isLoading={props.isLoading}
+        />
+      </m.div>
+    );
+  }
+  if (activeTab === 'redemptions') {
+    return (
+      <m.div key="redemptions" {...tabMotionProps}>
+        <RedemptionsTab redemptions={props.redemptions} isLoading={props.isLoading} />
+      </m.div>
+    );
+  }
+  if (activeTab === 'referrals') {
+    return (
+      <m.div key="referrals" {...tabMotionProps} className="space-y-4">
+        <ReferralsTab
+          user={props.user}
+          myReferrals={props.myReferrals}
+          referralPoints={props.referralPoints}
+          allUsers={props.allUsers}
+        />
+      </m.div>
+    );
+  }
+  return null;
+}
+
+function TabsSection(props) {
+  return (
+    <m.div variants={itemVariants}>
+      <TabsBar activeTab={props.activeTab} onChange={props.onTabChange} />
+      <AnimatePresence mode="wait">
+        <TabContent activeTab={props.activeTab} props={props} />
+      </AnimatePresence>
+    </m.div>
+  );
+}
 
 export default function Profile() {
   const { user, setUser } = useOutletContext();
@@ -49,12 +210,10 @@ export default function Profile() {
       toast.error('El campo no puede estar vacío');
       return;
     }
-    // No guardar si el valor no cambió
     if (clean.toLowerCase() === (user[field] || '').toLowerCase()) {
       setEditingField(null);
       return;
     }
-    // Verificar duplicados (case-insensitive, excluyendo al usuario actual)
     const duplicate = db._init().users.find(u =>
       u.id !== user.id &&
       u[field] && u[field].toLowerCase() === clean.toLowerCase()
@@ -63,7 +222,6 @@ export default function Profile() {
       toast.error(`Este usuario de ${field === 'instagram' ? 'Instagram' : 'TikTok'} ya está registrado por otra cuenta`);
       return;
     }
-    // Actualizar usuario local + Supabase (vía _persist)
     db.users.update(user.id, { [field]: clean });
     const updated = db.getCurrentUser();
     if (updated) setUser(updated);
@@ -73,15 +231,12 @@ export default function Profile() {
 
   const userEmail = user?.email || '';
 
-  // Refrescar datos del usuario desde localStorage cuando cambien (ej: puntos extra otorgados por admin)
   useEffect(() => {
     const refreshUser = () => {
       const fresh = db.getCurrentUser();
       if (fresh) setUser(fresh);
     };
 
-    // Migración: si el usuario tiene total_points pero le falta bonus_points
-    // (ej: usuarios que se registraron antes de que se agregara el campo)
     const migrateMissingBonus = () => {
       const fresh = db.getCurrentUser();
       if (!fresh) return;
@@ -99,21 +254,16 @@ export default function Profile() {
             bonus_points: inferredBonus,
             prediction_points: fresh.prediction_points || 0,
           });
-          // Actualizar el estado local
           const updated = db.getCurrentUser();
           if (updated) setUser(updated);
         }
       }
     };
 
-    // Refrescar al montar por si vienes del admin
     refreshUser();
-    // Corregir bonus_points faltantes en usuarios existentes
     migrateMissingBonus();
 
-    // Escuchar evento 'db-synced' que se dispara cuando se persisten cambios
     window.addEventListener('db-synced', refreshUser);
-    // Refrescar al volver a la pestaña (por si otorgaron puntos en otra)
     window.addEventListener('focus', refreshUser);
 
     return () => {
@@ -121,7 +271,6 @@ export default function Profile() {
       window.removeEventListener('focus', refreshUser);
     };
   }, [setUser]);
-
 
   const { data: predictions = [], isLoading: loadingPreds } = useQuery({
     queryKey: ['my-predictions-profile', userEmail],
@@ -181,23 +330,7 @@ export default function Profile() {
   }, [allCommissions, userEmail]);
 
   if (!user) {
-    return (
-      <m.div
-        className="text-center py-16 space-y-4"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <User className="w-14 h-14 text-muted-foreground/20 mx-auto" />
-        <h1 className="font-display text-3xl tracking-wide">MI PERFIL</h1>
-        <p className="text-muted-foreground">Inicia sesión para ver tu perfil.</p>
-        <Link to="/login">
-          <Button className="gap-2 mt-2">
-            <LogIn className="w-4 h-4" />
-            Iniciar sesión
-          </Button>
-        </Link>
-      </m.div>
-    );
+    return <NotLoggedIn />;
   }
 
   const isAdmin = user?.role === 'admin';
@@ -212,8 +345,6 @@ export default function Profile() {
   const availablePoints = Math.max(0, totalPoints - totalSpent);
   const accuracy = scoredPreds.length > 0 ? Math.round((correctPreds.length / scoredPreds.length) * 100) : 0;
 
-  // Desglose por modelo (v1 vs v2). v1 = pre-28 jun (sin pred_score_team1/2);
-  // v2 = ≥ 28 jun (con pred_score_team1/2).
   const v1Scored = predictions.filter(p => p.scored && p.pred_score_team1 == null && p.pred_score_team2 == null);
   const v2Scored = predictions.filter(p => p.scored && p.pred_score_team1 != null);
   const v1Points = v1Scored.reduce((sum, p) => sum + (p.points_earned || 0), 0);
@@ -233,127 +364,53 @@ export default function Profile() {
       animate="visible"
     >
       <ProfileHeader user={user} />
-
-      {/* Stats row */}
-      <m.div variants={itemVariants}>
-        <ProfileStats predictionsCount={predictions.length} correctCount={correctPreds.length} totalPoints={totalPoints} />
-      </m.div>
-
-      {/* Points breakdown */}
-      <m.div variants={itemVariants}>
-        <PointsBreakdown
-          predictionPoints={predictionPoints}
-          bonusPoints={bonusPoints}
-          referralPoints={referralPoints}
-          totalSpent={totalSpent}
-          totalPoints={totalPoints}
-          availablePoints={availablePoints}
-          accuracy={accuracy}
-          correctPreds={correctPreds}
-          scoredPreds={scoredPreds}
-          v1Points={v1Points}
-          v2Points={v2Points}
-          v1Aciertos={v1Aciertos}
-          v1Total={v1Scored.length}
-          v2WinnerAciertos={v2WinnerAciertos}
-          v2MethodAciertos={v2MethodAciertos}
-          v2ScoreAciertos={v2ScoreAciertos}
-          v2Total={v2Scored.length}
-        />
-      </m.div>
-
-      {/* Personal Data */}
-      <m.div variants={itemVariants}>
-        <PersonalData
-          user={user}
-          editingField={editingField}
-          editValue={editValue}
-          onStartEdit={(field) => { const val = user?.[field] || ''; setEditValue(val); setEditingField(field); }}
-          onChange={(v) => setEditValue(v)}
-          onSave={(field) => handleSaveSocial(field)}
-          onCancel={() => setEditingField(null)}
-        />
-      </m.div>
-
-      {/* Tabs */}
-      <m.div variants={itemVariants}>
-        <div className="flex items-center gap-1 border-b border-border mb-4">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition border-b-2 -mb-[1px] ${
-                activeTab === tab.id
-                  ? 'border-secondary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <AnimatePresence mode="wait">
-          {activeTab === 'overview' && (
-            <m.div
-              key="overview"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
-              <OverviewTab
-                bonuses={bonuses}
-                myCommissions={myCommissions}
-                allUsers={allUsers}
-                matchMap={matchMap}
-                predictions={predictions}
-                redemptions={redemptions}
-              />
-            </m.div>
-          )}
-
-          {activeTab === 'predictions' && (
-            <m.div
-              key="predictions"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <PredictionsTab predictions={predictions} matchMap={matchMap} isLoading={isLoading} />
-            </m.div>
-          )}
-
-          {activeTab === 'redemptions' && (
-            <m.div
-              key="redemptions"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <RedemptionsTab redemptions={redemptions} isLoading={isLoading} />
-            </m.div>
-          )}
-
-          {activeTab === 'referrals' && (
-            <m.div
-              key="referrals"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
-              <ReferralsTab user={user} myReferrals={myReferrals} referralPoints={referralPoints} allUsers={allUsers} />
-            </m.div>
-          )}
-        </AnimatePresence>
-      </m.div>
+      <StatsRow
+        predictionsCount={predictions.length}
+        correctCount={correctPreds.length}
+        totalPoints={totalPoints}
+      />
+      <PointsBreakdownSection
+        predictionPoints={predictionPoints}
+        bonusPoints={bonusPoints}
+        referralPoints={referralPoints}
+        totalSpent={totalSpent}
+        totalPoints={totalPoints}
+        availablePoints={availablePoints}
+        accuracy={accuracy}
+        correctPreds={correctPreds}
+        scoredPreds={scoredPreds}
+        v1Points={v1Points}
+        v2Points={v2Points}
+        v1Aciertos={v1Aciertos}
+        v1Total={v1Scored.length}
+        v2WinnerAciertos={v2WinnerAciertos}
+        v2MethodAciertos={v2MethodAciertos}
+        v2ScoreAciertos={v2ScoreAciertos}
+        v2Total={v2Scored.length}
+      />
+      <PersonalDataSection
+        user={user}
+        editingField={editingField}
+        editValue={editValue}
+        onStartEdit={(field) => { const val = user?.[field] || ''; setEditValue(val); setEditingField(field); }}
+        onChange={(v) => setEditValue(v)}
+        onSave={(field) => handleSaveSocial(field)}
+        onCancel={() => setEditingField(null)}
+      />
+      <TabsSection
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        user={user}
+        predictions={predictions}
+        matchMap={matchMap}
+        redemptions={redemptions}
+        bonuses={bonuses}
+        myCommissions={myCommissions}
+        allUsers={allUsers}
+        myReferrals={myReferrals}
+        referralPoints={referralPoints}
+        isLoading={isLoading}
+      />
     </m.div>
   );
 }

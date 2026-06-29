@@ -25,17 +25,20 @@ function imagePickerReducer(state, action) {
     case 'LOAD_START':
       return { ...state, loading: true };
     case 'LOAD_SUCCESS':
-      return { ...state, loading: false, images: action.images, page: 1 };
+      return { ...state, loading: false, images: action.images, page: 1, activeIndex: 0, dragOffset: 0, isDragging: false };
     case 'LOAD_ERROR':
       return { ...state, loading: false };
     case 'SET_SEARCH':
-      return { ...state, search: action.value, page: 1, activeIndex: 0 };
+      return { ...state, search: action.value, page: 1, activeIndex: 0, dragOffset: 0, isDragging: false };
     case 'CLEAR_SEARCH':
-      return { ...state, search: '', page: 1, activeIndex: 0 };
+      return { ...state, search: '', page: 1, activeIndex: 0, dragOffset: 0, isDragging: false };
     case 'SET_PAGE':
-      return { ...state, page: action.value, activeIndex: 0 };
+      return { ...state, page: action.value, activeIndex: 0, dragOffset: 0, isDragging: false };
     case 'SET_ACTIVE':
-      return { ...state, activeIndex: action.value };
+      return { ...state, activeIndex: action.value, dragOffset: 0, isDragging: false };
+    case 'DRAG_START':  return { ...state, isDragging: true, dragOffset: 0 };
+    case 'DRAG_MOVE':   return { ...state, dragOffset: action.offset };
+    case 'DRAG_END':    return { ...state, isDragging: false, dragOffset: 0 };
     case 'RESET':
       return IMAGE_PICKER_INITIAL;
     default:
@@ -46,11 +49,7 @@ function imagePickerReducer(state, action) {
 export default function ImagePickerDialog({ onSelect, trigger }) {
   const [open, setOpen] = useState(false);
   const [state, dispatch] = useReducer(imagePickerReducer, { ...IMAGE_PICKER_INITIAL, activeIndex: 0 });
-  const { images, loading, search, page, activeIndex } = state;
-
-  // ── Drag/swipe ──
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  const { images, loading, search, page, activeIndex, dragOffset, isDragging } = state;
   const [viewportWidth, setViewportWidth] = useState(0);
   const viewportRef = useRef(null);
   const startXRef = useRef(0);
@@ -73,11 +72,8 @@ export default function ImagePickerDialog({ onSelect, trigger }) {
     }
   };
 
-  // Reset offset si cambia el set mostrado
-  useEffect(() => {
-    setDragOffset(0);
-    setIsDragging(false);
-  }, [activeIndex, page, search]);
+  // Reset offset: ahora via reducer (SET_SEARCH/SET_PAGE/SET_ACTIVE ya
+  // resetean activeIndex:0 + dragOffset:0 + isDragging:false).
 
   const loadImages = async () => {
     dispatch({ type: 'LOAD_START' });

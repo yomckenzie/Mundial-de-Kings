@@ -11,7 +11,7 @@ import BatchPublishCard from './BatchPublishCard';
 import QuickActions from './QuickActions';
 import StatusLegend from './StatusLegend';
 import MatchGroupList from './MatchGroupList';
-import useMatchHandlers from './useMatchHandlers';
+import useMatchHandlers from '@/api/useMatchHandlers';
 import { useLiveResults } from '@/pages/matches/useLiveResults';
 
 

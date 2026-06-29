@@ -1,45 +1,83 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useCallback, useReducer, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Package, Ruler } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
 import { RedeemButton } from './RedeemButton';
 import { PrizeLightbox } from './PrizeLightbox';
 import { PrizeImageCarousel } from './PrizeImageCarousel';
 import RedemptionSuccessDialog from './RedemptionSuccessDialog';
 import RedemptionVerifyDialog from './RedemptionVerifyDialog';
 
+// ── Reducer a nivel de módulo para el estado del carrusel ──────────────
+// FIX (react-doctor): antes se reconstruía cada render. Agrupa:
+// activeImg + dragOffset + isDragging + viewportWidth.
+const carouselReducer = (state, action) => {
+  switch (action.type) {
+    case 'DRAG_START': return { ...state, isDragging: true, dragOffset: 0 };
+    case 'DRAG_MOVE':  return { ...state, dragOffset: action.offset };
+    case 'DRAG_END':   return { ...state, isDragging: false, dragOffset: 0 };
+    case 'SET_WIDTH':  return { ...state, viewportWidth: action.width };
+    case 'GO':         return { ...state, activeImg: action.index };
+    default: return state;
+  }
+};
+const CAROUSEL_INITIAL = { activeImg: 0, dragOffset: 0, isDragging: false, viewportWidth: 0 };
+
+// ── Reducer para el dialog flow del canje ────────────────────────────
+// FIX (react-doctor): 5 useState → 1 useReducer. Antes cada transition
+// (abrir verify → success → cerrar) disparaba un render por cada setter.
+const dialogReducer = (state, action) => {
+  switch (action.type) {
+    case 'OPEN_VERIFY':    return { ...state, verifyOpen: true };
+    case 'CLOSE_VERIFY':   return { ...state, verifyOpen: false };
+    case 'SHOW_SUCCESS':   return { ...state, successPrize: action.prizeName };
+    case 'CLEAR_SUCCESS':  return { ...state, successPrize: null };
+    case 'OPEN_LIGHTBOX':  return { ...state, lightboxOpen: true };
+    case 'CLOSE_LIGHTBOX': return { ...state, lightboxOpen: false };
+    case 'SET_SIZE':       return { ...state, selectedSize: action.size };
+    case 'IMG_ERROR':      return { ...state, imgError: true };
+    case 'IMG_OK':         return { ...state, imgError: false };
+    default: return state;
+  }
+};
+const DIALOG_INITIAL = { verifyOpen: false, successPrize: null, selectedSize: null, lightboxOpen: false, imgError: false };
+
 export default function PrizeCard({ prize, availablePoints = 0 }) {
   const { user } = useOutletContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [verifyOpen, setVerifyOpen] = useState(false);
-  const [successPrize, setSuccessPrize] = useState(null);
+  const [dialogState, dispatchDialog] = useReducer(dialogReducer, DIALOG_INITIAL);
+  const { verifyOpen, successPrize, selectedSize, lightboxOpen, imgError } = dialogState;
   const hasSizes = prize.sizes && typeof prize.sizes === 'object' && Object.keys(prize.sizes).length > 0;
-  const [imgError, setImgError] = useState(false);
-  const [selectedSize, setSelectedSize] = useState(null);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
+
   const gradient = prize.gradient || 'from-slate-600 to-slate-800';
 
   const imageList = Array.isArray(prize.image_urls) && prize.image_urls.length > 0
     ? prize.image_urls
     : (prize.image_url ? [prize.image_url] : []);
   const hasRealImage = imageList.length > 0 && !imgError;
-  const [activeImg, setActiveImg] = useState(0);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [viewportWidth, setViewportWidth] = useState(0);
+
+  // Estado del carrusel agrupado en un reducer
+  const [{ activeImg, dragOffset, isDragging, viewportWidth }, dispatchCarousel] = useReducer(carouselReducer, CAROUSEL_INITIAL);
+  const setActiveImg = (i) => dispatchCarousel({ type: 'GO', index: typeof i === 'function' ? i(activeImg) : i });
+  const setDragOffset = (v) => dispatchCarousel({ type: 'DRAG_MOVE', offset: typeof v === 'function' ? v(dragOffset) : v });
+  const setIsDragging = (v) => dispatchCarousel({ type: v ? 'DRAG_START' : 'DRAG_END' });
+  const setViewportWidth = (v) => dispatchCarousel({ type: 'SET_WIDTH', width: v });
+
   const startXRef = useRef(0);
   const roRef = useRef(null);
   const totalImgs = imageList.length;
 
   // Medir el viewport en píxeles (callback ref). El contenedor se monta
   // solo si hay imagen real, así que medimos en cuanto aparece.
-  const setViewportRef = (el) => {
+  // FIX (bug loop infinito): useCallback para que React no re-invoque el ref
+  // en cada render. Antes el callback se recreaba y disparaba
+  // setViewportWidth → re-render → nuevo callback → loop.
+  const setViewportRef = useCallback((el) => {
     if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
     if (el) {
       setViewportWidth(el.clientWidth);
@@ -54,10 +92,15 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
     } else {
       setViewportWidth(0);
     }
-  };
+  }, []);
 
+  // FIX (bug): capturar roRef.current al inicio del cleanup. Antes la regla
+  // exhaustive-deps marcaba que `roRef.current` podía cambiar entre el
+  // setup del effect y el cleanup (falso positivo en este caso, pero igual
+  // capturamos por seguridad).
   useEffect(() => {
-    return () => { if (roRef.current) roRef.current.disconnect(); };
+    const ro = roRef.current;
+    return () => { if (ro) ro.disconnect(); };
   }, []);
 
   // FIX (react-doctor): derivar safeIdx inline en vez de clamp via useEffect.
@@ -97,7 +140,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
     setIsDragging(false);
     if (clickIntentRef.current.isClick) {
       if (hasRealImage && imageList[safeIdx]) {
-        setLightboxOpen(true);
+        dispatchDialog({ type: 'OPEN_LIGHTBOX' });
       }
     } else if (totalImgs > 1 && Math.abs(dragOffset) > 50) {
       if (dragOffset < 0) nextImg();
@@ -130,9 +173,9 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
       queryClient.invalidateQueries({ queryKey: ['my-redemptions', user?.email] });
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });
       queryClient.invalidateQueries({ queryKey: ['admin-prizes-redemptions'] });
-      setVerifyOpen(false);
-      setSuccessPrize(prize.name);
-      setSelectedSize(null);
+      dispatchDialog({ type: 'CLOSE_VERIFY' });
+      dispatchDialog({ type: 'SHOW_SUCCESS', prizeName: prize.name });
+      dispatchDialog({ type: 'SET_SIZE', size: null });
     },
     onError: (err) => toast.error('Error al canjear: ' + (err.message || 'Error')),
   });
@@ -172,7 +215,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
           onPrev={prevImg}
           onNext={nextImg}
           onSelectDot={(i) => setActiveImg(i)}
-          onOpenLightbox={() => imageList[safeIdx] && setLightboxOpen(true)}
+          onOpenLightbox={() => imageList[safeIdx] && dispatchDialog({ type: 'OPEN_LIGHTBOX' })}
         />
 
         <Badge
@@ -211,7 +254,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
                     key={size}
                     type="button"
                     disabled={!inStock}
-                    onClick={() => setSelectedSize(isSelected ? null : size)}
+                    onClick={() => dispatchDialog({ type: 'SET_SIZE', size: isSelected ? null : size })}
                     className={`text-xs px-2.5 py-1 rounded-md border transition-colors flex items-center gap-1 ${
                       isSelected
                         ? 'bg-foreground text-background border-foreground'
@@ -255,7 +298,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
             if (needsSize) { toast.error('Selecciona una talla'); return; }
             if (!canAfford) { toast.error(`Te faltan ${prize.points_cost - availablePoints} pts`); return; }
             if (!inStock) { return; }
-            setVerifyOpen(true);
+            dispatchDialog({ type: 'OPEN_VERIFY' });
           }}
         />
       </CardContent>
@@ -266,18 +309,18 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
         user={user}
         isPending={redeemMutation.isPending}
         onConfirm={() => redeemMutation.mutate()}
-        onClose={() => setVerifyOpen(false)}
+        onClose={() => dispatchDialog({ type: 'CLOSE_VERIFY' })}
       />
 
       <RedemptionSuccessDialog
         open={!!successPrize}
         prizeName={successPrize}
-        onClose={() => setSuccessPrize(null)}
+        onClose={() => dispatchDialog({ type: 'CLEAR_SUCCESS' })}
       />
 
       <PrizeLightbox
         open={lightboxOpen}
-        onClose={() => setLightboxOpen(false)}
+        onClose={() => dispatchDialog({ type: 'CLOSE_LIGHTBOX' })}
         imageList={imageList}
         safeIdx={safeIdx}
         totalImgs={totalImgs}
