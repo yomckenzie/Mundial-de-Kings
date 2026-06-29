@@ -245,7 +245,11 @@ function TicketCard({ ticket, onSendMessage, onCloseTicket, onVerifyTicket, onRe
 
 export default function AdminSupport() {
   const qc = useQueryClient();
-  const [filter, setFilter] = useState('pending');
+  // FIX (jun 2026): default 'all' en vez de 'pending' — antes, si llegaban
+  // tickets con status 'answered' o 'closed', el admin no los veía sin
+  // hacer click en otro filtro. Con 'all' + orden por prioridad de status
+  // (pending > answered > closed), siempre se ve el ticket nuevo arriba.
+  const [filter, setFilter] = useState('all');
 
   const { data: tickets = [], isLoading } = useQuery({
     queryKey: ['admin-tickets'],
@@ -315,6 +319,15 @@ export default function AdminSupport() {
   });
 
   const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter);
+  // Orden por prioridad: pending → answered → closed. Dentro de cada grupo,
+  // los más recientes arriba. Así el admin ve el ticket nuevo sin scrollear.
+  const STATUS_RANK = { pending: 0, answered: 1, closed: 2 };
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    const ra = STATUS_RANK[a.status] ?? 99;
+    const rb = STATUS_RANK[b.status] ?? 99;
+    if (ra !== rb) return ra - rb;
+    return new Date(b.created_date || 0).getTime() - new Date(a.created_date || 0).getTime();
+  });
   const pendingCount = tickets.filter(t => t.status === 'pending').length;
 
   return (
@@ -367,7 +380,7 @@ export default function AdminSupport() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {filtered.map(ticket => (
+          {sortedFiltered.map(ticket => (
             <TicketCard
               key={ticket.id}
               ticket={ticket}

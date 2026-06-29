@@ -2172,7 +2172,7 @@ export const db = {
       }
       return d.map(t => db._migrateTicket(t));
     },
-    create(data) {
+    async create(data) {
         const now = getNow();
       const initialMsg = data.message || '';
       const record = {
@@ -2199,7 +2199,19 @@ export const db = {
       delete record.message;
       delete record.admin_reply;
       _data.supportTickets.push(record);
-      db._persist('supportTickets');
+      // FIX (jun 2026): el _persist ahora se AWAITEA para que errores de RLS,
+      // FK o red se propaguen al caller. Antes era fire-and-forget y el
+      // ticket quedaba solo en memoria local — el admin nunca lo veía
+      // en la BD. Si el upsert falla, hacemos rollback del push local y
+      // re-lanzamos el error para que Support.jsx lo muestre al usuario
+      // en lugar de fingir éxito.
+      try {
+        await db._persist('supportTickets');
+      } catch (err) {
+        const idx = _data.supportTickets.findIndex(t => t.id === record.id);
+        if (idx !== -1) _data.supportTickets.splice(idx, 1);
+        throw err;
+      }
       return record;
     },
     async update(id, data) {

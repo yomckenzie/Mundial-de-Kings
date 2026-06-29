@@ -112,9 +112,9 @@ describe('db._migrateTicket', () => {
 });
 
 describe('db.supportTickets', () => {
-  it('create crea un ticket con messages array y sin campos viejos', () => {
+  it('create crea un ticket con messages array y sin campos viejos', async () => {
     resetDb();
-    const ticket = db.supportTickets.create({
+    const ticket = await db.supportTickets.create({
       subject: 'Problema con mi cuenta',
       user_email: 'jugador@test.com',
       user_name: 'Jugador Test',

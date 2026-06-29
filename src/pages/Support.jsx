@@ -232,6 +232,9 @@ export default function Support() {
       setMessage('');
       toast.success('Ticket enviado correctamente');
     },
+    onError: (err) => {
+      toast.error('No se pudo enviar el ticket: ' + (err?.message || err));
+    },
   });
 
   const sendMessageMutation = useMutation({
