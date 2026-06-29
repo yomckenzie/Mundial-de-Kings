@@ -124,70 +124,82 @@ export default function Info() {
   const [saving, setSaving] = useState(false);
 
   const loadSections = useCallback(async () => {
-    const settings = await api.entities.AppSettings.list();
-    const found = settings.find(r => r.key === SETTING_KEY);
-    if (found) {
-      let parsed = JSON.parse(found.value);
-      const existingIds = new Set(parsed.map(s => s.id));
-      const defaultIds = new Set(DEFAULT_SECTIONS.map(s => s.id));
+    try {
+      const settings = await api.entities.AppSettings.list();
+      const found = settings.find(r => r.key === SETTING_KEY);
+      if (found) {
+        let parsed = JSON.parse(found.value);
+        const existingIds = new Set(parsed.map(s => s.id));
+        const defaultIds = new Set(DEFAULT_SECTIONS.map(s => s.id));
 
-      // Migración: detectar versión del schema persistido
-      // Formato nuevo: { version, sections: [...] }
-      // Formato viejo: [...] (array directo)
-      let persistedVersion = null;
-      if (!Array.isArray(parsed) && parsed.version && Array.isArray(parsed.sections)) {
-        persistedVersion = parsed.version;
-        parsed = parsed.sections;
-      }
-
-      // 1. Agregar secciones nuevas (migración aditiva)
-      const missing = DEFAULT_SECTIONS.filter(s => !existingIds.has(s.id));
-      let changed = missing.length > 0;
-
-      // 2. Si cambió DEFAULT_SECTIONS_VERSION, sobrescribir contenido de secciones default
-      //    (preserva secciones custom agregadas por admin que no están en DEFAULT_SECTIONS)
-      if (persistedVersion !== DEFAULT_SECTIONS_VERSION) {
-        const defaultIdSet = new Set(DEFAULT_SECTIONS.map(s => s.id));
-        parsed = parsed.map(s => {
-          const fresh = DEFAULT_SECTIONS.find(d => d.id === s.id);
-          if (fresh) return { ...fresh };
-          return s;
-        });
-        // Inicializar entradas default que estuvieran vacías en parsed
-        DEFAULT_SECTIONS.forEach(d => {
-          if (!parsed.some(s => s.id === d.id)) parsed.push({ ...d });
-        });
-        changed = true;
-      }
-
-      if (changed) {
-        settingIdRef.current = found.id;
-        const value = JSON.stringify({
-          version: DEFAULT_SECTIONS_VERSION,
-          sections: parsed,
-        });
-        // UPDATE puede fallar por RLS (si la policy es restrictiva) o por
-        // schema (ej. columna updated_at faltante). En ese caso seguimos
-        // mostrando el contenido en memoria — el admin puede reintentar
-        // manualmente desde el editor de Info.
-        try {
-          await api.entities.AppSettings.update(found.id, { value });
-        } catch (e) {
-          console.warn('[Info] auto-sync de DEFAULT_SECTIONS falló:', e?.message || e);
+        // Migración: detectar versión del schema persistido
+        // Formato nuevo: { version, sections: [...] }
+        // Formato viejo: [...] (array directo)
+        let persistedVersion = null;
+        if (!Array.isArray(parsed) && parsed.version && Array.isArray(parsed.sections)) {
+          persistedVersion = parsed.version;
+          parsed = parsed.sections;
         }
+
+        // 1. Agregar secciones nuevas (migración aditiva)
+        const missing = DEFAULT_SECTIONS.filter(s => !existingIds.has(s.id));
+        let changed = missing.length > 0;
+
+        // 2. Si cambió DEFAULT_SECTIONS_VERSION, sobrescribir contenido de secciones default
+        //    (preserva secciones custom agregadas por admin que no están en DEFAULT_SECTIONS)
+        if (persistedVersion !== DEFAULT_SECTIONS_VERSION) {
+          const defaultIdSet = new Set(DEFAULT_SECTIONS.map(s => s.id));
+          parsed = parsed.map(s => {
+            const fresh = DEFAULT_SECTIONS.find(d => d.id === s.id);
+            if (fresh) return { ...fresh };
+            return s;
+          });
+          // Inicializar entradas default que estuvieran vacías en parsed
+          DEFAULT_SECTIONS.forEach(d => {
+            if (!parsed.some(s => s.id === d.id)) parsed.push({ ...d });
+          });
+          changed = true;
+        }
+
+        if (changed) {
+          settingIdRef.current = found.id;
+          const value = JSON.stringify({
+            version: DEFAULT_SECTIONS_VERSION,
+            sections: parsed,
+          });
+          // UPDATE puede fallar por RLS (si la policy es restrictiva) o por
+          // schema (ej. columna updated_at faltante). En ese caso seguimos
+          // mostrando el contenido en memoria — el admin puede reintentar
+          // manualmente desde el editor de Info.
+          try {
+            await api.entities.AppSettings.update(found.id, { value });
+          } catch (e) {
+            console.warn('[Info] auto-sync de DEFAULT_SECTIONS falló:', e?.message || e);
+          }
+        } else {
+          settingIdRef.current = found.id;
+        }
+        setSections(parsed);
       } else {
-        settingIdRef.current = found.id;
+        // Sin fila persistida: mostrar DEFAULT_SECTIONS en memoria.
+        // NO intentar INSERT — RLS suele bloquear anon, y el copy default
+        // es bueno aunque no esté persistido. La próxima vez que el admin
+        // edite una sección desde el editor de Info, ese flujo creará la fila.
+        settingIdRef.current = null;
+        setSections(DEFAULT_SECTIONS);
       }
-      setSections(parsed);
-    } else {
-      // Sin fila persistida: mostrar DEFAULT_SECTIONS en memoria.
-      // NO intentar INSERT — RLS suele bloquear anon, y el copy default
-      // es bueno aunque no esté persistido. La próxima vez que el admin
-      // edite una sección desde el editor de Info, ese flujo creará la fila.
+    } catch (e) {
+      // Si la consulta a AppSettings falla (ej. red, RLS, tabla inexistente),
+      // caemos al contenido default para que la página NO se quede colgada
+      // en "Cargando...". El admin puede re-poblar la fila desde el editor.
+      console.warn('[Info] loadSections falló, usando DEFAULT_SECTIONS:', e?.message || e);
       settingIdRef.current = null;
       setSections(DEFAULT_SECTIONS);
+    } finally {
+      // SIEMPRE quitar el estado de carga — antes el bug era que un error
+      // dejaba la página colgada en "Cargando..." indefinidamente.
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
