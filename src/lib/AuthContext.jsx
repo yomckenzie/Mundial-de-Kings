@@ -42,8 +42,25 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       try {
         if (isSupabaseAvailable()) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
+          const { data: { session }, error } = await supabase.auth.getSession();
+          // Si el refresh token esta stale o invalido (ej: se cambio la clave
+          // del proyecto, o se limpio el storage del navegador), Supabase
+          // devuelve un 400 Invalid Refresh Token. Limpiamos el storage
+          // local silenciosamente para que la app arranque como visitante
+          // en vez de quedarse spameando el error en cada refresh.
+          if (error && /Invalid Refresh Token/i.test(error.message || '')) {
+            console.warn('Auth: refresh token inválido — limpiando sesión local.');
+            try {
+              // supabase-js guarda el session en localStorage con keys tipo
+              // "sb-<project-ref>-auth-token". Limpiamos TODAS las keys de
+              // sesión que empiecen con sb- + -auth-token.
+              for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i);
+                if (k && /^sb-.*-auth-token$/.test(k)) localStorage.removeItem(k);
+              }
+            } catch {}
+            db.setCurrentUserEmail(null);
+          } else if (session?.user) {
             db.setCurrentUserEmail(session.user.email);
             // Esperar la primera carga desde Supabase ANTES de resolver el
             // usuario. Sin esto, getCurrentUser() buscaba en la memoria local

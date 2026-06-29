@@ -57,7 +57,10 @@ export default function HomeBanner() {
               className="w-full h-full object-cover"
               // Primer banner: alta prioridad (es la imagen LCP). Resto: lazy.
               loading={current === 0 ? 'eager' : 'lazy'}
-              fetchPriority={current === 0 ? 'high' : 'auto'}
+              // React 18.2: el atributo HTML es `fetchpriority` (lowercase).
+              // Pasarlo como `fetchPriority` (camelCase) genera un warning de React.
+              // Usamos el nombre HTML correcto via spread para mantener compatibilidad.
+              {...(current === 0 ? { fetchpriority: 'high' } : { fetchpriority: 'auto' })}
               decoding="async"
             />
           </m.div>

@@ -6,6 +6,12 @@ import {
   fetchAll,
 } from './supabase.js';
 
+// Tablas que aún NO existen en Supabase. El sync debe saltarlas para no
+// generar 404 en consola (PGRST205 = "table not found in schema cache").
+// Cuando se cree la tabla con la migración correspondiente, removerla de
+// este set y agregarla a `tablesToSync`.
+const NOT_SYNCED_TABLES = new Set(['userNotifications']);
+
 // --- Mapeo de jsKey (camelCase en _data) → tableName (snake_case en Supabase) ---
 // Necesario porque _data usa camelCase (supportTickets, pointsBonuses) pero
 // las tablas en Supabase usan snake_case (support_tickets, points_bonuses).
@@ -157,7 +163,11 @@ function _loadAllFromCloud() {
       }
 
       // ── 2) El resto de tablas en paralelo, en segundo plano ──
-      const rest = Object.keys(TABLE_MAP).filter((jsKey) => jsKey !== 'matches');
+      // Excluir matches (ya cargada arriba) y las tablas que aún no existen
+      // en Supabase (NOT_SYNCED_TABLES) para no generar 404 en consola.
+      const rest = Object.keys(TABLE_MAP).filter(
+        (jsKey) => jsKey !== 'matches' && !NOT_SYNCED_TABLES.has(jsKey)
+      );
       const results = await Promise.all(
         rest.map(async (jsKey) => {
           const tableName = tableNameToSupabase(jsKey);
@@ -378,7 +388,10 @@ export const db = {
         } catch {}
       }
 
-      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions', 'userNotifications'];
+      // userNotifications queda fuera del sync a Supabase por ahora — la tabla
+      // todavia no existe en BD (error PGRST205 -> 404 en consola). Cuando se
+      // cree con la migracion correspondiente, volver a agregarla aca.
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
       let changed = false;
 
       const syncResults = await Promise.all(
@@ -519,7 +532,7 @@ export const db = {
   async _syncBatchToSupabase() {
     _syncToSupabaseInProgress = true;
     try {
-      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions', 'userNotifications'];
+      const tablesToSync = ['users', 'matches', 'predictions', 'prizes', 'redemptions', 'supportTickets', 'pointsBonuses', 'appSettings', 'auditLogs', 'referrals', 'referralCommissions'];
       const tablesWithData = tablesToSync.reduce((acc, jsKey) => {
         const records = this._data[jsKey] || [];
         if (records.length === 0) return acc;
