@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { m } from 'framer-motion';
@@ -12,6 +12,12 @@ import PrizeCard from './prizes/PrizeCard';
 // PREMIOS — ahora se consultan de la BD (tabla `prizes`).
 // El admin los crea/edita desde /admin/prizes.
 // Si la BD está vacía, se muestra un empty state.
+//
+// Orden (jun 2026):
+//   - Puntos mayor → menor (default)
+//   - Agotados (units_available = 0) al final de la lista
+//   - Reactivo: cuando el admin agrega/edita un premio, el sort
+//     se reajusta automáticamente (useMemo depende de `prizes`)
 // ─────────────────────────────────────────────────────────────────
 
 const containerVariants = {
@@ -75,8 +81,23 @@ export default function Prizes() {
     : 0;
   const availablePoints = Math.max(0, totalPoints - totalSpent);
 
-  const pointsProgress = prizes.length > 0
-    ? Math.min(100, Math.round((availablePoints / Math.max(...prizes.map(p => p.points_cost || 1))) * 100))
+  // ── Orden automático ────────────────────────────────────────────
+  // Premios ordenados:
+  //   1. Default sort: puntos_cost descendente (mayor → menor).
+  //   2. Agotados (units_available <= 0) al final, manteniendo el orden interno.
+  // Reactivo: cuando el admin agrega/edita un premio (prizes cambia), el
+  // useMemo recalcula el orden automáticamente.
+  const sortedPrizes = useMemo(() => {
+    const available = prizes.filter(p => p.units_available > 0);
+    const sold = prizes.filter(p => p.units_available <= 0);
+    const byPointsDesc = (a, b) => (Number(b.points_cost) || 0) - (Number(a.points_cost) || 0);
+    available.sort(byPointsDesc);
+    sold.sort(byPointsDesc);
+    return [...available, ...sold];
+  }, [prizes]);
+
+  const pointsProgress = sortedPrizes.length > 0
+    ? Math.min(100, Math.round((availablePoints / Math.max(...sortedPrizes.map(p => p.points_cost || 1))) * 100))
     : 0;
 
   return (
@@ -150,11 +171,15 @@ export default function Prizes() {
         </div>
       )}
 
+      {/* Filtro por puntos — eliminado jun 2026 (UX confusa).
+          El orden se aplica automáticamente: mayor→menor, agotados al final.
+          Cuando el admin agrega/edita un premio, el sort se reajusta solo. */}
+
       <m.div
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         variants={containerVariants}
       >
-        {prizes.map((prize, i) => (
+        {sortedPrizes.map((prize, i) => (
           <m.div
             key={prize.id}
             custom={i}
