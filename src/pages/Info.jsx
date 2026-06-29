@@ -14,7 +14,7 @@ const SETTING_KEY = 'info_sections';
 // sincroniza el contenido de las secciones default con el código actual.
 // Si un admin personaliza una sección desde el editor de Info, esa
 // personalización se preserva en deployments futuros con la misma versión.
-const DEFAULT_SECTIONS_VERSION = '2026-06-27';
+const DEFAULT_SECTIONS_VERSION = '2026-06-28';
 
 const DEFAULT_SECTIONS = [
   {
@@ -45,11 +45,11 @@ Tu información será manejada de forma confidencial y no será visible pública
   2. Cómo gana: 90 min / T. extra / Penales → +50 pts si aciertas
   3. Marcador exacto:
      • Si el partido termina en 90 min o tiempo extra → goles al final del partido → +100 pts si aciertas
-     • Si elegís "Penales", el marcador es el TOTAL de goles (90 + ET + penales) → +150 pts si aciertas
+     • Si elegís "Penales", el marcador es el TOTAL de goles (90 + ET + penales) → +100 pts si aciertas
 
 Una vez guardes tu pronóstico, este quedará registrado automáticamente en tu perfil.
 
-Por cada pick correcto acumularás puntos. Máximo 250 puntos por partido (50 del ganador + 50 de cómo gana + 150 del marcador final si va a penales). Si el partido termina en 90 min o tiempo extra, el máximo es 200 puntos (50 del ganador + 50 de cómo gana + 100 del marcador).
+Por cada pick correcto acumularás puntos. Máximo 200 puntos por partido (50 del ganador + 50 de cómo gana + 100 del marcador final).
 
 Los puntos podrán reflejarse hasta 24 horas después de finalizar el partido y confirmarse el resultado oficial.
 

@@ -30,18 +30,50 @@
         }
       })();
     </script>
-    <!-- Meta Pixel Code -->
+    <!-- Meta Pixel Code (versión robusta: tolera AdBlockers sin romper la app).
+         - Define fbq como stub ANTES de cargar el script externo (init/track
+           funcionan aunque el script tarde en llegar).
+         - Captura el error de carga (onerror) y limpia el stub para que futuros
+           calls a fbq(...) sean no-ops silenciosos.
+         - init/track van en try/catch por si la limpieza ocurre antes. -->
     <script>
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '3201240066930883');
-    fbq('track', 'PageView');
+    (function(){
+      if (window.fbq) return;
+      var fbq = function(){
+        if (fbq.callMethod) {
+          fbq.callMethod.apply(fbq, arguments);
+        } else {
+          fbq.queue.push(arguments);
+        }
+      };
+      fbq.queue = [];
+      fbq.loaded = true;
+      fbq.version = '2.0';
+      window.fbq = fbq;
+      window._fbq = fbq;
+
+      var script = document.createElement('script');
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      script.src = 'https://connect.facebook.net/en_US/fbevents.js';
+      script.onerror = function(){
+        // Bloqueador (AdBlock/uBlock) o firewall bloqueó el script.
+        // Limpiamos el stub para que futuros calls a window.fbq(...) no
+        // disparen excepciones y no quede el error silenciado en consola.
+        try { delete window.fbq; } catch(_) { window.fbq = undefined; }
+        try { delete window._fbq; } catch(_) { window._fbq = undefined; }
+      };
+
+      var first = document.getElementsByTagName('script')[0];
+      if (first && first.parentNode) {
+        first.parentNode.insertBefore(script, first);
+      } else {
+        document.head.appendChild(script);
+      }
+
+      try { fbq('init', '3201240066930883'); } catch(_) {}
+      try { fbq('track', 'PageView'); } catch(_) {}
+    })();
     </script>
     <!-- End Meta Pixel Code -->
 

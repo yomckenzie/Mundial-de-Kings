@@ -115,14 +115,30 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
 
   // Partido finalizado → desglose de puntaje.
   // Para predicciones legacy (sin pred_winner/method) mostramos el marcador
-  // y un único veredicto binario (compatible con el flujo anterior).
+  // pronosticado + el marcador real del partido, y un único veredicto
+  // binario (compatible con el flujo anterior).
   if (isLegacy) {
     return (
       <div className="space-y-1">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico:</p>
+        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center space-y-0.5">
+          <p>Tu pronóstico:</p>
+        </div>
         <p className="text-xs font-bold text-foreground text-center">
           {match.team1} {existing.pred_team1 ?? '?'} - {existing.pred_team2 ?? '?'} {match.team2}
         </p>
+        {/* Resultado real del partido — necesario para que el usuario vea
+            qué pronosticó vs qué pasó. Sin esto, partidos v1 (pre-28 jun)
+            solo muestran un marcador sin contexto. */}
+        {match.result_team1 != null && match.result_team2 != null && (
+          <p className="text-[11px] text-muted-foreground text-center">
+            Real: <strong className="text-foreground tabular-nums">{match.result_team1} - {match.result_team2}</strong>
+            {match.result_method && (
+              <span className="ml-1">
+                · {match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : 'Penales'}
+              </span>
+            )}
+          </p>
+        )}
         <div className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg ${
           predHit
             ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'

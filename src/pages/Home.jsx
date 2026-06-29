@@ -216,7 +216,7 @@ export default function Home() {
                 Participa haciendo tus pronósticos en cada partido del Mundial.
                 Cada pronóstico tiene 3 picks independientes: ganador, método y marcador exacto.
                 Si elegís penales, son 2 marcadores (pre-penales + penales).
-                Puedes ganar hasta <strong className="text-secondary">250 puntos</strong> por partido.
+                Puedes ganar hasta <strong className="text-secondary">200 puntos</strong> por partido.
                 Acumula puntos y canjéalos por increíbles premios.
               </p>
               <m.div className="mt-6" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>

@@ -11,8 +11,40 @@ import { toast } from 'sonner';
 import { usersByEmailMap, buildMatchReport, buildStandings, buildGlobalStats, statusOf } from '@/lib/predictionsReport';
 import { exportMatchPdf, exportTotalPdf } from '@/lib/predictionsPdf';
 
+// Constantes de puntos v2 (deben coincidir con evaluateMatchPredictions.js)
+const POINTS_WINNER = 50;
+const POINTS_METHOD = 50;
+const POINTS_SCORE = 100;
+
+// Píldora inline con color: verde (acertó) / rojo (falló) / gris (no evaluable).
+// Réplica exacta del PickPill de UserHistorySections — un solo sitio, sin modal.
+function PickPill({ icon, label, pts }) {
+  let tag, color;
+  if (pts != null && pts > 0) {
+    tag = `+${pts}`;
+    color = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+  } else if (pts === 0) {
+    tag = '0';
+    color = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300';
+  } else {
+    tag = '—';
+    color = 'bg-muted text-muted-foreground';
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>
+      <span>{icon}</span>
+      <span>{label}</span>
+      <span className="font-bold tabular-nums">{tag}</span>
+    </span>
+  );
+}
+
 export default function AdminPredictions() {
-  const [selectedMatch, setSelectedMatch] = useState('all');
+  // FIX (jun 2026): ya no hay opción "Todos los partidos" — antes al abrir la
+  // página se tildaba todo cargando todos los pronósticos del sistema.
+  // Ahora arranca con '' (sin partido seleccionado) y muestra mensaje
+  // pidiendo que el admin elija uno. selectedMatch='__all' ya no se usa.
+  const [selectedMatch, setSelectedMatch] = useState('');
   const [mode, setMode] = useState('match');               // 'match' | 'user'
   const [statusFilter, setStatusFilter] = useState('all'); // all | ganó | perdió | pendiente
   const [search, setSearch] = useState('');
@@ -35,8 +67,9 @@ export default function AdminPredictions() {
   }, [matches]);
   const usersMap = React.useMemo(() => usersByEmailMap(users), [users]);
 
+  // Sin partido seleccionado: array vacío (no se renderiza nada hasta elegir).
   const matchPredictions = React.useMemo(() => (
-    selectedMatch === 'all' ? allPredictions : allPredictions.filter(p => p.match_id === selectedMatch)
+    selectedMatch ? allPredictions.filter(p => p.match_id === selectedMatch) : []
   ), [allPredictions, selectedMatch]);
 
   const matchesText = React.useCallback((email) => {
@@ -133,9 +166,8 @@ export default function AdminPredictions() {
         <>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={selectedMatch} onValueChange={setSelectedMatch}>
-              <SelectTrigger className="w-full max-w-xs"><SelectValue placeholder="Filtrar por partido" /></SelectTrigger>
+              <SelectTrigger className="w-full max-w-xs"><SelectValue placeholder="Selecciona un partido" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos los partidos</SelectItem>
                 {matches.map(m => <SelectItem key={m.id} value={m.id}>{m.team1} vs {m.team2}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -151,14 +183,24 @@ export default function AdminPredictions() {
             <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={filteredRows.length === 0} className="gap-2">
               <Download className="w-4 h-4" /> CSV
             </Button>
-            <Button variant="outline" size="sm" onClick={handleMatchPdf} disabled={selectedMatch === 'all'} className="gap-2">
+            <Button variant="outline" size="sm" onClick={handleMatchPdf} disabled={!selectedMatch} className="gap-2">
               <FileText className="w-4 h-4" /> PDF de este partido
             </Button>
           </div>
 
-          <p className="text-sm text-muted-foreground">{filteredRows.length} pronósticos</p>
+          <p className="text-sm text-muted-foreground">
+            {selectedMatch ? `${filteredRows.length} pronósticos` : 'Selecciona un partido para ver los pronósticos'}
+          </p>
 
-          {isLoading ? <p className="text-muted-foreground">Cargando...</p> : (
+          {!selectedMatch ? (
+            <Card>
+              <CardContent className="p-8 text-center text-sm text-muted-foreground">
+                Selecciona un partido arriba para ver los pronósticos de los usuarios.
+              </CardContent>
+            </Card>
+          ) : isLoading ? (
+            <p className="text-muted-foreground">Cargando...</p>
+          ) : (
             <div className="space-y-2">
               {filteredRows.map(({ p, match, st }) => {
                 const isV2 = p.pred_score_team1 != null || p.pred_score_team2 != null;
@@ -171,37 +213,83 @@ export default function AdminPredictions() {
                 const score = isV2
                   ? `${p.pred_score_team1}-${p.pred_score_team2}`
                   : (p.pred_team1 != null ? `${p.pred_team1}-${p.pred_team2}` : null);
+                // Flags correct_ (null si no aplica o no evaluable)
+                const winnerFlag = p.winner_correct;
+                const methodFlag = p.method_correct;
+                const scoreFlag = p.score_correct;
+                // Resultado real (solo si el partido está finalizado)
+                const hasResult = match?.status === 'finished'
+                  && match?.result_team1 != null
+                  && match?.result_team2 != null;
                 return (
                   <Card key={p.id}>
-                    <CardContent className="p-3 text-sm flex items-center justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">{userLabel(p.user_email)}</p>
-                        <p className="text-muted-foreground text-xs">{p.user_email}</p>
-                        <p className="text-muted-foreground">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
-                        {/* Mini-desglose de picks (v1 + v2) */}
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs mt-1">
-                          {winnerLabel && (
-                            <span className="text-muted-foreground">🏆 <span className="font-medium text-foreground">{winnerLabel}</span></span>
-                          )}
-                          {methodLabel && (
-                            <span className="text-muted-foreground">⏱ <span className="font-medium text-foreground">{methodLabel}</span></span>
-                          )}
-                          {score && (
-                            <span className="text-muted-foreground">⚽ <span className="font-medium text-foreground">{score}</span></span>
-                          )}
-                          {!winnerLabel && !methodLabel && !score && (
-                            <span className="text-muted-foreground italic">Pronóstico: —</span>
-                          )}
+                    <CardContent className="p-3 text-sm space-y-1.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium">{userLabel(p.user_email)}</p>
+                          <p className="text-muted-foreground text-xs">{p.user_email}</p>
                         </div>
+                        {st === 'pendiente' ? (
+                          <Badge variant="outline">Pendiente</Badge>
+                        ) : (
+                          <Badge className={st === 'ganó' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}>
+                            {st === 'ganó'
+                              ? <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />+{p.points_earned || 100}</span>
+                              : <span className="flex items-center gap-1"><X className="w-3 h-3" />0</span>}
+                          </Badge>
+                        )}
                       </div>
-                      {st === 'pendiente' ? (
-                        <Badge variant="outline">Pendiente</Badge>
-                      ) : (
-                        <Badge className={st === 'ganó' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}>
-                          {st === 'ganó'
-                            ? <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />+{p.points_earned || 100}</span>
-                            : <span className="flex items-center gap-1"><X className="w-3 h-3" />0</span>}
-                        </Badge>
+                      <p className="text-muted-foreground text-xs">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
+                      {/* Mini-desglose coloreado inline (v1 + v2). Mismo patrón
+                          visual que PredictionsHistory del perfil del usuario
+                          (verde acertó / rojo falló / gris pendiente). */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {winnerLabel && (
+                          <PickPill
+                            icon="🏆"
+                            label={winnerLabel}
+                            pts={winnerFlag === true ? POINTS_WINNER : (winnerFlag === false ? 0 : null)}
+                          />
+                        )}
+                        {methodLabel && (
+                          <PickPill
+                            icon="⏱"
+                            label={methodLabel}
+                            pts={methodFlag === true ? POINTS_METHOD : (methodFlag === false ? 0 : null)}
+                          />
+                        )}
+                        {score && (
+                          <PickPill
+                            icon="⚽"
+                            label={score}
+                            pts={scoreFlag === true ? POINTS_SCORE : (scoreFlag === false ? 0 : null)}
+                          />
+                        )}
+                        {!winnerLabel && !methodLabel && !score && (
+                          <span className="text-muted-foreground italic text-[10px]">Pronóstico: —</span>
+                        )}
+                      </div>
+                      {/* Resultado real (solo si finalizado) — contexto extra
+                          para que el admin vea pronóstico vs realidad sin click. */}
+                      {hasResult && (
+                        <p className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-1.5 pt-0.5">
+                          <span>Real:</span>
+                          <span className="font-medium text-foreground">
+                            {(() => {
+                              if (match.result_team1 > match.result_team2) return match.team1;
+                              if (match.result_team1 < match.result_team2) return match.team2;
+                              if (match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null) {
+                                if (match.penalty_score_team1 > match.penalty_score_team2) return match.team1;
+                                if (match.penalty_score_team1 < match.penalty_score_team2) return match.team2;
+                              }
+                              return 'Empate';
+                            })()}
+                          </span>
+                          <span>·</span>
+                          <span>{match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : match.result_method === 'pen' ? 'Penales' : 'Sin método'}</span>
+                          <span>·</span>
+                          <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
+                        </p>
                       )}
                     </CardContent>
                   </Card>
