@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { Award, Target, Star, UserPlus, Gift, TrendingUp, Trophy, Info, Sparkles } from 'lucide-react';
+import { Award, Target, Star, UserPlus, Gift, TrendingUp, Trophy, Info } from 'lucide-react';
 
 export default function PointsBreakdown({
   predictionPoints, bonusPoints, referralPoints, totalSpent, totalPoints, availablePoints,
@@ -128,16 +128,6 @@ export default function PointsBreakdown({
           </div>
           <span className="font-black text-xl text-primary">{availablePoints} pts</span>
         </div>
-
-        {/* Aviso: canjear NO afecta el ranking */}
-        {availablePoints > 0 && (
-          <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-300/40 dark:border-blue-700/40 rounded-lg p-3 flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              <strong className="text-foreground">¡Reclama tus premios!</strong> Canjear <strong className="text-foreground">no afecta tu posición en el Ranking</strong> — tus puntos para el ranking se mantienen intactos.
-            </p>
-          </div>
-        )}
 
         {accuracy > 0 && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
