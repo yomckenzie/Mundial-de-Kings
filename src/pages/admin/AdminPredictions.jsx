@@ -292,10 +292,11 @@ export default function AdminPredictions() {
                             })()}
                           </span>
                           <span>·</span>
-                          <span>{match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : match.result_method === 'pen' ? 'Penales' : 'Sin método'}</span>
-                          <span>·</span>
                           {match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null ? (
                             <>
+                              {/* method='pen': el "Penales" queda implícito al mostrar
+                                  el score de pen, así que NO lo repetimos como método.
+                                  Queda: 90+ET X-Y · Penales X-Y | TOTAL X+Y */}
                               <span className="text-muted-foreground/70 text-[10px]">
                                 90+ET {match.result_team1}-{match.result_team2}
                               </span>
@@ -309,7 +310,11 @@ export default function AdminPredictions() {
                               </span>
                             </>
                           ) : (
-                            <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
+                            <>
+                              <span>{match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : 'Sin método'}</span>
+                              <span>·</span>
+                              <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
+                            </>
                           )}
                         </p>
                       )}

@@ -138,6 +138,8 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
             Real:{' '}
             {match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null ? (
               <>
+                {/* method='pen': "Penales" queda implícito al mostrar el score
+                    de pen, no lo repetimos como método. */}
                 <span className="text-muted-foreground/70 text-[10px]">
                   90+ET {match.result_team1}-{match.result_team2}
                 </span>
@@ -151,14 +153,16 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
                 </strong>
               </>
             ) : (
-              <strong className="text-foreground tabular-nums">
-                {match.result_team1} - {match.result_team2}
-              </strong>
-            )}
-            {match.result_method && (
-              <span className="ml-1">
-                · {match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : 'Penales'}
-              </span>
+              <>
+                <strong className="text-foreground tabular-nums">
+                  {match.result_team1} - {match.result_team2}
+                </strong>
+                {match.result_method && (
+                  <span className="ml-1">
+                    · {match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : 'T. regular'}
+                  </span>
+                )}
+              </>
             )}
           </p>
         )}
