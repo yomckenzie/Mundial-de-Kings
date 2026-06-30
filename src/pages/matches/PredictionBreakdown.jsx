@@ -139,13 +139,19 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
             {match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null ? (
               <>
                 {/* method='pen': "Penales" queda implícito al mostrar el score
-                    de pen, no lo repetimos como método. */}
-                <span className="text-muted-foreground/70 text-[10px]">
-                  90+ET {match.result_team1}-{match.result_team2}
+                    de pen, no lo repetimos como método. Scores en negrita. */}
+                <span className="text-muted-foreground text-[10px]">
+                  90m+ET:{' '}
+                  <strong className="text-foreground tabular-nums font-semibold">
+                    {match.result_team1}-{match.result_team2}
+                  </strong>
                 </span>
                 <span className="mx-1 text-muted-foreground/50">·</span>
-                <span className="text-muted-foreground/70 text-[10px]">
-                  Penales {match.penalty_score_team1}-{match.penalty_score_team2}
+                <span className="text-muted-foreground text-[10px]">
+                  Penales:{' '}
+                  <strong className="text-foreground tabular-nums font-semibold">
+                    {match.penalty_score_team1}-{match.penalty_score_team2}
+                  </strong>
                 </span>
                 <span className="mx-1 text-muted-foreground/50">·</span>
                 <strong className="text-amber-700 dark:text-amber-300 font-bold tabular-nums">
@@ -154,8 +160,8 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
               </>
             ) : (
               <>
-                <strong className="text-foreground tabular-nums">
-                  {match.result_team1} - {match.result_team2}
+                <strong className="text-foreground tabular-nums font-semibold">
+                  {match.result_team1}-{match.result_team2}
                 </strong>
                 {match.result_method && (
                   <span className="ml-1">

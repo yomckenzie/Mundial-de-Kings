@@ -296,13 +296,19 @@ export default function AdminPredictions() {
                             <>
                               {/* method='pen': el "Penales" queda implícito al mostrar
                                   el score de pen, así que NO lo repetimos como método.
-                                  Queda: 90+ET X-Y · Penales X-Y | TOTAL X+Y */}
-                              <span className="text-muted-foreground/70 text-[10px]">
-                                90+ET {match.result_team1}-{match.result_team2}
+                                  Scores van en negrita; labels con ":" para legibilidad. */}
+                              <span className="text-muted-foreground text-[10px]">
+                                90m+ET:{' '}
+                                <strong className="text-foreground tabular-nums font-semibold">
+                                  {match.result_team1}-{match.result_team2}
+                                </strong>
                               </span>
                               <span>·</span>
-                              <span className="text-muted-foreground/70 text-[10px]">
-                                Penales {match.penalty_score_team1}-{match.penalty_score_team2}
+                              <span className="text-muted-foreground text-[10px]">
+                                Penales:{' '}
+                                <strong className="text-foreground tabular-nums font-semibold">
+                                  {match.penalty_score_team1}-{match.penalty_score_team2}
+                                </strong>
                               </span>
                               <span>·</span>
                               <span className="text-amber-700 dark:text-amber-300 font-bold tabular-nums">
@@ -311,9 +317,8 @@ export default function AdminPredictions() {
                             </>
                           ) : (
                             <>
-                              <span>{match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : 'Sin método'}</span>
-                              <span>·</span>
-                              <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
+                              <span>{match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : 'Sin método'}:{' '}</span>
+                              <span className="tabular-nums font-semibold text-foreground">{match.result_team1}-{match.result_team2}</span>
                             </>
                           )}
                         </p>
