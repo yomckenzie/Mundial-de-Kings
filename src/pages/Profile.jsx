@@ -280,7 +280,7 @@ export default function Profile() {
 
   const { data: matches = [] } = useQuery({
     queryKey: ['matches-profile'],
-    queryFn: () => api.entities.Match.list(),
+    queryFn: () => api.entities.Match.list('-match_date'),
   });
 
   const { data: redemptions = [], isLoading: loadingRedeems } = useQuery({

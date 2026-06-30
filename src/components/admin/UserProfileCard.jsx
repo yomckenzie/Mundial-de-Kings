@@ -55,7 +55,7 @@ export default function UserProfileCard({ user, open, onClose }) {
 
   const { data: matches = [] } = useQuery({
     queryKey: ['matches-all'],
-    queryFn: () => api.entities.Match.list(),
+    queryFn: () => api.entities.Match.list('-match_date'),
   });
 
   const { data: bonuses = [] } = useQuery({

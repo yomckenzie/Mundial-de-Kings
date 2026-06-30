@@ -31,7 +31,7 @@ export default function AdminMatches() {
   // ── Datos de partidos ──
   const { data: rawMatches = [], isLoading } = useQuery({
     queryKey: ['admin-matches-sorted'],
-    queryFn: () => api.entities.Match.list(),
+    queryFn: () => api.entities.Match.list('-match_date'),
     // Reflejar los cambios de estado que hace el cron server-side sin recargar.
     refetchInterval: 60000,
   });
@@ -51,9 +51,10 @@ export default function AdminMatches() {
   }, [predictions]);
 
   const matches = React.useMemo(() =>
+    // Más recientes arriba (DESC por match_date, tiebreak por match_time).
     rawMatches.toSorted((a, b) => {
-      if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
-      return (a.match_time || '').localeCompare(b.match_time || '');
+      if (a.match_date !== b.match_date) return (b.match_date || '').localeCompare(a.match_date || '');
+      return (b.match_time || '').localeCompare(a.match_time || '');
     }), [rawMatches]);
 
   // Estado en vivo de SportScore para los partidos visibles (solo lectura).

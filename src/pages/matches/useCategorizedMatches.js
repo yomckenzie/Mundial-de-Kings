@@ -40,11 +40,13 @@ export function useCategorizedMatches(matches, liveResults) {
         const kickoff = getMatchDate(m.match_date, m.match_time);
         return kickoff ? Date.now() < kickoff.getTime() : true;
       })
+      // DESC: los partidos más recientes arriba. Dentro del mismo grupo de
+      // estado, 'open' sigue flotando al tope (es el único estado apostable).
       .sort((a, b) => {
         if (a.status === 'open' && b.status !== 'open') return -1;
         if (a.status !== 'open' && b.status === 'open') return 1;
-        if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
-        return (a.match_time || '').localeCompare(b.match_time || '');
+        if (a.match_date !== b.match_date) return (b.match_date || '').localeCompare(a.match_date || '');
+        return (b.match_time || '').localeCompare(a.match_time || '');
       });
 
     const dbFinishedMatches = matches.filter(m => m.status === 'finished');

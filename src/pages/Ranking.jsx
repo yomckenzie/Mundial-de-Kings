@@ -111,7 +111,7 @@ export default function Ranking() {
   // Partidos y predicciones (del caché local) para el ranking semanal
   const { data: matchesData = [] } = useQuery({
     queryKey: ['ranking-matches'],
-    queryFn: () => api.entities.Match.list(),
+    queryFn: () => api.entities.Match.list('-match_date'),
   });
   const { data: predictionsData = [] } = useQuery({
     queryKey: ['ranking-predictions'],

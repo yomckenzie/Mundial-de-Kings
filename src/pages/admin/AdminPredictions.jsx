@@ -23,12 +23,13 @@ function PickPill({ icon, label, pts }) {
   if (pts != null && pts > 0) {
     tag = `+${pts}`;
     color = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
-  } else if (pts === 0) {
+  } else {
+    // pts === 0 (falló) o pts === null (no evaluable: pred sin
+    // winner/method, o score 90/ET cuando el partido fue a pen). En
+    // ambos casos el usuario NO ganó puntos, así que mostramos 0 en rojo
+    // como si hubiera perdido — sin distinguir pendiente vs perdido.
     tag = '0';
     color = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300';
-  } else {
-    tag = '—';
-    color = 'bg-muted text-muted-foreground';
   }
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>
@@ -270,12 +271,17 @@ export default function AdminPredictions() {
                         )}
                       </div>
                       {/* Resultado real (solo si finalizado) — contexto extra
-                          para que el admin vea pronóstico vs realidad sin click. */}
+                          para que el admin vea pronóstico vs realidad sin click.
+                          FIX (jun 2026): para partidos con method='pen', mostrar
+                          el score de penales (penalty_score_team1/2) en vez de
+                          el 90+ET (result_team1/2), que es lo que se compara
+                          con la apuesta. El 90+ET se muestra como contexto. */}
                       {hasResult && (
                         <p className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-1.5 pt-0.5">
                           <span>Real:</span>
                           <span className="font-medium text-foreground">
                             {(() => {
+                              // Ganador derivado: si fue a penales, decide por pen score
                               if (match.result_team1 > match.result_team2) return match.team1;
                               if (match.result_team1 < match.result_team2) return match.team2;
                               if (match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null) {
@@ -288,7 +294,23 @@ export default function AdminPredictions() {
                           <span>·</span>
                           <span>{match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : match.result_method === 'pen' ? 'Penales' : 'Sin método'}</span>
                           <span>·</span>
-                          <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
+                          {match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null ? (
+                            <>
+                              <span className="text-muted-foreground/70 text-[10px]">
+                                90+ET {match.result_team1}-{match.result_team2}
+                              </span>
+                              <span>·</span>
+                              <span className="text-muted-foreground/70 text-[10px]">
+                                Penales {match.penalty_score_team1}-{match.penalty_score_team2}
+                              </span>
+                              <span>·</span>
+                              <span className="text-amber-700 dark:text-amber-300 font-bold tabular-nums">
+                                TOTAL {match.result_team1 + match.penalty_score_team1}-{match.result_team2 + match.penalty_score_team2}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
+                          )}
                         </p>
                       )}
                     </CardContent>

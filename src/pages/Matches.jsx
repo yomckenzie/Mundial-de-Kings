@@ -31,7 +31,7 @@ export default function Matches() {
 
   const { data: rawMatches = [], isLoading } = useQuery({
     queryKey: ['matches'],
-    queryFn: () => api.entities.Match.list(),
+    queryFn: () => api.entities.Match.list('-match_date'),
   });
 
   // Filtrar partidos de prueba para usuarios no-admin en producción.
@@ -41,9 +41,12 @@ export default function Matches() {
     const filtered = showTestMatches
       ? rawMatches
       : rawMatches.filter(m => !m.is_test);
+    // Más recientes arriba (DESC por match_date, tiebreak por match_time).
+    // FIX jun 2026: antes era ASC → usuario tenía que scrollear hasta el
+    // final para ver los partidos recién agregados/finalizados.
     return filtered.toSorted((a, b) => {
-      if (a.match_date !== b.match_date) return a.match_date?.localeCompare(b.match_date);
-      return (a.match_time || '').localeCompare(b.match_time || '');
+      if (a.match_date !== b.match_date) return (b.match_date || '').localeCompare(a.match_date || '');
+      return (b.match_time || '').localeCompare(a.match_time || '');
     });
   }, [rawMatches, showTestMatches]);
 

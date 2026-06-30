@@ -128,10 +128,33 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
         </p>
         {/* Resultado real del partido — necesario para que el usuario vea
             qué pronosticó vs qué pasó. Sin esto, partidos v1 (pre-28 jun)
-            solo muestran un marcador sin contexto. */}
+            solo muestran un marcador sin contexto.
+            FIX (jun 2026): para partidos con method='pen' mostramos el score
+            de penales (penalty_score_team1/2) que es lo que se compara con
+            la apuesta. El score 90+ET (result_team1/2) sigue siendo útil
+            como contexto. */}
         {match.result_team1 != null && match.result_team2 != null && (
           <p className="text-[11px] text-muted-foreground text-center">
-            Real: <strong className="text-foreground tabular-nums">{match.result_team1} - {match.result_team2}</strong>
+            Real:{' '}
+            {match.result_method === 'pen' && match.penalty_score_team1 != null && match.penalty_score_team2 != null ? (
+              <>
+                <span className="text-muted-foreground/70 text-[10px]">
+                  90+ET {match.result_team1}-{match.result_team2}
+                </span>
+                <span className="mx-1 text-muted-foreground/50">·</span>
+                <span className="text-muted-foreground/70 text-[10px]">
+                  Penales {match.penalty_score_team1}-{match.penalty_score_team2}
+                </span>
+                <span className="mx-1 text-muted-foreground/50">·</span>
+                <strong className="text-amber-700 dark:text-amber-300 font-bold tabular-nums">
+                  TOTAL {match.result_team1 + match.penalty_score_team1}-{match.result_team2 + match.penalty_score_team2}
+                </strong>
+              </>
+            ) : (
+              <strong className="text-foreground tabular-nums">
+                {match.result_team1} - {match.result_team2}
+              </strong>
+            )}
             {match.result_method && (
               <span className="ml-1">
                 · {match.result_method === '90' ? '90 min' : match.result_method === 'et' ? 'T. extra' : 'Penales'}

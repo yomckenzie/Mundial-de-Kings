@@ -55,12 +55,13 @@ function PickPill({ icon, label, pts, correct }) {
   if (pts != null && pts > 0) {
     tag = `+${pts}`;
     color = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
-  } else if (pts === 0) {
+  } else {
+    // pts === 0 (falló) o pts === null (no evaluable: pred sin
+    // winner/method, o score 90/ET cuando el partido fue a pen). En
+    // ambos casos el usuario NO ganó puntos, así que mostramos 0 en rojo
+    // como si hubiera perdido — sin distinguir pendiente vs perdido.
     tag = '0';
     color = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300';
-  } else {
-    tag = '—';
-    color = 'bg-muted text-muted-foreground';
   }
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>
