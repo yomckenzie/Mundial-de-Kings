@@ -77,6 +77,45 @@
     </script>
     <!-- End Meta Pixel Code -->
 
+    <!-- Google Analytics 4 (GA4) — versión robusta: tolera AdBlockers sin
+         romper la app. Patrón idéntico al Meta Pixel de arriba.
+         - Define dataLayer y stub gtag ANTES de cargar gtag.js (init y
+           eventos funcionan aunque el script tarde en llegar).
+         - Captura el error de carga (onerror) y limpia el stub para que
+           futuros calls a gtag(...) sean no-ops silenciosos.
+         - config PageView va en try/catch por si la limpieza ocurre antes. -->
+    <script>
+    (function(){
+      if (window.gtag) return;
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function(){
+        window.dataLayer.push(arguments);
+      };
+      gtag('js', new Date());
+
+      var script = document.createElement('script');
+      script.async = true;
+      script.src = 'https://www.googletagmanager.com/gtag/js?id=G-4QCF23S8VV';
+      script.onerror = function(){
+        // Bloqueador (AdBlock/uBlock) o firewall bloqueó gtag.js.
+        // Limpiamos el stub para que futuros calls a gtag(...) no
+        // disparen excepciones y no quede el error silenciado en consola.
+        try { delete window.gtag; } catch(_) { window.gtag = undefined; }
+        try { delete window.dataLayer; } catch(_) { window.dataLayer = undefined; }
+      };
+
+      var first = document.getElementsByTagName('script')[0];
+      if (first && first.parentNode) {
+        first.parentNode.insertBefore(script, first);
+      } else {
+        document.head.appendChild(script);
+      }
+
+      try { gtag('config', 'G-4QCF23S8VV', { send_page_view: true }); } catch(_) {}
+    })();
+    </script>
+    <!-- End Google Analytics 4 -->
+
     <!-- Preloader CK (corona) — inline para que se vea ANTES de cargar el bundle JS.
          Sin @import de fuente (bloquearía el render): usa Bebas Neue si ya está
          cacheada, si no system-ui. Se oculta con window.hideCKLoader(). -->
@@ -163,6 +202,14 @@
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=3201240066930883&ev=PageView&noscript=1"
     /></noscript>
+
+    <!-- Google Analytics 4 Noscript (fallback para usuarios sin JS).
+         IMPORTANTE: GA4 ns.html usa el mismo Measurement ID (formato G-XXX),
+         NO el Container ID GT-XXX. -->
+    <noscript>
+      <iframe src="https://www.googletagmanager.com/ns.html?id=G-4QCF23S8VV"
+      height="0" width="0" style="display:none;visibility:hidden"></iframe>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
