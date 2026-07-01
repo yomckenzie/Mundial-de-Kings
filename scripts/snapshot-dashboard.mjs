@@ -76,26 +76,40 @@ async function main() {
   // referrals, prizes). Esperar específicamente al widget antes de capturar.
   const widgetReady = await waitForCondition(
     ws,
-    `document.body && document.body.innerText.includes('Stock de premios')`,
+    `document.body && document.body.innerText.includes('Stock de premios') && document.body.innerText.includes('Reporte de canjes')`,
     30000,
     700
   );
   console.log('Widget ready:', widgetReady);
-  // Cerrar modal otra vez si reaparece (no bloquea, pero por si acaso)
-  await evalExpr(ws, next(), `(function() {
-    const btn = [...document.querySelectorAll('button')].find(b => /más tarde/i.test(b.textContent || ''));
-    if (btn) btn.click();
-  })()`);
-  await sleep(800);
+  // Cerrar modal repetidamente (puede reabrirse tras el login)
+  for (let i = 0; i < 3; i++) {
+    await evalExpr(ws, next(), `(function() {
+      const btn = [...document.querySelectorAll('button')].find(b => /más tarde/i.test(b.textContent || ''));
+      if (btn) { btn.click(); return true; }
+      return false;
+    })()`);
+    await sleep(500);
+  }
 
-  // Verificar que el widget StockAlertsCard existe y tiene datos
+  // Verificar que ambos widgets existen y tienen datos
   const widget = await evalExpr(ws, next(), `(function() {
-    const all = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,div')].map(e => e.textContent.trim()).filter(Boolean);
-    const hasStockTitle = all.some(t => /stock de premios/i.test(t));
-    const counters = [...document.querySelectorAll('p.text-2xl')].map(e => e.textContent.trim());
-    return { hasStockTitle, counters, bodyHasStock: document.body.innerText.includes('Stock de premios') };
+    // Usar textContent en lugar de innerText para evitar transforms CSS (uppercase)
+    const bodyText = document.body.textContent || '';
+    const lc = bodyText.toLowerCase();
+    const hasStockTitle = lc.includes('stock de premios');
+    const hasSalesTitle = lc.includes('reporte de canjes');
+    const hasPeriodSelector = lc.includes('últimos 7 días') && lc.includes('últimos 30 días');
+    const hasKpis = lc.includes('canjes') && lc.includes('puntos canjeados') && lc.includes('usuarios únicos') && lc.includes('premios vendidos');
+    const hasTopPrizesHeader = lc.includes('top premios');
+    const hasTopUsersHeader = lc.includes('top usuarios');
+    const hasSparkline = document.querySelectorAll('[title*="canjes · "][title*="pts"]').length > 0;
+    return {
+      hasStockTitle, hasSalesTitle, hasPeriodSelector, hasKpis,
+      hasTopPrizesHeader, hasTopUsersHeader, hasSparkline,
+      bodyHasStock: hasStockTitle, bodyHasSales: hasSalesTitle,
+    };
   })()`);
-  console.log('Widget:', JSON.stringify(widget.result.value, null, 2));
+  console.log('Widgets:', JSON.stringify(widget.result.value, null, 2));
 
   const fs = await import('fs');
   // Screenshot del dashboard completo
@@ -112,6 +126,22 @@ async function main() {
   ss = await rpc(ws, next(), 'Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync('C:/Users/yomck/.claude/jobs/b1937a53/tmp/dashboard-stock.png', Buffer.from(ss.data, 'base64'));
   console.log('✅ Stock widget screenshot');
+
+  // Scroll abajo al reporte de canjes (forzar scroll programático)
+  await evalExpr(ws, next(), `(function() {
+    const titles = [...document.querySelectorAll('h3, h4, [class*="text-base"]')];
+    const el = titles.find(e => /reporte de canjes/i.test(e.textContent || ''));
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      window.scrollTo({ top: window.scrollY + rect.top - 60, behavior: 'instant' });
+      return true;
+    }
+    return false;
+  })()`);
+  await sleep(800);
+  ss = await rpc(ws, next(), 'Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync('C:/Users/yomck/.claude/jobs/b1937a53/tmp/dashboard-sales.png', Buffer.from(ss.data, 'base64'));
+  console.log('✅ Sales widget screenshot');
 
   console.log('Console errors:', consoleErrors.length);
   if (consoleErrors.length) console.log(consoleErrors);

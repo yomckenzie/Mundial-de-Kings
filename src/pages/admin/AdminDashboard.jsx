@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import StatsCards from '@/components/admin/StatsCards';
 import StockAlertsCard from '@/components/admin/StockAlertsCard';
+import SalesReportCard from '@/components/admin/SalesReportCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MatchParticipationChart, TopUsersChart, DailyRegistrationsChart, DailyWinnersChart } from '@/components/admin/charts';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,13 @@ export default function AdminDashboard() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
   }, [referrals, users]);
+
+  // Mapa email → user para que el mini reporte muestre nombres en el top de usuarios
+  const usersByEmail = useMemo(() => {
+    const map = {};
+    for (const u of users) if (u.email) map[u.email] = u;
+    return map;
+  }, [users]);
 
   const handleRecalc = async () => {
     setRecalcLoading(true);
@@ -161,6 +169,9 @@ export default function AdminDashboard() {
 
       {/* Stock crítico de premios (task #34): top 5 agotados/por acabarse */}
       <StockAlertsCard prizes={prizes} />
+
+      {/* Mini reporte de canjes (task #33): KPIs + top premios/usuarios + tendencia diaria */}
+      <SalesReportCard redemptions={redemptions} usersByEmail={usersByEmail} />
     </div>
   );
 }
