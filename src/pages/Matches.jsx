@@ -41,12 +41,16 @@ export default function Matches() {
     const filtered = showTestMatches
       ? rawMatches
       : rawMatches.filter(m => !m.is_test);
-    // Más recientes arriba (DESC por match_date, tiebreak por match_time).
+    // Más recientes arriba (DESC por match_date, tiebreak ASC por match_time).
     // FIX jun 2026: antes era ASC → usuario tenía que scrollear hasta el
     // final para ver los partidos recién agregados/finalizados.
+    // FIX 30 jun 2026: tiebreak invertido a ASC por hora. El reporte del
+    // usuario era "dentro del mismo día sale el más tarde primero y el
+    // más temprano abajo" — el comportamiento correcto es cronológico:
+    // los más tempranos arriba, los más tarde abajo (sentido del tiempo).
     return filtered.toSorted((a, b) => {
       if (a.match_date !== b.match_date) return (b.match_date || '').localeCompare(a.match_date || '');
-      return (b.match_time || '').localeCompare(a.match_time || '');
+      return (a.match_time || '').localeCompare(b.match_time || '');
     });
   }, [rawMatches, showTestMatches]);
 

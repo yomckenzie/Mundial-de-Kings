@@ -51,10 +51,12 @@ export default function AdminMatches() {
   }, [predictions]);
 
   const matches = React.useMemo(() =>
-    // Más recientes arriba (DESC por match_date, tiebreak por match_time).
+    // Más recientes arriba (DESC por match_date, tiebreak ASC por match_time).
+    // FIX 30 jun 2026: tiebreak invertido a ASC — dentro del mismo día los
+    // más tempranos van arriba, los más tarde abajo (sentido cronológico).
     rawMatches.toSorted((a, b) => {
       if (a.match_date !== b.match_date) return (b.match_date || '').localeCompare(a.match_date || '');
-      return (b.match_time || '').localeCompare(a.match_time || '');
+      return (a.match_time || '').localeCompare(b.match_time || '');
     }), [rawMatches]);
 
   // Estado en vivo de SportScore para los partidos visibles (solo lectura).

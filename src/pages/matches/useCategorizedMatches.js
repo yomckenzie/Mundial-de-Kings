@@ -42,11 +42,13 @@ export function useCategorizedMatches(matches, liveResults) {
       })
       // DESC: los partidos más recientes arriba. Dentro del mismo grupo de
       // estado, 'open' sigue flotando al tope (es el único estado apostable).
+      // FIX 30 jun 2026: tiebreak invertido a ASC — dentro del mismo día los
+      // más tempranos van arriba, los más tarde abajo (sentido cronológico).
       .sort((a, b) => {
         if (a.status === 'open' && b.status !== 'open') return -1;
         if (a.status !== 'open' && b.status === 'open') return 1;
         if (a.match_date !== b.match_date) return (b.match_date || '').localeCompare(a.match_date || '');
-        return (b.match_time || '').localeCompare(a.match_time || '');
+        return (a.match_time || '').localeCompare(b.match_time || '');
       });
 
     const dbFinishedMatches = matches.filter(m => m.status === 'finished');
