@@ -264,8 +264,12 @@ export default function AdminSupport() {
   });
 
   const sendMessageMutation = useMutation({
-    mutationFn: ({ id, text }) => {
-      db.supportTickets.addMessage(id, 'admin', text);
+    mutationFn: async ({ id, text }) => {
+      // FIX (jul 2026): addMessage es async y puede fallar por RLS al subir
+      // a Supabase. Hay que await para que onError capture el error real
+      // y el admin vea el toast de error en lugar de "Respuesta enviada"
+      // cuando la persistencia falló silenciosamente.
+      await db.supportTickets.addMessage(id, 'admin', text);
       return { id, text };
     },
     onSuccess: () => {

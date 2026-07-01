@@ -2227,14 +2227,14 @@ export const db = {
       delete record.message;
       delete record.admin_reply;
       _data.supportTickets.push(record);
-      // FIX (jun 2026): el _persist ahora se AWAITEA para que errores de RLS,
-      // FK o red se propaguen al caller. Antes era fire-and-forget y el
-      // ticket quedaba solo en memoria local — el admin nunca lo veía
-      // en la BD. Si el upsert falla, hacemos rollback del push local y
-      // re-lanzamos el error para que Support.jsx lo muestre al usuario
-      // en lugar de fingir éxito.
+      // FIX (jul 2026): subir SOLO este ticket, no db._persist('supportTickets'),
+      // que reintenta subir TODA la tabla. La RLS support_insert_own rechaza
+      // el INSERT cuando auth.email() != user_email — esto pasa con admins
+      // creando un ticket propio si la policy compara por algo más, y también
+      // con cualquier batch que incluya tickets de otros usuarios. Single-row
+      // upsert evita el rechazo del lote. Mismo patrón que db.supportTickets.update.
       try {
-        await db._persist('supportTickets');
+        await _upsertToCloud('support_tickets', [record]);
       } catch (err) {
         const idx = _data.supportTickets.findIndex(t => t.id === record.id);
         if (idx !== -1) _data.supportTickets.splice(idx, 1);
@@ -2249,14 +2249,19 @@ export const db = {
       // No permitir sobrescribir messages con update directo
       if (data.messages) delete data.messages;
       d.supportTickets[idx] = { ...d.supportTickets[idx], ...data, updated_at: getNow() };
-      await db._persist('supportTickets');
+      // FIX (jul 2026): subir SOLO esta fila, no db._persist('supportTickets'),
+      // que reintenta subir TODA la tabla. La RLS `support_insert_own` rechaza
+      // el INSERT cuando auth.email() != user_email (admin editando ticket
+      // de otro usuario), por lo que el batch completo falla aunque solo
+      // queramos cambiar el status a 'closed'. Mismo patrón que db.users.update.
+      await _upsertToCloud('support_tickets', [d.supportTickets[idx]]);
       return db._migrateTicket(d.supportTickets[idx]);
     },
 
     /**
      * Agrega un mensaje al chat del ticket.
      */
-    addMessage(id, sender, text) {
+    async addMessage(id, sender, text) {
         const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
@@ -2272,14 +2277,23 @@ export const db = {
       } else if (sender === 'admin') {
         d.supportTickets[idx].status = 'answered';
       }
-      db._persist('supportTickets');
+      // FIX (jul 2026): subir SOLO esta fila (mismo motivo que update).
+      // Capturar errores para que AdminSupport vea el toast de error en vez
+      // de fingir éxito silencioso.
+      try {
+        await _upsertToCloud('support_tickets', [d.supportTickets[idx]]);
+      } catch (err) {
+        // Rollback del push local del mensaje
+        d.supportTickets[idx].messages.pop();
+        throw err;
+      }
       return d.supportTickets[idx];
     },
 
     /**
      * Marca un ticket como leído por el usuario o admin.
      */
-    markRead(id, role) {
+    async markRead(id, role) {
         const d = db._init();
       const idx = d.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
@@ -2289,7 +2303,11 @@ export const db = {
       } else if (role === 'admin') {
         d.supportTickets[idx].admin_read_at = now;
       }
-      db._persist('supportTickets');
+      // FIX (jul 2026): single-row upsert (mismo motivo que update). Es fire-and-forget
+      // a propósito — abrir un ticket debe ser instantáneo, no puede fallar el expand.
+      _upsertToCloud('support_tickets', [d.supportTickets[idx]]).catch((e) => {
+        console.warn('[DB] markRead sync falló (no bloquea UI):', e?.message);
+      });
     },
 
     /**
@@ -2314,7 +2332,7 @@ export const db = {
      * Marca un ticket como verificado (conversación real confirmada por el admin).
      * Retorna el ticket actualizado.
      */
-    verify(id, adminEmail) {
+    async verify(id, adminEmail) {
         const idx = _data.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
       _data.supportTickets[idx].verified = true;
@@ -2322,17 +2340,37 @@ export const db = {
       _data.supportTickets[idx].verified_by = adminEmail || 'admin';
       _data.supportTickets[idx].updated_at = getNow();
       // Registrar en auditoría
-      _data.auditLogs.push({
+      const auditLog = {
         id: makeId(),
         created_date: getNow(),
         action: 'ticket_verified',
         admin_email: adminEmail || 'admin',
         details: JSON.stringify({ ticket_id: id, subject: _data.supportTickets[idx].subject }),
-      });
-      save(d);
-      _syncInProgress = {};
-      db._syncAllToSupabase();
+      };
+      _data.auditLogs.push(auditLog);
+      save(_data);
+      // FIX (jul 2026): single-row upsert en vez de _syncAllToSupabase() — este
+      // último reintenta subir TODAS las tablas, y la RLS de support_tickets
+      // rechaza el INSERT cuando auth.email() (admin) != user_email (otro
+      // usuario). Mismo bug que users.update. El audit_log RLS es WITH CHECK (true)
+      // así que el push del log nunca falla por permisos.
       notifyReactComponents();
+      try {
+        await Promise.all([
+          _upsertToCloud('support_tickets', [_data.supportTickets[idx]]),
+          _upsertToCloud('audit_logs', [auditLog]),
+        ]);
+      } catch (err) {
+        // Rollback del flag local para que el admin reintente
+        _data.supportTickets[idx].verified = false;
+        _data.supportTickets[idx].verified_at = null;
+        _data.supportTickets[idx].verified_by = null;
+        const aIdx = _data.auditLogs.findIndex(a => a.id === auditLog.id);
+        if (aIdx !== -1) _data.auditLogs.splice(aIdx, 1);
+        save(d);
+        notifyReactComponents();
+        throw err;
+      }
       return _data.supportTickets[idx];
     },
 
@@ -2340,7 +2378,7 @@ export const db = {
      * Marca un ticket como rechazado (conversación NO real / spam / falsa).
      * Retorna el ticket actualizado.
      */
-    reject(id, adminEmail) {
+    async reject(id, adminEmail) {
         const idx = _data.supportTickets.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Ticket not found');
       _data.supportTickets[idx].rejected = true;
@@ -2350,17 +2388,34 @@ export const db = {
       // Cerrar el ticket automáticamente al rechazar
       _data.supportTickets[idx].status = 'closed';
       // Registrar en auditoría
-      _data.auditLogs.push({
+      const auditLog = {
         id: makeId(),
         created_date: getNow(),
         action: 'ticket_rejected',
         admin_email: adminEmail || 'admin',
         details: JSON.stringify({ ticket_id: id, subject: _data.supportTickets[idx].subject }),
-      });
-      save(d);
-      _syncInProgress = {};
-      db._syncAllToSupabase();
+      };
+      _data.auditLogs.push(auditLog);
+      save(_data);
+      // FIX (jul 2026): single-row upsert en vez de _syncAllToSupabase()
+      // (mismo motivo que verify).
       notifyReactComponents();
+      try {
+        await Promise.all([
+          _upsertToCloud('support_tickets', [_data.supportTickets[idx]]),
+          _upsertToCloud('audit_logs', [auditLog]),
+        ]);
+      } catch (err) {
+        _data.supportTickets[idx].rejected = false;
+        _data.supportTickets[idx].rejected_at = null;
+        _data.supportTickets[idx].rejected_by = null;
+        _data.supportTickets[idx].status = 'pending';
+        const aIdx = _data.auditLogs.findIndex(a => a.id === auditLog.id);
+        if (aIdx !== -1) _data.auditLogs.splice(aIdx, 1);
+        save(d);
+        notifyReactComponents();
+        throw err;
+      }
       return _data.supportTickets[idx];
     },
 

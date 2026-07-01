@@ -48,6 +48,10 @@ function resetDb(ticketsIniciales = []) {
     currentUserEmail: null,
     deletedIds: [],
   };
+  // Sincronizar la closure _data de db.js con db._data.
+  // verify/reject usan _data directamente sin llamar _init(), por lo que
+  // si no sincronizamos aquí esos métodos ven los datos viejos.
+  db._init({ skipSync: true });
   localStorage.clear();
   localStorage.setItem('chessking_db', JSON.stringify(db._data));
 }
@@ -134,7 +138,39 @@ describe('db.supportTickets', () => {
     expect(ticket.user_email).toBe('jugador@test.com');
   });
 
-  it('addMessage agrega el mensaje al array y actualiza el status', () => {
+  it('create NO hace batch upsert — solo sube la fila creada (FIX jul 2026)', async () => {
+    // Reproduce el bug #35 (segunda parte): el admin no podía CREAR tickets
+    // porque db._persist('supportTickets') subía TODA la tabla y la RLS
+    // support_insert_own rechazaba el batch. El fix sube SOLO la fila nueva.
+    const persistSpy = vi.spyOn(db, '_persist');
+
+    resetDb([
+      { id: 'prev1', user_email: 'otro1@test.com', subject: 'otro1', messages: [], status: 'pending', user_read_at: '2024-01-01', admin_read_at: '2024-01-01', created_date: '2024-01-01' },
+      { id: 'prev2', user_email: 'otro2@test.com', subject: 'otro2', messages: [], status: 'pending', user_read_at: '2024-01-01', admin_read_at: '2024-01-01', created_date: '2024-01-01' },
+    ]);
+
+    await db.supportTickets.create({
+      subject: 'Nuevo',
+      user_email: 'admin@chessking.com',
+      user_name: 'Admin',
+      message: 'Test create single-row',
+    });
+
+    // _persist NUNCA debe llamarse (sería el anti-pattern)
+    expect(persistSpy).not.toHaveBeenCalled();
+
+    // El ticket nuevo SÍ debe estar en local
+    const tickets = db.supportTickets.list();
+    expect(tickets.length).toBe(3);
+    const nuevo = tickets.find(t => t.subject === 'Nuevo');
+    expect(nuevo.user_email).toBe('admin@chessking.com');
+    expect(nuevo.messages).toHaveLength(1);
+    expect(nuevo.messages[0].text).toBe('Test create single-row');
+
+    persistSpy.mockRestore();
+  });
+
+  it('addMessage agrega el mensaje al array y actualiza el status', async () => {
     resetDb([{
       id: 'ticket-1',
       messages: [{ sender: 'user', text: 'hola', created_date: '2024-01-01' }],
@@ -144,7 +180,7 @@ describe('db.supportTickets', () => {
       admin_read_at: '2024-01-01',
     }]);
 
-    db.supportTickets.addMessage('ticket-1', 'admin', 'Te respondo');
+    await db.supportTickets.addMessage('ticket-1', 'admin', 'Te respondo');
 
     const tickets = db.supportTickets.list();
     const ticket = tickets.find(t => t.id === 'ticket-1');
@@ -156,7 +192,7 @@ describe('db.supportTickets', () => {
     expect(ticket.status).toBe('answered');
   });
 
-  it('update no permite sobrescribir messages directamente', () => {
+  it('update no permite sobrescribir messages directamente', async () => {
     resetDb([{
       id: 'ticket-2',
       messages: [{ sender: 'user', text: 'original', created_date: '2024-01-01' }],
@@ -167,7 +203,7 @@ describe('db.supportTickets', () => {
     }]);
 
     // Intentar sobreescribir messages con update debe ser ignorado
-    db.supportTickets.update('ticket-2', {
+    await db.supportTickets.update('ticket-2', {
       status: 'closed',
       messages: [],
     });
@@ -179,5 +215,122 @@ describe('db.supportTickets', () => {
     expect(ticket.messages).toHaveLength(1);
     // status sí debe haber cambiado
     expect(ticket.status).toBe('closed');
+  });
+
+  it('update NO hace batch upsert — solo sube la fila afectada (FIX jul 2026)', async () => {
+    // Reproduce el bug #35: admin cierra un ticket de otro usuario. Antes el
+    // _persist('supportTickets') subía TODOS los tickets y la RLS
+    // support_insert_own rechazaba el batch porque auth.email() (admin) != user_email.
+    // El fix sube SOLO la fila afectada con _upsertToCloud, evitando el rechazo.
+    // Verificamos: db._persist NUNCA se llama desde update (es el anti-pattern).
+    const persistSpy = vi.spyOn(db, '_persist');
+
+    resetDb([
+      { id: 'a', user_email: 'alice@test.com', subject: 's1', messages: [], status: 'pending', user_read_at: '2024-01-01', admin_read_at: '2024-01-01', created_date: '2024-01-01' },
+      { id: 'b', user_email: 'bob@test.com',   subject: 's2', messages: [], status: 'pending', user_read_at: '2024-01-01', admin_read_at: '2024-01-01', created_date: '2024-01-01' },
+      { id: 'c', user_email: 'carol@test.com', subject: 's3', messages: [], status: 'pending', user_read_at: '2024-01-01', admin_read_at: '2024-01-01', created_date: '2024-01-01' },
+    ]);
+
+    await db.supportTickets.update('b', { status: 'closed' });
+
+    // El _persist batch NUNCA debe llamarse (sería el anti-pattern)
+    expect(persistSpy).not.toHaveBeenCalled();
+
+    // Estado local correcto
+    const ticket = db.supportTickets.list().find(t => t.id === 'b');
+    expect(ticket.status).toBe('closed');
+
+    persistSpy.mockRestore();
+  });
+
+  it('verify NO llama a _syncAllToSupabase — solo upserts el ticket y el audit log (FIX jul 2026)', async () => {
+    // Antes verify() llamaba db._syncAllToSupabase() que sube TODAS las tablas.
+    // Eso reintentaba subir todos los tickets de todos los usuarios → RLS fail.
+    const syncAllSpy = vi.spyOn(db, '_syncAllToSupabase');
+    const persistSpy = vi.spyOn(db, '_persist');
+
+    resetDb([{
+      id: 'v1',
+      user_email: 'u@test.com',
+      subject: 'Real',
+      messages: [],
+      status: 'pending',
+      user_read_at: '2024-01-01',
+      admin_read_at: '2024-01-01',
+      created_date: '2024-01-01',
+    }]);
+
+    await db.supportTickets.verify('v1', 'admin@chessking.com');
+
+    // _syncAllToSupabase NUNCA debe llamarse (sería el anti-pattern)
+    expect(syncAllSpy).not.toHaveBeenCalled();
+    // _persist tampoco
+    expect(persistSpy).not.toHaveBeenCalled();
+
+    // Estado local: verified=true, verified_by=admin, audit log creado
+    const ticket = db.supportTickets.list().find(t => t.id === 'v1');
+    expect(ticket.verified).toBe(true);
+    expect(ticket.verified_by).toBe('admin@chessking.com');
+    expect(db._data.auditLogs.length).toBe(1);
+    expect(db._data.auditLogs[0].action).toBe('ticket_verified');
+
+    syncAllSpy.mockRestore();
+    persistSpy.mockRestore();
+  });
+
+  it('reject NO llama a _syncAllToSupabase — solo upserts el ticket cerrado y el audit log (FIX jul 2026)', async () => {
+    const syncAllSpy = vi.spyOn(db, '_syncAllToSupabase');
+    const persistSpy = vi.spyOn(db, '_persist');
+
+    resetDb([{
+      id: 'rj1',
+      user_email: 'u@test.com',
+      subject: 'spam',
+      messages: [],
+      status: 'pending',
+      user_read_at: '2024-01-01',
+      admin_read_at: '2024-01-01',
+      created_date: '2024-01-01',
+    }]);
+
+    await db.supportTickets.reject('rj1', 'admin@chessking.com');
+
+    expect(syncAllSpy).not.toHaveBeenCalled();
+    expect(persistSpy).not.toHaveBeenCalled();
+
+    // Estado local: rejected=true, status=closed, audit log creado
+    const ticket = db.supportTickets.list().find(t => t.id === 'rj1');
+    expect(ticket.rejected).toBe(true);
+    expect(ticket.rejected_by).toBe('admin@chessking.com');
+    expect(ticket.status).toBe('closed');
+    expect(db._data.auditLogs.length).toBe(1);
+    expect(db._data.auditLogs[0].action).toBe('ticket_rejected');
+
+    syncAllSpy.mockRestore();
+    persistSpy.mockRestore();
+  });
+
+  it('addMessage NO hace batch upsert — solo sube el ticket afectado (FIX jul 2026)', async () => {
+    const persistSpy = vi.spyOn(db, '_persist');
+
+    resetDb([{
+      id: 'm1',
+      user_email: 'u@test.com',
+      subject: 's',
+      messages: [{ sender: 'user', text: 'hola', created_date: '2024-01-01' }],
+      status: 'pending',
+      user_read_at: '2024-01-01',
+      admin_read_at: '2024-01-01',
+      created_date: '2024-01-01',
+    }]);
+
+    await db.supportTickets.addMessage('m1', 'admin', 'respuesta');
+
+    expect(persistSpy).not.toHaveBeenCalled();
+    const ticket = db.supportTickets.list().find(t => t.id === 'm1');
+    expect(ticket.messages).toHaveLength(2);
+    expect(ticket.status).toBe('answered');
+
+    persistSpy.mockRestore();
   });
 });
