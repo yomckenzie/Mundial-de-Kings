@@ -88,9 +88,22 @@ function _stripFields(records, tableName) {
   // (la tabla fue creada en un momento donde no se incluía). Stripping evita
   // el 400 de "Could not find the updated_at column" al sincronizar.
   const stripUpdatedAt = tableName === 'app_settings';
+  // support_tickets en este deploy NO tiene columnas verified/rejected
+  // (banderas de moderación admin que viven solo en memoria local —
+  // AdminSupport.jsx las lee del cache, pero no persisten a la BD).
+  // Stripping evita el 400 de "Could not find the 'rejected' column".
+  const stripModerationFlags = tableName === 'support_tickets';
   return arr.map(r => {
     const { password, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r;
     if (stripUpdatedAt) delete clean.updated_at;
+    if (stripModerationFlags) {
+      delete clean.verified;
+      delete clean.verified_at;
+      delete clean.verified_by;
+      delete clean.rejected;
+      delete clean.rejected_at;
+      delete clean.rejected_by;
+    }
     return clean;
   });
 }
@@ -940,15 +953,25 @@ export const db = {
     async create(data) {
         const record = { id: makeId(), created_date: getNow(), ...data };
       _data.users.push(record);
-      await db._persist('users');
+      // Subir SOLO esta fila — NO db._persist('users'), que reintenta subir
+      // toda la tabla (todos los usuarios) y la RLS rechaza el lote cuando
+      // hay filas que no son del JWT actual (huérfanos sin auth.users, etc.).
+      // Mismo patrón que predictions.create (línea 1539).
+      await _upsertToCloud('users', [record]);
       return record;
     },
     async update(id, data) {
         const idx = _data.users.findIndex(u => u.id === id);
       if (idx === -1) throw new Error('User not found');
-      _data.users[idx] = { ..._data.users[idx], ...data, updated_at: getNow() };
-      await db._persist('users');
-      return _data.users[idx];
+      const updatedRow = { ..._data.users[idx], ...data, updated_at: getNow() };
+      _data.users[idx] = updatedRow;
+      // Subir SOLO esta fila — NO db._persist('users'), que reintenta subir
+      // toda la tabla (todos los usuarios) y la RLS rechaza el lote cuando
+      // hay filas que no son del JWT actual (huérfanos sin auth.users, etc.).
+      // await para que un fallo se propague al caller y el hook haga rollback.
+      // Mismo patrón que predictions.create (línea 1539).
+      await _upsertToCloud('users', [updatedRow]);
+      return updatedRow;
     },
     findById(id) {
       return db._init().users.find(u => u.id === id);

@@ -15,6 +15,7 @@ import OverviewTab from './profile/OverviewTab';
 import ReferralsTab from './profile/ReferralsTab';
 import PersonalData from './profile/PersonalData';
 import ProfileHeader from './profile/ProfileHeader';
+import { useSocialEdit } from './profile/useSocialEdit';
 
 const tabs = [
   { id: 'overview', label: 'Resumen', icon: User },
@@ -201,33 +202,14 @@ function TabsSection(props) {
 export default function Profile() {
   const { user, setUser } = useOutletContext();
   const [activeTab, setActiveTab] = useState('overview');
-  const [editingField, setEditingField] = useState(null);
-  const [editValue, setEditValue] = useState('');
-
-  const handleSaveSocial = (field) => {
-    const clean = editValue.replace('@', '').trim();
-    if (!clean) {
-      toast.error('El campo no puede estar vacío');
-      return;
-    }
-    if (clean.toLowerCase() === (user[field] || '').toLowerCase()) {
-      setEditingField(null);
-      return;
-    }
-    const duplicate = db._init().users.find(u =>
-      u.id !== user.id &&
-      u[field] && u[field].toLowerCase() === clean.toLowerCase()
-    );
-    if (duplicate) {
-      toast.error(`Este usuario de ${field === 'instagram' ? 'Instagram' : 'TikTok'} ya está registrado por otra cuenta`);
-      return;
-    }
-    db.users.update(user.id, { [field]: clean });
-    const updated = db.getCurrentUser();
-    if (updated) setUser(updated);
-    setEditingField(null);
-    toast.success(`@${clean} actualizado`);
-  };
+  const {
+    editingField,
+    editValue,
+    startEdit,
+    change: onChangeEdit,
+    cancel,
+    save,
+  } = useSocialEdit(user, setUser);
 
   const userEmail = user?.email || '';
 
@@ -250,12 +232,20 @@ export default function Profile() {
       if (needsFix) {
         const inferredBonus = fresh.total_points - (fresh.prediction_points || 0);
         if (inferredBonus > 0) {
+          // await para que un fallo del upsert se propague como rechazo
+          // (catch del caller no hace falta aquí: la mutación local ya quedó
+          // aplicada por db.users.update antes del await; si Supabase rechaza,
+          // el próximo sync FROM corregirá desde la BD — el costo de NO
+          // hacer rollback manual es aceptable para esta migración best-effort).
           db.users.update(fresh.id, {
             bonus_points: inferredBonus,
             prediction_points: fresh.prediction_points || 0,
+          }).then(() => {
+            const updated = db.getCurrentUser();
+            if (updated) setUser(updated);
+          }).catch((err) => {
+            console.warn('[Profile] migrateMissingBonus upsert failed:', err?.message || err);
           });
-          const updated = db.getCurrentUser();
-          if (updated) setUser(updated);
         }
       }
     };
@@ -392,10 +382,10 @@ export default function Profile() {
         user={user}
         editingField={editingField}
         editValue={editValue}
-        onStartEdit={(field) => { const val = user?.[field] || ''; setEditValue(val); setEditingField(field); }}
-        onChange={(v) => setEditValue(v)}
-        onSave={(field) => handleSaveSocial(field)}
-        onCancel={() => setEditingField(null)}
+        onStartEdit={(field) => startEdit(field, user?.[field] || '')}
+        onChange={(v) => onChangeEdit(v)}
+        onSave={(field) => { save(field); }}
+        onCancel={() => cancel()}
       />
       <TabsSection
         activeTab={activeTab}
