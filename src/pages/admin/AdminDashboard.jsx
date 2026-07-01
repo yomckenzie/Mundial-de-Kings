@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import StatsCards from '@/components/admin/StatsCards';
+import StockAlertsCard from '@/components/admin/StockAlertsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MatchParticipationChart, TopUsersChart, DailyRegistrationsChart, DailyWinnersChart } from '@/components/admin/charts';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ export default function AdminDashboard() {
   const { data: predictions = [] } = useQuery({ queryKey: ['admin-predictions'], queryFn: () => api.entities.Prediction.list('-created_date') });
   const { data: redemptions = [] } = useQuery({ queryKey: ['admin-redemptions'], queryFn: () => api.entities.Redemption.list('-created_date') });
   const { data: referrals = [] } = useQuery({ queryKey: ['admin-referrals'], queryFn: () => api.entities.Referral.list() });
+  const { data: prizes = [] } = useQuery({ queryKey: ['admin-prizes'], queryFn: () => api.entities.Prize.list('-created_date') });
 
   const stats = {
     users: users.length,
@@ -156,6 +158,9 @@ export default function AdminDashboard() {
         <MatchParticipationChart matches={matches} predictions={predictions} />
         <TopUsersChart users={users} />
       </div>
+
+      {/* Stock crítico de premios (task #34): top 5 agotados/por acabarse */}
+      <StockAlertsCard prizes={prizes} />
     </div>
   );
 }
