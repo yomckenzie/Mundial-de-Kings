@@ -1,4 +1,4 @@
-import { useReducer, useRef, useEffect } from 'react';
+import { useReducer, useRef, useEffect, useCallback } from 'react';
 import { Plus, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ const carouselReducer = (state, action) => {
 const CAROUSEL_INITIAL = { activeIndex: 0, dragOffset: 0, isDragging: false, viewportWidth: 0 };
 
 export default function ImageCarouselField({ imageUrls = EMPTY_URLS, onChange, disabled = false }) {
-  const [uploading, setUploading] = useReducer((s, v) => v ? true : s, false);
+  const [uploading, setUploading] = useReducer((_s, v) => Boolean(v), false);
   const [{ activeIndex, dragOffset, isDragging, viewportWidth }, dispatchCarousel] = useReducer(carouselReducer, CAROUSEL_INITIAL);
   const setActiveIndex = (i) => dispatchCarousel({ type: 'GO', index: typeof i === 'function' ? i(activeIndex) : i });
   const setDragOffset = (v) => dispatchCarousel({ type: 'DRAG_MOVE', offset: typeof v === 'function' ? v(dragOffset) : v });
@@ -61,25 +61,37 @@ export default function ImageCarouselField({ imageUrls = EMPTY_URLS, onChange, d
   const totalSlots = urls.length;
 
   // ── Medir el viewport en píxeles (callback ref) ──
-  const setViewportRef = (el) => {
+  // FIX jul 2026: useCallback + dispatch directo al reducer para evitar el
+  // loop infinito "Maximum update depth exceeded" que dejaba la pantalla en
+  // blanco al editar un premio. Antes, `setViewportWidth` se creaba NUEVO en
+  // cada render, lo que invalidaba el useCallback → React desmontaba/remontaba
+  // el callback ref → setState → re-render → loop. Usamos `dispatchCarousel`
+  // directamente (estable entre renders) y comparamos con el último valor
+  // guardado en un ref para no despachar si el ancho no cambió.
+  const lastWidthRef = useRef(0);
+  const setViewportRef = useCallback((el) => {
     if (roRef.current) {
       roRef.current.disconnect();
       roRef.current = null;
     }
     if (el) {
-      setViewportWidth(el.clientWidth);
-      requestAnimationFrame(() => {
-        if (el.clientWidth > 0) setViewportWidth(el.clientWidth);
-      });
-      const ro = new ResizeObserver(() => {
-        if (el.clientWidth > 0) setViewportWidth(el.clientWidth);
-      });
+      const apply = () => {
+        const w = el.clientWidth;
+        if (w > 0 && w !== lastWidthRef.current) {
+          lastWidthRef.current = w;
+          dispatchCarousel({ type: 'SET_WIDTH', width: w });
+        }
+      };
+      apply();
+      requestAnimationFrame(apply);
+      const ro = new ResizeObserver(apply);
       ro.observe(el);
       roRef.current = ro;
     } else {
-      setViewportWidth(0);
+      lastWidthRef.current = 0;
+      dispatchCarousel({ type: 'SET_WIDTH', width: 0 });
     }
-  };
+  }, [dispatchCarousel]);
 
   const safeActiveIndex = activeIndex >= totalSlots ? Math.max(0, totalSlots - 1) : activeIndex;
 
