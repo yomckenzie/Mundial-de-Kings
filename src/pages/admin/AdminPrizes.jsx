@@ -131,6 +131,12 @@ export default function AdminPrizes() {
       </div>
 
       <PrizeFormDialog
+        // FIX jul 2026: key forzada por id (o 'new' en creación) para que React
+        // re-monte el componente cuando se cambia entre premios. Sin esto, el
+        // useState(() => buildInitialForm(initialData)) se evalúa UNA sola vez
+        // en el primer mount y el form muestra los datos del primer premio
+        // abierto (o EMPTY_FORM si fue 'Crear'), no los del premio actual.
+        key={dialogState.mode === 'edit' ? dialogState.prize?.id : 'new'}
         open={dialogState.mode !== 'closed'}
         onOpenChange={(o) => { if (!o) setDialogState({ mode: 'closed' }); }}
         initialData={dialogState.mode === 'edit' ? dialogState.prize : null}

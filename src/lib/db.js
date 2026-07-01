@@ -1851,8 +1851,13 @@ export const db = {
       if (idx === -1) throw new Error('Prize not found');
       const previous = { ...d.prizes[idx] };
       const updateData = { ...data, updated_at: getNow() };
-      // Si se actualizan original_sizes, recalcular original_stock
-      if (data.original_sizes !== undefined) {
+      // FIX jul 2026: solo recalcular original_stock si vienen tallas con datos.
+      // Antes, si data.original_sizes === null (premio sin tallas), se pisaba
+      // el original_stock del form con _sumSizesStock(null) = 0, perdiendo las
+      // unidades totales al guardar. Ahora null = "no tiene tallas", truthy =
+      // "recalcular stock como suma de tallas".
+      if (data.original_sizes && typeof data.original_sizes === 'object'
+          && Object.keys(data.original_sizes).length > 0) {
         updateData.original_stock = db._sumSizesStock(data.original_sizes);
       }
       d.prizes[idx] = { ...d.prizes[idx], ...updateData };

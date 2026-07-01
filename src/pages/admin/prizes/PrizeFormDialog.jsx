@@ -37,16 +37,23 @@ const buildInitialForm = (initialData) => {
   };
 };
 
+// FIX jul 2026: NO auto-agregar una fila de talla vacía cuando el premio no
+// tiene tallas. Antes devolvía [EMPTY_SIZE_ROW()] como placeholder, lo que
+// confundía al admin (parecía que el premio tenía tallas) y rompía la lógica
+// del campo "Unidades totales" (que se ocultaba si había filas). Ahora:
+//   - premio sin tallas → []   (solo se ve "Unidades totales")
+//   - premio con tallas → [rows]
+//   - create mode      → []   (admin elige explícitamente)
 const buildInitialSizeRows = (initialData) => {
-  if (!initialData) return [EMPTY_SIZE_ROW()];
-  const existingSizes = initialData.original_sizes && typeof initialData.original_sizes === 'object'
-    ? Object.entries(initialData.original_sizes).map(([size, stock]) => ({
-        id: newRowId(),
-        size,
-        stock: String(stock ?? 0),
-      }))
-    : [];
-  return existingSizes.length > 0 ? existingSizes : [EMPTY_SIZE_ROW()];
+  if (!initialData) return [];
+  if (!initialData.original_sizes || typeof initialData.original_sizes !== 'object') {
+    return [];
+  }
+  return Object.entries(initialData.original_sizes).map(([size, stock]) => ({
+    id: newRowId(),
+    size,
+    stock: String(stock ?? 0),
+  }));
 };
 
 /**
@@ -80,23 +87,31 @@ export default function PrizeFormDialog({
   };
 
   const hasAnySizeData = sizeRows.some(r => r.size.trim() !== '');
-  const computedTotal = hasAnySizeData
+  // FIX jul 2026: cuando hay tallas, mostrar el total como suma de stocks
+  // (incluso si alguna fila está vacía — eso es solo UI, buildPayload las
+  // filtra al guardar). Cuando NO hay tallas, mostrar el input "Unidades
+  // totales".
+  const computedTotal = sizeRows.length > 0
     ? sizeRows.reduce((sum, r) => sum + (Number(r.stock) || 0), 0)
     : (Number(form.original_stock) || 0);
 
   const buildPayload = () => {
     const sizesObj = {};
-    let allEmpty = true;
     sizeRows.forEach(row => {
       const size = row.size.trim().toUpperCase();
       if (size) {
         sizesObj[size] = Number(row.stock) || 0;
-        allEmpty = false;
       }
     });
-    const totalStock = allEmpty
-      ? (Number(form.original_stock) || 0)
-      : Object.values(sizesObj).reduce((sum, s) => sum + s, 0);
+    const hasTallas = Object.keys(sizesObj).length > 0;
+    // FIX jul 2026: si hay tallas con datos, original_stock = suma de tallas
+    // (REEMPLAZA el valor del form). Si NO hay tallas, original_stock = el
+    // valor del input "Unidades totales". Antes la condición usaba "allEmpty"
+    // calculado dentro de un forEach, lo que daba resultados confusos cuando
+    // había filas vacías mezcladas con filas con datos.
+    const totalStock = hasTallas
+      ? Object.values(sizesObj).reduce((sum, s) => sum + s, 0)
+      : (Number(form.original_stock) || 0);
     return {
       name: form.name,
       description: form.description,
@@ -108,7 +123,7 @@ export default function PrizeFormDialog({
       status: form.status,
       // original_sizes: null si no hay tallas; el stock disponible se calcula
       // dinámicamente como original_stock - canjes_activos.
-      original_sizes: allEmpty ? null : sizesObj,
+      original_sizes: hasTallas ? sizesObj : null,
       original_stock: totalStock,
     };
   };
@@ -118,8 +133,19 @@ export default function PrizeFormDialog({
       toast.error('Nombre y puntos son obligatorios');
       return;
     }
-    if (!hasAnySizeData && !form.original_stock) {
-      toast.error('Define al menos una talla o unidades totales');
+    // FIX jul 2026: validar según el modo activo. Si hay tallas (sizeRows > 0),
+    // exigir al menos una con size+stock. Si NO hay tallas, exigir el input
+    // original_stock. Antes validaba con `hasAnySizeData` (que era true si había
+    // alguna fila con size no vacío), pero con el nuevo diseño solo hay filas
+    // cuando el modo es "tallas", así que basta con `sizeRows.length > 0`.
+    if (sizeRows.length > 0) {
+      const anyValid = sizeRows.some(r => r.size.trim() !== '');
+      if (!anyValid) {
+        toast.error('Agrega al menos una talla con nombre');
+        return;
+      }
+    } else if (!form.original_stock || Number(form.original_stock) < 0) {
+      toast.error('Define las unidades totales (mayor o igual a 0)');
       return;
     }
     const payload = buildPayload();
@@ -172,61 +198,83 @@ export default function PrizeFormDialog({
             </div>
           </div>
 
-          {/* ─── Tallas y Stock ─── */}
-          <div className="border border-border rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="flex items-center gap-1.5 text-sm font-medium">
-                <Ruler className="w-4 h-4" />
-                Tallas y stock
-              </Label>
-              <Button type="button" variant="ghost" size="sm" onClick={addSizeRow} className="h-7 text-xs gap-1">
-                <Plus className="w-3 h-3" /> Agregar talla
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Define las tallas disponibles y su stock. Si el premio no tiene tallas, usa el campo "Unidades totales" de abajo.
-            </p>
-
-            {sizeRows.map((row) => (
-              <div key={row.id} className="flex items-center gap-2">
-                <Input
-                  placeholder="Talla (S, M, L, XL...)"
-                  value={row.size}
-                  onChange={(e) => updateSizeRow(row.id, 'size', e.target.value)}
-                  className="flex-1 h-9 text-sm"
-                />
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder="Stock"
-                  value={row.stock}
-                  onChange={(e) => updateSizeRow(row.id, 'stock', e.target.value)}
-                  className="w-20 h-9 text-sm text-center"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeSizeRow(row.id)}
-                  className="w-7 h-7 rounded-md hover:bg-destructive/10 text-destructive flex items-center justify-center shrink-0 transition-colors"
-                  aria-label="Eliminar talla"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+          {/* ─── Tallas y Stock (modo exclusivo con "Unidades totales") ───
+              FIX jul 2026: si sizeRows.length > 0 → modo "tallas" (oculta unidades
+              totales, muestra el total calculado). Si sizeRows.length === 0 → modo
+              "unidades totales" (muestra el input, oculta el editor de tallas). El
+              admin puede transicionar entre modos agregando la primera talla o
+              eliminando todas. NO hay fila fantasma de "talla vacía" en modo
+              unidades. */}
+          {sizeRows.length > 0 ? (
+            <div className="border border-border rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Ruler className="w-4 h-4" />
+                  Tallas y stock
+                </Label>
+                <Button type="button" variant="ghost" size="sm" onClick={addSizeRow} className="h-7 text-xs gap-1">
+                  <Plus className="w-3 h-3" /> Agregar talla
+                </Button>
               </div>
-            ))}
+              <p className="text-[11px] text-muted-foreground">
+                Define las tallas disponibles. El total se calcula como la suma de stocks.
+                Para volver al modo sin tallas, elimina todas las filas.
+              </p>
 
-            {sizeRows.length === 0 && (
-              <p className="text-[11px] text-muted-foreground/60 italic">No hay tallas. Usa el campo de unidades totales abajo.</p>
-            )}
+              {sizeRows.map((row) => (
+                <div key={row.id} className="flex items-center gap-2">
+                  <Input
+                    placeholder="Talla (S, M, L, XL...)"
+                    value={row.size}
+                    onChange={(e) => updateSizeRow(row.id, 'size', e.target.value)}
+                    className="flex-1 h-9 text-sm"
+                  />
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Stock"
+                    value={row.stock}
+                    onChange={(e) => updateSizeRow(row.id, 'stock', e.target.value)}
+                    className="w-20 h-9 text-sm text-center"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeSizeRow(row.id)}
+                    className="w-7 h-7 rounded-md hover:bg-destructive/10 text-destructive flex items-center justify-center shrink-0 transition-colors"
+                    aria-label="Eliminar talla"
+                    title="Eliminar esta talla"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
 
-            <div className="text-xs text-muted-foreground text-right pt-1 border-t border-border/50">
-              Total: {computedTotal} unidades
+              <div className="text-xs text-muted-foreground text-right pt-1 border-t border-border/50">
+                Total calculado: <span className="font-semibold text-foreground">{computedTotal}</span> unidades
+                <span className="ml-2 text-[10px] text-muted-foreground/70">(se guarda al guardar)</span>
+              </div>
             </div>
-          </div>
-
-          {/* Stock directo (cuando NO hay tallas) */}
-          {!hasAnySizeData && (
-            <div>
-              <Label>Unidades totales (stock original)</Label>
+          ) : (
+            <div className="border border-border rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Ruler className="w-4 h-4" />
+                  Unidades totales
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={addSizeRow}
+                  className="h-7 text-xs gap-1"
+                  title="Agregar tallas (S, M, L, XL...) a este premio"
+                >
+                  <Plus className="w-3 h-3" /> Usar tallas
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Este premio no tiene tallas. Define el stock total disponible.
+              </p>
               <Input
                 type="number"
                 min="0"
