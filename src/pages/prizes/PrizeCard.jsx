@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useReducer, useRef } from 'react';
+import { useEffect, useCallback, useReducer, useMemo, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Package, Ruler } from 'lucide-react';
@@ -60,6 +60,38 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
     ? prize.image_urls
     : (prize.image_url ? [prize.image_url] : []);
   const hasRealImage = imageList.length > 0 && !imgError;
+
+  // Orden canónico de tallas (jul 2026): el admin guarda las tallas en el orden
+  // que las carga en el formulario, pero la UI pública debe mostrarlas siempre
+  // en un orden lógico: XS < S < M < L < XL < XXL (alfanumérico para ropa).
+  // Tallas numéricas (Chancletas: 41, 42, 43...) se ordenan numéricamente.
+  // Cualquier otra talla no reconocida (ej. "Talla 41", "única") va al final
+  // en orden alfabético — esto evita que la UI "salte" cuando hay tallas mixtas.
+  const SIZE_ORDER = useCallback((a, b) => {
+    const LETTERS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+    const norm = (s) => String(s || '').trim().toUpperCase();
+    const na = norm(a), nb = norm(b);
+    const ia = LETTERS.indexOf(na), ib = LETTERS.indexOf(nb);
+    // Ambos son letras conocidas → ordenar por LETTERS
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    // Solo uno es letra → la letra primero
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    // Ambos numéricos puros → orden numérico ascendente
+    const numA = parseInt(na, 10), numB = parseInt(nb, 10);
+    if (!isNaN(numA) && !isNaN(numB) && String(numA) === na && String(numB) === nb) {
+      return numA - numB;
+    }
+    // Si uno es numérico puro y el otro no → numérico primero
+    if (!isNaN(numA) && String(numA) === na) return -1;
+    if (!isNaN(numB) && String(numB) === nb) return 1;
+    // Resto: alfabético
+    return na.localeCompare(nb, 'es');
+  }, []);
+  const sortedSizes = useMemo(() => {
+    if (!hasSizes) return [];
+    return Object.entries(prize.sizes).sort(([a], [b]) => SIZE_ORDER(a, b));
+  }, [hasSizes, prize.sizes, SIZE_ORDER]);
 
   // Estado del carrusel agrupado en un reducer
   const [{ activeImg, dragOffset, isDragging, viewportWidth }, dispatchCarousel] = useReducer(carouselReducer, CAROUSEL_INITIAL);
@@ -246,7 +278,7 @@ export default function PrizeCard({ prize, availablePoints = 0 }) {
               <span>Tallas disponibles:</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(prize.sizes).map(([size, stock]) => {
+              {sortedSizes.map(([size, stock]) => {
                 const inStock = Number(stock) > 0;
                 const isSelected = selectedSize === size;
                 return (

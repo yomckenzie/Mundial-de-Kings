@@ -26,11 +26,24 @@ const statusColors = {
   rejected: 'bg-destructive text-destructive-foreground',
 };
 
+// Estados válidos de un canje: pending → approved → delivered, o rejected.
+// El admin filtra por estado para auditar pendientes o ver entregas cerradas.
+const FILTER_OPTIONS = [
+  { key: 'all',       label: 'Total de pedidos' },
+  { key: 'pending',   label: 'Pendientes' },
+  { key: 'approved',  label: 'Aprobado' },
+  { key: 'delivered', label: 'Entregado' },
+  { key: 'rejected',  label: 'Rechazado' },
+];
+
 export default function AdminRedemptions() {
   const queryClient = useQueryClient();
   const [selectedUser, setSelectedUser] = useState(null);
   // Estado del modal de rechazo
   const [rejectModal, setRejectModal] = useState({ open: false, redemption: null });
+  // Filtro activo de estado (default: 'all' = total). Recalcula en vivo
+  // cuando el admin aprueba/entrega/rechaza un canje (la query se invalida).
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const { data: redemptions = [], isLoading } = useQuery({
     queryKey: ['admin-redemptions'],
@@ -46,6 +59,23 @@ export default function AdminRedemptions() {
     queryKey: ['admin-prizes-redemptions'],
     queryFn: () => api.entities.Prize.list(),
   });
+
+  // Conteos por estado — se calculan una sola vez por cambio de `redemptions`.
+  // Se muestran entre paréntesis en cada botón del filtro para que el admin
+  // sepa de un vistazo cuántos canjes tiene por categoría antes de filtrar.
+  const statusCounts = React.useMemo(() => {
+    const counts = { all: redemptions.length, pending: 0, approved: 0, delivered: 0, rejected: 0 };
+    for (const r of redemptions) {
+      if (counts[r.status] != null) counts[r.status]++;
+    }
+    return counts;
+  }, [redemptions]);
+
+  // Aplicar filtro actual. 'all' muestra todo, cualquier otro valor es estado exacto.
+  const filteredRedemptions = React.useMemo(() => {
+    if (statusFilter === 'all') return redemptions;
+    return redemptions.filter(r => r.status === statusFilter);
+  }, [redemptions, statusFilter]);
 
   const userMap = React.useMemo(() => {
     const map = {};
@@ -132,14 +162,45 @@ export default function AdminRedemptions() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">{redemptions.length} solicitudes de canje</p>
+      <p className="text-sm text-muted-foreground">
+        {filteredRedemptions.length === redemptions.length
+          ? `${redemptions.length} solicitudes de canje`
+          : `${filteredRedemptions.length} de ${redemptions.length} solicitudes de canje`}
+      </p>
+
+      {/* Filtros por estado — Total / Pendientes / Aprobado / Entregado / Rechazado.
+          Cada botón muestra el conteo entre paréntesis para que el admin vea de
+          un vistazo cuántos canjes hay por categoría antes de filtrar. La lista
+          debajo se ajusta en vivo (useMemo) cuando el admin aprueba/entrega/
+          rechaza un canje (la query se invalida y `redemptions` cambia). */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {FILTER_OPTIONS.map(f => (
+          <Button
+            key={f.key}
+            size="sm"
+            variant={statusFilter === f.key ? 'default' : 'outline'}
+            onClick={() => setStatusFilter(f.key)}
+          >
+            {f.label}
+            {` (${statusCounts[f.key] ?? 0})`}
+          </Button>
+        ))}
+      </div>
 
       {redemptions.length === 0 && (
         <p className="text-center text-muted-foreground py-8">No hay canjes todavía.</p>
       )}
 
+      {redemptions.length > 0 && filteredRedemptions.length === 0 && (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <p>No hay canjes en esta categoría.</p>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-2">
-        {redemptions.map(r => (
+        {filteredRedemptions.map(r => (
           <RedemptionCard
             key={r.id}
             redemption={r}
