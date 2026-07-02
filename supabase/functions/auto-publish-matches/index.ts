@@ -237,27 +237,46 @@ Deno.serve(async (req) => {
       const { state, method } = normalizeState(fx.status)
 
       // Solo actuar si SportScore confirma `finished` con método claro
-      if (state !== 'finished' || !method) continue
+      // FIX (jun 2026): cuando termina en penales, SportScore devuelve
+      // status="finished" + status_text="Finished" (sin "pen"). Inferimos
+      // method='pen' buscando "penalty" en el status_text o incidentes.
+      let inferredMethod = method;
+      if (state === 'finished' && !inferredMethod) {
+        if (String(fx.status_text || '').toLowerCase().includes('penalty')) {
+          inferredMethod = 'pen';
+        }
+      }
+      if (state !== 'finished' || !inferredMethod) continue
 
       // Obtener detalle para sacar penalty scores (si aplica)
       let penaltyScore = null
-      if (method === 'pen') {
+      if (inferredMethod === 'pen') {
         const detail = await getMatchDetail(matchSlugFromUrl(fx.url))
         if (detail) {
-          const hs = detail.home_score_pen ?? detail.home_pen_score
-          const aws = detail.away_score_pen ?? detail.away_pen_score
-          if (hs != null && aws != null) {
+          // FIX (jun 2026): SportScore NO expone `home_score_pen`/`away_score_pen`
+          // en el detail de partidos finalizados. Calculamos desde incidents
+          // contando los "Penalty shootout goal" por equipo.
+          let homePen = 0, awayPen = 0;
+          const incidentsArr = Array.isArray(detail.incidents) ? detail.incidents : [];
+          for (const inc of incidentsArr) {
+            const t = String(inc.type || '').toLowerCase();
+            const isPen = t.includes('penalty') && inc.is_goal === true;
+            if (!isPen) continue;
+            if (inc.side === 'home') homePen++;
+            else if (inc.side === 'away') awayPen++;
+          }
+          if (homePen > 0 || awayPen > 0) {
             penaltyScore = {
-              team1: homeIsTeam1 ? hs : aws,
-              team2: homeIsTeam1 ? aws : hs,
-            }
+              team1: homeIsTeam1 ? homePen : awayPen,
+              team2: homeIsTeam1 ? awayPen : homePen,
+            };
           }
         }
       }
 
       // Construir el payload de update
       const update = {
-        result_method: method,
+        result_method: inferredMethod,
         result_team1: homeIsTeam1 ? fx.home_score : fx.away_score,
         result_team2: homeIsTeam1 ? fx.away_score : fx.home_score,
         status: 'finished',

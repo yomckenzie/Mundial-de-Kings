@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { trackAndInterpolateMinute } from '@/lib/sportscore';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, Lock, UserPlus, Send, Trophy } from 'lucide-react';
@@ -74,6 +75,15 @@ function MatchHeader({ match, isLive, st, liveScore, liveLabel, liveResult, pend
                   {' - '}
                   {liveScore ? liveScore.t2 : (match.result_team2 != null ? match.result_team2 : '-')}
                 </m.div>
+                {/* Score de penales en vivo (durante la tanda). FIX (jun 2026):
+                    antes solo se mostraba el score 1-1 del 90+ET; ahora también
+                    vemos "Pen (X-Y)" cuando SportScore publica los goles de pen
+                    uno a uno. */}
+                {isLive && liveResult?.penaltyScore && (
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                    Pen ({liveResult.penaltyScore.team1}-{liveResult.penaltyScore.team2})
+                  </span>
+                )}
                 {!isLive && match.result_method && (
                   <span className="text-[10px] font-medium text-muted-foreground">
                     {match.result_method === '90' && '90 min'}
@@ -363,7 +373,13 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
   const liveScore = liveResult && liveResult.team1Score != null && liveResult.team2Score != null
     ? { t1: liveResult.team1Score, t2: liveResult.team2Score }
     : null;
-  const liveLabel = liveResult?.label;
+  // FIX (jun 2026): cuando SportScore devuelve fase sin minutero (HT/ET/PEN),
+  // interpolamos basándonos en el último tracking. Para minutos numéricos
+  // (86', 90+', etc.) usamos el label crudo de SportScore.
+  const interpolatedMinute = liveResult?.state === 'live'
+    ? trackAndInterpolateMinute(match.id, liveResult.minute, liveResult.lastIncidentMinute)
+    : null;
+  const liveLabel = interpolatedMinute ?? liveResult?.label;
 
   const resultKnown = match.status === 'finished' && match.result_team1 != null && match.result_team2 != null;
   const predHit = existing && resultKnown && (

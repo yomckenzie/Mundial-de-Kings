@@ -38,21 +38,33 @@ export default function Login() {
         password: form.password,
       });
 
+      // FIX (jul 2026): Supabase a veces devuelve `{ data: { user: null, session: null } }`
+      // sin un `error` poblado cuando las credenciales son inválidas
+      // (especialmente errores de red 400). Cubrimos ambos casos.
       if (error) {
-        if (error.message.includes('Invalid login credentials')) {
-          throw new Error('Correo o contraseña incorrectos');
-        }
-        throw error;
+        const msg = error.message?.includes('Invalid login credentials')
+          ? 'Correo o contraseña incorrectos'
+          : (error.message || 'No se pudo iniciar sesión');
+        throw new Error(msg);
       }
 
-      const user = data.user;
+      const user = data?.user;
+      if (!user) {
+        // supabase-js no devolvió user pero tampoco error: muy probablemente
+        // 400 de Supabase Auth (credenciales inválidas). Sin este fallback,
+        // la UI quedaba en silencio.
+        throw new Error('Correo o contraseña incorrectos');
+      }
+
       db.setCurrentUserEmail(user.email);
 
       const profile = db.getCurrentUser();
       toast.success(`¡Bienvenido, ${profile?.full_name || user.email}!`);
       window.location.href = redirect;
     } catch (err) {
+      // FIX (jul 2026): mensaje claro + console.warn para diagnóstico en DevTools.
       toast.error(err?.message || 'Error al iniciar sesión');
+      console.warn('[Login] error de autenticación:', err);
     } finally {
       setIsLoading(false);
     }

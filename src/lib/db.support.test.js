@@ -8,9 +8,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Mockear supabase antes de importar db
 vi.mock('./supabase.js', () => ({
   supabase: null,
-  isSupabaseAvailable: () => false,
+  isSupabaseAvailable: () => true,
   syncTableToSupabase: vi.fn(),
   syncTableFromSupabase: vi.fn(),
+  fetchAll: vi.fn().mockResolvedValue(null),
   stripLocalFields: (records) => records,
   TABLES: {
     users: 'users',
@@ -332,5 +333,58 @@ describe('db.supportTickets', () => {
     expect(ticket.status).toBe('answered');
 
     persistSpy.mockRestore();
+  });
+
+  it('db-cloud-change de support_tickets re-sincroniza y notifica (FIX jul 2026)', async () => {
+    // Reproduce el bug #36: admin responde un ticket en su navegador, el
+    // realtime del cliente del user recibe el evento `db-cloud-change` pero
+    // NADIE lo escuchaba → cache local stale → user no ve el mensaje.
+    // El fix: al recibir db-cloud-change con tableName='support_tickets',
+    // hacer sync FROM Supabase y notificar a React.
+    const supabaseModule = await import('./supabase.js');
+    const remoteData = [{
+      id: 'rt1',
+      user_email: 'otro@test.com',
+      subject: 'Real-time',
+      messages: [
+        { sender: 'user', text: 'hola', created_date: '2024-01-01' },
+        { sender: 'admin', text: 'respuesta del admin', created_date: '2024-01-02' },
+      ],
+      status: 'answered',
+      user_read_at: '2024-01-01',
+      admin_read_at: '2024-01-02',
+      created_date: '2024-01-01',
+    }];
+    // syncTableFromSupabaseFn en db.js llama a fetchAll (mock vi.fn())
+    supabaseModule.fetchAll.mockResolvedValue(remoteData);
+
+    // Capturar el notify (el handler emite 'db-synced' cuando termina OK)
+    const syncedListener = vi.fn();
+    const syncedHandler = () => syncedListener();
+    window.addEventListener('db-synced', syncedHandler);
+
+    resetDb([]); // cache local vacía
+    // _handleCloudChange usa `db` de cierre — necesitamos asegurar que
+    // db._data está sincronizado con el resetDb.
+    db._init({ skipSync: true });
+
+    // Disparar el evento que dispara el realtime cuando admin responde
+    window.dispatchEvent(new CustomEvent('db-cloud-change', {
+      detail: { tableName: 'support_tickets', eventType: 'UPDATE' },
+    }));
+    // Esperar a que la promesa se resuelva
+    await new Promise(r => setTimeout(r, 500));
+
+    // El ticket remoto debe estar en cache local
+    const tickets = db.supportTickets.list();
+    expect(tickets.length).toBe(1);
+    expect(tickets[0].id).toBe('rt1');
+    expect(tickets[0].messages).toHaveLength(2);
+    expect(tickets[0].messages[1].sender).toBe('admin');
+    expect(tickets[0].messages[1].text).toBe('respuesta del admin');
+    // notifyReactComponents() se llamó → el listener capturó el evento
+    expect(syncedListener).toHaveBeenCalled();
+
+    window.removeEventListener('db-synced', syncedHandler);
   });
 });

@@ -119,6 +119,185 @@ function formatMinute(liveMinute) {
   return s.endsWith('+') ? s : `${s}'`;    // "90+" tal cual; "86" → "86'"
 }
 
+// ─────────────────────────────────────────────────────────────────
+// TRACKING + INTERPOLACIÓN DE MINUTO PARA FASES ESPECIALES
+//
+// SportScore solo expone "ET"/"HT" como texto durante tiempo extra y
+// descanso (sin minuto numérico). Para mostrar el minutero durante
+// estas fases (91', 95', 108', etc.) hacemos tracking de las
+// transiciones y, entre polls, interpolamos basándonos en el último
+// minuto conocido + tiempo transcurrido.
+//
+// Storage: localStorage `chessking_match_minute_<match_id>` con:
+//   { phase: '1H'|'2H'|'HT'|'ET'|'PEN'|'FT', lastSeenAt, lastSeenMinute }
+//────────────────────────────────────────────────────────────────
+
+const MINUTE_LS_PREFIX = 'chessking_match_minute_';
+
+function _readMinuteTracking(matchId) {
+  if (typeof localStorage === 'undefined' || !matchId) return null;
+  try {
+    const raw = localStorage.getItem(MINUTE_LS_PREFIX + matchId);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function _writeMinuteTracking(matchId, data) {
+  if (typeof localStorage === 'undefined' || !matchId) return;
+  try {
+    localStorage.setItem(MINUTE_LS_PREFIX + matchId, JSON.stringify(data));
+  } catch {
+    /* ignorar (cuota/SSR) */
+  }
+}
+
+function _clearMinuteTracking(matchId) {
+  if (typeof localStorage === 'undefined' || !matchId) return;
+  try { localStorage.removeItem(MINUTE_LS_PREFIX + matchId); } catch {}
+}
+
+// Parsea el live_minute de SportScore a { phase, minute, suffix }.
+// - phase:    'HT'|'ET'|'PEN'|'FT'|null
+// - minute:   entero base (90 para ET, 120 para PEN, etc.)
+// - suffix:   string extra para preservar formato (+'', '+', '+2', '+3')
+// FIX (jun 2026): regex acepta "90+" (sin dígito post-+) y devuelve suffix
+// para no perder el "+N" al formatear.
+function _parseLiveMinute(liveMinute) {
+  if (liveMinute == null) return { phase: null, minute: null, suffix: '' };
+  const s = String(liveMinute).trim();
+  if (!s) return { phase: null, minute: null, suffix: '' };
+  const upper = s.toUpperCase();
+  // Texto de fase (sin dígitos)
+  if (upper === 'HT' || upper.includes('HALF') || upper === 'DESCANSO') {
+    return { phase: 'HT', minute: 45, suffix: '' };
+  }
+  if (upper === 'ET' || upper === 'AET' || upper.includes('EXTRA')) {
+    return { phase: 'ET', minute: 90, suffix: '' };
+  }
+  if (upper === 'PEN') return { phase: 'PEN', minute: 120, suffix: '' };
+  if (upper === 'FT' || upper === 'FINISHED') return { phase: 'FT', minute: 90, suffix: '' };
+  // Numérico: "86", "90+", "90+2", "1H", "2H", "45+3"
+  // FIX (jun 2026): ambos grupos (+\d{1,2}) son opcionales para aceptar
+  // "90+" (sin dígito post-+) además de "90+2" y "86".
+  const m = s.match(/^(\d{1,3})(\+(\d{1,2})?)?$/);
+  if (m) {
+    const base = parseInt(m[1], 10);
+    // Capturar el sufijo completo ("+", "+2", "+3", etc.) para preservarlo.
+    const suffix = m[2] ? m[2] : '';
+    return { phase: null, minute: base, suffix };
+  }
+  return { phase: null, minute: null, suffix: '' };
+}
+
+// Interpola el minuto "ahora" basándose en el último tracking.
+// Devuelve string formateado ("67'", "HT", "108'") o null si no hay datos.
+// FIX (jun 2026): preserva el suffix (+, +2, +3) al interpolar para no
+// perder el formato "tiempo añadido" mientras avanza el minutero.
+function _interpolateMinute(prev, now) {
+  if (!prev) return null;
+  const elapsedMin = (now - prev.lastSeenAt) / 60000;
+  const interpolated = Math.floor(prev.lastSeenMinute + elapsedMin);
+  if (interpolated > 130) return null;
+  if (prev.phase === 'PEN') return 'PEN';
+  if (prev.phase === 'HT') return 'HT';
+  const suffix = prev.suffix || '';
+  return `${interpolated}${suffix}'`;
+}
+
+/**
+ * Trackea la fase/minuto del partido y, entre polls, interpola el minutero
+ * exacto basándose en el último valor conocido + tiempo transcurrido.
+ *
+ * Llamar en cada poll. El primer poll establece la línea base; los
+ * siguientes interpolan hasta que llegue un nuevo valor real.
+ *
+ * @param {string} matchId
+ * @param {string|null} liveMinute  valor crudo de SportScore ("86", "ET", "HT", null)
+ * @param {number|null} lastIncidentMinute  minuto del incident más reciente
+ *                                        del detail de SportScore. Útil para
+ *                                        anclar el minutero cuando el live_minute
+ *                                        es fijo (ET) y no avanza con polls.
+ * @returns {string|null}  texto a mostrar ("67'", "HT", "108'") o null si no hay datos
+ */
+export function trackAndInterpolateMinute(matchId, liveMinute, lastIncidentMinute = null) {
+  const now = Date.now();
+  const parsed = _parseLiveMinute(liveMinute);
+  const incoming = parsed.phase
+    ? { phase: parsed.phase, minute: parsed.minute, suffix: '' }
+    : parsed.minute != null
+    ? { phase: null, minute: parsed.minute, suffix: parsed.suffix }
+    : null;
+
+  // FIX (jun 2026): cuando incoming es una fase fija (ET/HT/PEN) y el detail
+  // trae un incident reciente con `time`, usamos ESE como base. SportScore
+  // devuelve "ET" como string fijo durante todo el tiempo extra, pero los
+  // incidents sí se actualizan con el minuto real (último incident = minuto
+  // aproximado del partido).
+  if (incoming && incoming.phase && lastIncidentMinute != null && lastIncidentMinute > incoming.minute) {
+    incoming.minute = lastIncidentMinute;
+    incoming.suffix = ''; // fase fija: sin sufijo
+  }
+
+  const prev = _readMinuteTracking(matchId);
+
+  // FIX (jun 2026): si el poll entrante es una fase fija SIN incident nuevo
+  // pero el tracking previo SÍ está anclado a un incident mayor, mantenemos
+  // el anclaje del tracking previo. Sin esto, el 2do poll resetea el minutero
+  // al valor de la fase (90') y pierde el incident (113') del poll anterior.
+  if (incoming && incoming.phase && prev && prev.phase === incoming.phase
+      && prev.lastSeenMinute > incoming.minute
+      && lastIncidentMinute == null) {
+    incoming.minute = prev.lastSeenMinute;
+    incoming.suffix = prev.suffix || '';
+  }
+
+  // Caso 1: el partido ya terminó → limpiamos y devolvemos "Finalizado"
+  if (incoming && incoming.phase === 'FT') {
+    _clearMinuteTracking(matchId);
+    return 'Finalizado';
+  }
+
+  // Caso 2: tenemos un valor entrante (numérico o de fase) → guardamos
+  // como nueva línea base SOLO si cambió (fase distinta o minuto distinto).
+  // Si es la misma fase + mismo minuto que el último poll, NO actualizamos
+  // el timestamp: eso permite que la interpolación avance entre polls
+  // (caso crítico en tiempo extra, donde SportScore devuelve "ET" fijo).
+  if (incoming) {
+    const sameAsPrev = prev
+      && prev.phase === incoming.phase
+      && prev.lastSeenMinute === incoming.minute;
+
+    if (sameAsPrev) {
+      return _interpolateMinute(prev, now);
+    }
+
+    _writeMinuteTracking(matchId, {
+      phase: incoming.phase,
+      lastSeenAt: now,
+      lastSeenMinute: incoming.minute,
+      suffix: incoming.suffix || '', // FIX (jun 2026): persistir "+", "+2", etc.
+    });
+    if (incoming.phase === 'HT') return 'HT';
+    if (incoming.phase === 'PEN') return 'PEN';
+    return incoming.suffix ? `${incoming.minute}${incoming.suffix}` : `${incoming.minute}'`;
+  }
+
+  // Caso 3: NO tenemos valor entrante y NO hay tracking previo → no podemos
+  // hacer nada.
+  if (!prev) return null;
+
+  // Caso 4: NO hay valor entrante PERO sí tracking previo → INTERPOLAR.
+  const interpolatedMin = Math.floor(prev.lastSeenMinute + (now - prev.lastSeenAt) / 60000);
+  if (interpolatedMin > 130) return null;
+  if (prev.phase === 'PEN') return 'PEN';
+  if (prev.phase === 'HT') return 'HT';
+  const suffix = prev.suffix || '';
+  return suffix ? `${interpolatedMin}${suffix}` : `${interpolatedMin}'`;
+}
+
 function buildLiveLabel(state, statusText, liveMinute) {
   if (state === 'finished') return 'Finalizado';
   if (state === 'upcoming') return statusText || 'Por jugar';
@@ -186,12 +365,54 @@ export async function getLiveResultForMatch(match) {
         // fuerza a número porque el tiempo añadido no es numérico.
         let minute = null;
         let penaltyScore = null;
+        let lastIncidentMin = null;
         const needsDetail = state === 'live' || (state === 'finished' && method === 'pen');
         if (needsDetail) {
           const detail = await _getMatchDetail(matchSlugFromUrl(fx.url));
           if (state === 'live') {
             const m = detail?.live_minute;
             if (m != null && String(m).trim() !== '') minute = String(m).trim();
+            // FIX (jun 2026): capturar el incident más reciente (con `time` en
+            // minutos del partido) para anclar el minutero cuando live_minute
+            // es un string fijo como "ET". Esto evita que la UI muestre un
+            // minutero atrasado cuando la página se carga tarde en el partido.
+            const incidentsArr = Array.isArray(detail?.incidents) ? detail.incidents : [];
+            if (incidentsArr.length > 0) {
+              const maxT = Math.max(...incidentsArr.map(i => Number(i.time) || 0));
+              if (maxT > 0) lastIncidentMin = maxT;
+            }
+            // FIX (jun 2026): calcular score de pen desde los incidents.
+            // SportScore NO expone `home_score_pen` / `away_score_pen` en el
+            // detail, pero cada gol de pen aparece como incident con type
+            // "Penalty shootout goal". Contamos goles por equipo.
+            // FIX (jul 2026): BUG CRÍTICO — la variable `hasPenaltyText` que
+            // estaba acá NUNCA fue definida. Esto causaba un ReferenceError
+            // que era silenciado por el catch del slug loop, dejando
+            // `matchedFixture = null` para TODOS los partidos en vivo (no
+            // solo los de penalty). Resultado: la UI mostraba "- - -" en
+            // lugar del marcador en vivo. Reemplazamos con una verificación
+            // del status_text del fixture (SportScore lo usa durante la
+            // tanda: "Penalties", "Penalty shootout", etc.).
+            const fxStatusText = String(fx.status_text || '').toLowerCase();
+            const isLivePenaltyNow = fxStatusText.includes('penalty')
+              || fxStatusText.includes('penales')
+              || String(detail?.live_minute || '').toUpperCase() === 'PEN';
+            if (isLivePenaltyNow && incidentsArr.length > 0) {
+              let homePen = 0, awayPen = 0;
+              for (const inc of incidentsArr) {
+                const isPen = (inc.type || '').toLowerCase().includes('penalty')
+                  && (inc.is_goal === true);
+                if (!isPen) continue;
+                if (inc.side === 'home') homePen++;
+                else if (inc.side === 'away') awayPen++;
+              }
+              if (homePen > 0 || awayPen > 0) {
+                penaltyScore = {
+                  team1: homeIsTeam1 ? homePen : awayPen,
+                  team2: homeIsTeam1 ? awayPen : homePen,
+                };
+              }
+            }
           } else {
             const hs = detail?.home_score_pen ?? detail?.home_pen_score;
             const aws = detail?.away_score_pen ?? detail?.away_pen_score;
@@ -217,6 +438,7 @@ export async function getLiveResultForMatch(match) {
           team1Score: team1Score ?? null,
           team2Score: team2Score ?? null,
           raw: fx,
+          lastIncidentMinute: lastIncidentMin,  // para anclar minutero en ET
         };
       }
     } catch {

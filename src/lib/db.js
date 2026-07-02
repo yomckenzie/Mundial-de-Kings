@@ -94,7 +94,12 @@ function _stripFields(records, tableName) {
   // Stripping evita el 400 de "Could not find the 'rejected' column".
   const stripModerationFlags = tableName === 'support_tickets';
   return arr.map(r => {
-    const { password, live_started_at, messages, user_read_at, admin_read_at, ...clean } = r;
+    // FIX (jul 2026): NO strippear messages/user_read_at/admin_read_at.
+    // Esas columnas SÍ existen en support_tickets (jsonb + timestamptz) —
+    // strippearlas impedía que los mensajes del admin persistieran a BD
+    // y al recargar la página los mensajes desaparecían. Solo strippear
+    // password (legacy users) y live_started_at (legacy matches).
+    const { password, live_started_at, ...clean } = r;
     if (stripUpdatedAt) delete clean.updated_at;
     if (stripModerationFlags) {
       delete clean.verified;
@@ -112,6 +117,25 @@ async function _upsertToCloud(tableName, records, onConflict = 'id') {
   if (!isSupabaseAvailable() || !supabase) return;
   const cleaned = _stripFields(records, tableName);
   if (cleaned.length === 0) return;
+  // FIX (jul 2026): support_tickets usa UPDATE explícito en lugar de upsert.
+  // Razón: `support_insert_own` (WITH CHECK `(auth.jwt()->>'email') = user_email`)
+  // rechaza al admin editando tickets de otros usuarios. PostgREST al hacer
+  // `upsert(...)` evalúa INSERT silencioso primero para detectar el conflicto
+  // por `onConflict`, y eso falla con 42501 antes de caer al UPDATE. UPDATE
+  // puro solo evalúa `support_update_admin` (is_admin()), que el admin pasa.
+  // Edge case: si la fila no existe, UPDATE afecta 0 filas sin error, lo
+  // cual es aceptable: ticket huérfano = bug del caller (create no se llamó).
+  if (tableName === 'support_tickets') {
+    const { error } = await supabase
+      .from(tableName)
+      .update(cleaned)
+      .eq('id', cleaned[0].id);
+    if (error) {
+      console.warn(`[DB] update ${tableName}:`, error.message || error);
+      throw new Error(`Supabase update ${tableName} failed: ${error.message || JSON.stringify(error)}`);
+    }
+    return;
+  }
   const { error } = await supabase.from(tableName).upsert(cleaned, { onConflict });
   if (error) {
     console.warn(`[DB] upsert ${tableName}:`, error.message || error);
@@ -221,6 +245,43 @@ const notifyReactComponents = () => {
   window.dispatchEvent(new CustomEvent('db-synced'));
 };
 
+// FIX (jul 2026): escuchar `db-cloud-change` (disparado por supabase realtime
+// cuando OTRO cliente hace INSERT/UPDATE/DELETE) y re-sincronizar la tabla
+// afectada desde Supabase. Sin esto, los cambios del admin (responder un
+// ticket, cerrar uno, etc.) no llegaban al cliente del usuario porque:
+//   1) setupRealtimeSubscriptions() SÍ recibía el evento realtime,
+//   2) SÍ disparaba `db-cloud-change` con { tableName, ... },
+//   3) pero NADIE lo escuchaba — la cache local quedaba stale,
+//   4) la query de react-query re-leía de localStorage y mostraba datos viejos.
+// Ahora: realtime → sync FROM Supabase (paginada) → reemplaza cache local →
+// notifyReactComponents() → query-client.js invalida queries → re-fetch
+// muestra los datos frescos. Mismo listener sirve para todas las tablas.
+let _cloudChangeListenerInstalled = false;
+async function _handleCloudChange(detail) {
+  const { tableName } = detail || {};
+  if (!tableName) return;
+  // Mapear tableName de Supabase ('support_tickets') → jsKey ('supportTickets')
+  const jsKey = Object.keys(TABLE_MAP).find(k => TABLE_MAP[k] === tableName);
+  if (!jsKey) return;
+  try {
+    const remote = await syncTableFromSupabaseFn(jsKey, _data[jsKey] || []);
+    if (remote && Array.isArray(remote)) {
+      // Filtrar IDs eliminados (no resucitar filas borradas localmente)
+      const filtered = remote.filter(r => !db._isDeletedId(jsKey, r.id));
+      _data[jsKey] = filtered;
+      save(_data);
+      notifyReactComponents();
+    }
+  } catch (err) {
+    console.warn('[DB] _handleCloudChange error:', err?.message || err);
+  }
+}
+function _setupCloudChangeListener() {
+  if (_cloudChangeListenerInstalled || typeof window === 'undefined') return;
+  window.addEventListener('db-cloud-change', (e) => _handleCloudChange(e.detail));
+  _cloudChangeListenerInstalled = true;
+}
+
 const makeId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const getNow = () => new Date().toISOString();
 
@@ -295,6 +356,13 @@ export const db = {
       }
       setupRealtimeSubscriptions();
     }
+    // El listener de `db-cloud-change` SIEMPRE se (intenta) instalar en cada
+    // _init, no solo la primera vez. La función _setupCloudChangeListener
+    // tiene su propio guard `_cloudChangeListenerInstalled` para que sea
+    // idempotente. Sin esto, si un test (o cualquier código de producción)
+    // reasigna `db._data` antes de llamar `_init`, `this._data` ya será
+    // truthy y el `if` de arriba no entrará, dejando el listener sin instalar.
+    _setupCloudChangeListener();
     // Keep module-level _data in sync with this._data
     // (tests may reassign db._data via resetDb)
     _data = this._data;
@@ -2367,7 +2435,7 @@ export const db = {
         _data.supportTickets[idx].verified_by = null;
         const aIdx = _data.auditLogs.findIndex(a => a.id === auditLog.id);
         if (aIdx !== -1) _data.auditLogs.splice(aIdx, 1);
-        save(d);
+        save(_data);
         notifyReactComponents();
         throw err;
       }

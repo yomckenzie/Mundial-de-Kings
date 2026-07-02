@@ -57,20 +57,21 @@ export default function Prizes() {
     ['pending', 'approved', 'delivered'].includes(r.status)
   );
 
-  // Stock dinámico: el canje pendiente/aprobado/entregado reserva la unidad;
-  // si el admin lo rechaza, la unidad regresa al inventario automáticamente.
-  const reservedByPrize = activeRedemptions.reduce((acc, r) => {
-    acc[r.prize_id] = (acc[r.prize_id] || 0) + 1;
-    return acc;
-  }, {});
-  const prizes = [];
-  for (const p of dbPrizes) {
-    if (p.status !== 'active') continue;
-    prizes.push({
-      ...p,
-      units_available: Math.max(0, (Number(p.units_available) || 0) - (reservedByPrize[p.id] || 0)),
-    });
-  }
+  // FIX (jul 2026): BUG — doble descuento de canjes.
+  //
+  // La entity layer `db.prizes.list()` ya devuelve `units_available` calculado
+  // dinámicamente (`_getAvailableStock`: BD units_available − canjes activos).
+  // Y `sizes` ya viene con las tallas restantes (`_getAvailableSizes` resta
+  // canjes por cada selected_size).
+  //
+  // ANTES: Prizes.jsx restaba OTRA VEZ los canjes activos del `units_available`
+  // recibido → para un producto con 6 unidades y 6 canjes activos, el cálculo
+  // final daba 6−6=0 y mostraba "Agotado", aunque las tallas 44/45/46 aún
+  // tuvieran stock disponible. Síntoma visible: el badge decía "Agotado" pero
+  // los botones de tallas grandes seguían clicables.
+  //
+  // Ahora: respetar el cálculo dinámico de la entity y NO volver a restar.
+  const prizes = dbPrizes.filter(p => p.status === 'active');
 
   const totalPoints = user?.total_points || 0;
   // Descontar puntos ya gastados en canjes activos (pending, approved, delivered)
