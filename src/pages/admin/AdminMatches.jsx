@@ -224,6 +224,7 @@ export default function AdminMatches() {
 
       <MatchGroupList
         sortedDates={sortedDates}
+        allMatches={matches}
         groupedMatches={groupedMatches}
         hasLockedMatches={hasLockedMatches}
         results={results}

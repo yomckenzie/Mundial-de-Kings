@@ -17,7 +17,7 @@ function formatDate(dateStr) {
   }
 }
 
-export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, predictionCountByMatchId, pendingConfirmIds, liveResults }) {
+export default function MatchGroupList({ sortedDates, allMatches, groupedMatches, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, predictionCountByMatchId, pendingConfirmIds, liveResults }) {
   if (sortedDates.length === 0) {
     return (
       <div className="text-center py-12 space-y-3">
@@ -42,6 +42,7 @@ export default function MatchGroupList({ sortedDates, groupedMatches, hasLockedM
           <MatchCardItem
             key={match.id}
             match={{ ...match, _predictionCount: predCount, _hasScoredPredictions: hasScoredPredictions }}
+            allMatches={allMatches}
             hasLockedMatches={hasLockedMatches}
             results={results}
             setResults={setResults}
