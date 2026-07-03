@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -63,7 +63,7 @@ function isV2Match(match) {
 // reconstruirlo en cada render desperdicia trabajo y rompe memoización de hijos.
 const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
 
-export default function MatchCardItem({ match, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, pendingConfirm, liveResult }) {
+export default function MatchCardItem({ match, allMatches, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, pendingConfirm, liveResult }) {
   const handleReopen = () => {
     if (window.confirm('¿Reabrir este partido? Se limpiará el resultado y los usuarios podrán volver a pronosticar.')) {
       handleStatusChange(match, 'open');
@@ -158,7 +158,7 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
           )}
 
           {/* Botones de Editar / Eliminar partido */}
-          {editMatch && <EditMatchDialog match={match} onSave={editMatch} />}
+          {editMatch && <EditMatchDialog match={match} onSave={editMatch} allMatches={allMatches} />}
           {deleteMatch && <DeleteMatchDialog match={match} onDelete={deleteMatch} />}
 
           <div className="flex items-center gap-1.5 ml-auto">
@@ -344,19 +344,35 @@ export default function MatchCardItem({ match, hasLockedMatches, results, setRes
   );
 }
 
-// ─── Diálogo de edición: fecha, hora, fase/grupo ───
-function EditMatchDialog({ match, onSave }) {
+// ─── Diálogo de edición: equipos, fecha, hora, fase/grupo ───
+function EditMatchDialog({ match, onSave, allMatches = [] }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
+    team1: match.team1 || '',
+    team2: match.team2 || '',
     match_date: match.match_date || '',
     match_time: match.match_time || '',
     group_stage: match.group_stage || '',
   });
 
+  // Lista única de equipos presentes en TODOS los partidos de la BD,
+  // ordenada alfabéticamente (es). El admin elige de este pool — no puede
+  // escribir nombres nuevos desde el dialog.
+  const usedTeams = useMemo(() => {
+    const set = new Set();
+    for (const m of allMatches) {
+      if (m.team1) set.add(String(m.team1).trim());
+      if (m.team2) set.add(String(m.team2).trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [allMatches]);
+
   const handleOpenChange = (o) => {
     setOpen(o);
     if (o) {
       setForm({
+        team1: match.team1 || '',
+        team2: match.team2 || '',
         match_date: match.match_date || '',
         match_time: match.match_time || '',
         group_stage: match.group_stage || '',
@@ -367,6 +383,10 @@ function EditMatchDialog({ match, onSave }) {
   const handleSave = () => {
     if (!form.match_date || !form.match_time) {
       toast.error('Fecha y hora son obligatorias');
+      return;
+    }
+    if (form.team1 === form.team2) {
+      toast.error('Los dos equipos deben ser distintos');
       return;
     }
     // No permitir editar partidos live/finished con predicciones scored
@@ -382,10 +402,31 @@ function EditMatchDialog({ match, onSave }) {
     );
   };
 
+  // Render del Select para un equipo (team1 o team2).
+  // Si el valor actual NO está en usedTeams (caso placeholder que solo aparece
+  // en este partido), lo agregamos como primera opción con sufijo explícito.
+  const renderTeamOptions = (currentValue) => {
+    const exists = usedTeams.includes(currentValue);
+    return (
+      <SelectContent>
+        {!exists && currentValue && (
+          <SelectItem value={currentValue}>
+            {currentValue} (placeholder actual)
+          </SelectItem>
+        )}
+        {usedTeams.map(team => (
+          <SelectItem key={team} value={team}>
+            {team}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" title="Editar fecha/hora/fase">
+        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" title="Editar equipos, fecha/hora/fase">
           <Pencil className="w-3 h-3" />
           Editar
         </Button>
@@ -394,12 +435,35 @@ function EditMatchDialog({ match, onSave }) {
         <DialogHeader>
           <DialogTitle>Editar partido</DialogTitle>
           <DialogDescription>
-            Modifica la fecha, hora o fase. Los equipos y resultado no se pueden cambiar.
+            Modifica los equipos, fecha, hora o fase. El resultado no se puede cambiar.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="bg-muted/30 rounded-md p-2 text-sm font-medium">
-            {match.team1} vs {match.team2}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor={`edit-team1-${match.id}`}>Equipo local</Label>
+              <Select
+                value={form.team1 || undefined}
+                onValueChange={(v) => setForm({ ...form, team1: v })}
+              >
+                <SelectTrigger id={`edit-team1-${match.id}`}>
+                  <SelectValue placeholder="Selecciona equipo" />
+                </SelectTrigger>
+                {renderTeamOptions(form.team1)}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor={`edit-team2-${match.id}`}>Equipo visitante</Label>
+              <Select
+                value={form.team2 || undefined}
+                onValueChange={(v) => setForm({ ...form, team2: v })}
+              >
+                <SelectTrigger id={`edit-team2-${match.id}`}>
+                  <SelectValue placeholder="Selecciona equipo" />
+                </SelectTrigger>
+                {renderTeamOptions(form.team2)}
+              </Select>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
