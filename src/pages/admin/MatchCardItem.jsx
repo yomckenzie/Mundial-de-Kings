@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Clock, Save, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { formatTime12h } from '@/lib/utils';
+import { isRealTeam } from '@/lib/worldCupTeams';
 import { VALID_TRANSITIONS, isValidTransition } from './matchTransitions';
 import { toast } from 'sonner';
 
@@ -403,13 +404,15 @@ function EditMatchDialog({ match, onSave, allMatches = [] }) {
   };
 
   // Render del Select para un equipo (team1 o team2).
-  // Si el valor actual NO está en usedTeams (caso placeholder que solo aparece
-  // en este partido), lo agregamos como primera opción con sufijo explícito.
+  // Si el valor actual NO es un equipo real (placeholder de eliminatoria,
+  // o string que solo aparece en este partido), lo agregamos como primera
+  // opción con sufijo explícito. El predicado es isRealTeam() (spec) y no
+  // usedTeams.includes() para alinear con la fuente de verdad en worldCupTeams.
   const renderTeamOptions = (currentValue) => {
-    const exists = usedTeams.includes(currentValue);
+    const isPlaceholder = currentValue && !isRealTeam(currentValue);
     return (
       <SelectContent>
-        {!exists && currentValue && (
+        {isPlaceholder && (
           <SelectItem value={currentValue}>
             {currentValue} (placeholder actual)
           </SelectItem>
