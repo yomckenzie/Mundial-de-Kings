@@ -106,9 +106,11 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
     },
   });
 
-  // Editar fecha/hora/grupo/fase de un partido existente.
-  // NO permite editar equipos (cambia el sentido del partido).
-  // NO permite editar partido live/finished con predicciones scored.
+  // Editar equipos, fecha/hora/grupo/fase de un partido existente.
+  // El resultado NO se puede editar desde este flujo (se publica por separado).
+  // El partido live/finished con predicciones scored se bloquea en el caller
+  // (EditMatchDialog.handleSave) — el backend acepta el cambio pero la UI lo
+  // impide para preservar la auditoría de pronósticos ya evaluados.
   const editMatch = useMutation({
     mutationFn: ({ id, data }) => api.entities.Match.update(id, data),
     onSuccess: () => {
