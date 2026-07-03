@@ -64,20 +64,30 @@ export async function fetchAll(tableName, options = {}) {
       orderField = options.order.startsWith('-') ? options.order.slice(1) : options.order
       ascending = !options.order.startsWith('-')
     }
+    // Pre-construir todos los rangos disjuntos (tope 50k filas por seguridad).
+    const ranges = []
+    for (let from = 0; from < 50000; from += PAGE) {
+      ranges.push({ from, to: from + PAGE - 1 })
+    }
+    // Fase 1: pedir TODAS las páginas en paralelo vía HTTP/2 multiplexing.
+    // Antes: loop `while await` secuencial — ~1.5s por página, 13 páginas para
+    // predictions → ~20s críticos. Ahora: todas las páginas vuelan en 1 RTT
+    // (~1.5s total). Las páginas vacías para tablas pequeñas retornan []
+    // con coste despreciable.
+    const pages = await Promise.all(
+      ranges.map(({ from, to }) =>
+        supabase
+          .from(tableName)
+          .select('*')
+          .order(orderField, { ascending })
+          .range(from, to)
+      )
+    )
     const all = []
-    let from = 0
-    // Tope de seguridad (50k filas) por si algo sale mal, para no loopear infinito.
-    while (from < 50000) {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .order(orderField, { ascending })
-        .range(from, from + PAGE - 1)
+    for (const { data, error } of pages) {
       if (error) throw error
-      if (!data || data.length === 0) break
+      if (!data || data.length === 0) continue
       all.push(...data)
-      if (data.length < PAGE) break
-      from += PAGE
     }
     return all
   } catch {
