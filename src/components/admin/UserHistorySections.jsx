@@ -63,9 +63,14 @@ function PickPill({ icon, label, pts, correct }) {
     tag = '0';
     color = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300';
   }
+  // FIX (bug ux-ambiguo-14jul-ext): el icono 🏆 sobre el equipo elegido
+  // sugería premio antes de saber si acertó. Usamos ✅ solo cuando winner
+  // = true; para el resto un icono neutro (👤) que comunica "lo que el
+  // usuario eligió" sin connotación de premio.
+  const finalIcon = icon === '🏆' && correct !== true ? '👤' : icon;
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>
-      <span>{icon}</span>
+      <span>{finalIcon}</span>
       <span>{label}</span>
       <span className="font-bold tabular-nums">{tag}</span>
     </span>
