@@ -199,12 +199,41 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
   // Backend devuelve score_correct=null cuando NO fue evaluable (típicamente
   // user apostó 90/ET pero el partido fue a pen). En ese caso, "no aplica".
   const scoreNotApplicable = existing.score_correct == null;
+  // FIX (bug ux-ambiguo-14jul): el bloque "Tu pronóstico" mostraba el equipo
+  // elegido con el emoji 🏆 y el total "X pts" abajo, lo que confundía con
+  // que el sistema premiara ese equipo. Diferenciamos visualmente "Tu pick"
+  // (lo que elegiste) de "Resultado" (lo que pasó).
+  const userPickWinner = existing.pred_winner === '1' ? match.team1
+    : existing.pred_winner === '2' ? match.team2
+    : existing.pred_winner === 'X' ? 'Empate' : null;
+  const actualWinnerTeam = existing.winner_correct === true
+    ? userPickWinner
+    : (resultMethod != null && match.result_team1 != null && match.result_team2 != null
+        ? (match.result_team1 > match.result_team2 ? match.team1
+          : match.result_team1 < match.result_team2 ? match.team2
+          : 'Empate')
+        : null);
   return (
     <div className="space-y-1.5">
-      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Tu pronóstico</p>
-      <p className="text-xs font-bold text-foreground text-center">
-        <PickSummary existing={existing} match={match} />
-      </p>
+      {/* Tu pick (lo que elegiste) — sin emojis que sugieran premio. */}
+      <div className="text-center">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tu pick</p>
+        <p className="text-xs font-bold text-foreground">
+          <PickSummary existing={existing} match={match} />
+        </p>
+      </div>
+      {/* Resultado real — aclará quien ganó para distinguirlo del pick. */}
+      {actualWinnerTeam && (
+        <p className={`text-[10px] text-center font-medium ${
+          existing.winner_correct === true
+            ? 'text-emerald-700 dark:text-emerald-400'
+            : 'text-red-600 dark:text-red-400'
+        }`}>
+          {existing.winner_correct === true
+            ? `✅ Acertaste — ganó ${actualWinnerTeam}`
+            : `❌ Tu equipo perdió — ganó ${actualWinnerTeam}`}
+        </p>
+      )}
       <div className="space-y-1">
         <PtsRow label="Ganador" correct={existing.winner_correct} pts={50} />
         <PtsRow label="Cómo gana" correct={existing.method_correct} pts={50} />
