@@ -136,7 +136,17 @@ export default function AdminRedemptions() {
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });
       queryClient.invalidateQueries({ queryKey: ['admin-users-redemptions'] });
       queryClient.invalidateQueries({ queryKey: ['admin-prizes-redemptions'] });
+      // FIX (jul 2026): invalidar TODAS las queries de canjes para que el
+      // usuario vea sus puntos disponibles actualizados al instante aunque
+      // el realtime de Supabase no haya disparado db-cloud-change todavía.
+      // El prefix match cubre:
+      //   - ['my-redemptions', userEmail]      (Profile.jsx)
+      //   - ['my-redemptions-layout', email]   (AppLayout.jsx / navbar)
+      // Faltaba explícitamente:
+      //   - ['redemptions-public']             (Prizes.jsx — el header con
+      //     el saldo disponible que el user mira al volver del rechazo)
       queryClient.invalidateQueries({ queryKey: ['my-redemptions'] });
+      queryClient.invalidateQueries({ queryKey: ['redemptions-public'] });
       queryClient.invalidateQueries({ queryKey: ['ranking'] });
       setRejectModal({ open: false, redemption: null });
       toast.success('Canje rechazado. Puntos y unidad devueltos al usuario.');
