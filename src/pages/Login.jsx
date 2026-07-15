@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { db } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseAvailable } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,14 @@ export default function Login() {
 
     setIsLoading(true);
     try {
+      // FIX (jul 2026): si Supabase no está configurado (supabase === null),
+      // mostrar mensaje claro en vez de crashear con "can't access property 'auth' of null".
+      if (!isSupabaseAvailable()) {
+        toast.error('Autenticación no disponible. Contacta al administrador (Supabase no configurado).');
+        console.warn('[Login] Supabase no disponible: VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY faltan.');
+        return;
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: form.email,
         password: form.password,

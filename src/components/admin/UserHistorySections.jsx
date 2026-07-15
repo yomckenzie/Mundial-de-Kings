@@ -123,11 +123,29 @@ export function PredictionsHistory({ predictions, matchMap }) {
                   {winnerLabel && (
                     <PickPill icon="🏆" label={winnerLabel} pts={winnerFlag === true ? POINTS_WINNER : (winnerFlag === false ? 0 : null)} correct={winnerFlag === true} />
                   )}
+                  {/* FIX (bug pick-gate-15jul): ganador es GATE. Si el usuario
+                      no acertó el ganador, método y marcador NO suman puntos
+                      aunque coincidan por casualidad. Mostramos pts=null para
+                      no sugerir premio en el perfil/dashboard del usuario. */}
                   {methodLabel && (
-                    <PickPill icon="⏱" label={methodLabel} pts={methodFlag === true ? POINTS_METHOD : (methodFlag === false ? 0 : null)} correct={methodFlag === true} />
+                    <PickPill
+                      icon="⏱"
+                      label={methodLabel}
+                      pts={winnerFlag === false
+                        ? null
+                        : (methodFlag === true ? POINTS_METHOD : (methodFlag === false ? 0 : null))}
+                      correct={winnerFlag === true && methodFlag === true}
+                    />
                   )}
                   {score && (
-                    <PickPill icon="⚽" label={score} pts={scoreFlag === true ? POINTS_SCORE : (scoreFlag === false ? 0 : null)} correct={scoreFlag === true} />
+                    <PickPill
+                      icon="⚽"
+                      label={score}
+                      pts={winnerFlag === false
+                        ? null
+                        : (scoreFlag === true ? POINTS_SCORE : (scoreFlag === false ? 0 : null))}
+                      correct={winnerFlag === true && scoreFlag === true}
+                    />
                   )}
                 </>
               ) : (
