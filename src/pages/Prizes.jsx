@@ -209,6 +209,16 @@ export default function Prizes() {
           </Card>
         </m.div>
       )}
+
+      {/* Pie de premios — aclaración legal sobre disponibilidad */}
+      {!isLoading && prizes.length > 0 && (
+        <m.p
+          variants={itemVariants}
+          className="text-center text-xs text-muted-foreground/70 pt-2"
+        >
+          Hasta agotar existencias
+        </m.p>
+      )}
     </m.div>
   );
 }
