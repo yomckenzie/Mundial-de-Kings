@@ -210,14 +210,18 @@ export default function Prizes() {
         </m.div>
       )}
 
-      {/* Pie de premios — aclaración legal sobre disponibilidad */}
+      {/* Pie de premios — aclaración sobre disponibilidad */}
       {!isLoading && prizes.length > 0 && (
-        <m.p
+        <m.div
           variants={itemVariants}
-          className="text-center text-xs text-muted-foreground/70 pt-2"
+          className="mt-6 px-4 py-3 rounded-lg bg-zinc-950 dark:bg-zinc-950 border border-zinc-800"
         >
-          Hasta agotar existencias
-        </m.p>
+          <p className="text-center text-[11px] leading-relaxed">
+            <span className="font-bold text-amber-400 uppercase tracking-wide">Disponibilidad sujeta al stock existente.</span>
+            {' '}
+            <span className="text-zinc-300">Las unidades disponibles pueden agotarse en cualquier momento.</span>
+          </p>
+        </m.div>
       )}
     </m.div>
   );
