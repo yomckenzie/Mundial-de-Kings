@@ -236,9 +236,21 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
       )}
       <div className="space-y-1">
         <PtsRow label="Ganador" correct={existing.winner_correct} pts={50} />
-        <PtsRow label="Cómo gana" correct={existing.method_correct} pts={50} />
+        {/* FIX (bug pick-gate-15jul): ganador es GATE. Si el usuario no
+            acertó el ganador, método y marcador NO suman puntos aunque
+            coincidan por casualidad. Mostramos "no aplica" en gris. */}
+        <PtsRow
+          label="Cómo gana"
+          correct={existing.winner_correct === false ? null : existing.method_correct}
+          pts={50}
+        />
         {showScoreRow && (
-          <PtsRow label="Marcador" correct={existing.score_correct} pts={100} notApplicable={scoreNotApplicable} />
+          <PtsRow
+            label="Marcador"
+            correct={existing.winner_correct === false ? null : existing.score_correct}
+            pts={100}
+            notApplicable={scoreNotApplicable}
+          />
         )}
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <span className="text-xs font-bold">Total</span>

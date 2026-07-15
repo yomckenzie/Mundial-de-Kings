@@ -248,7 +248,11 @@ export default function AdminPredictions() {
                       <p className="text-muted-foreground text-xs">{match ? `${match.team1} vs ${match.team2}` : 'Partido desconocido'}</p>
                       {/* Mini-desglose coloreado inline (v1 + v2). Mismo patrón
                           visual que PredictionsHistory del perfil del usuario
-                          (verde acertó / rojo falló / gris pendiente). */}
+                          (verde acertó / rojo falló / gris pendiente).
+                          FIX (bug pick-gate-15jul): ganador es GATE. Si el usuario
+                          no acertó el ganador (winnerFlag === false), método y
+                          marcador NO suman puntos aunque coincidan por casualidad.
+                          Mostramos pts=null en esos pills para no sugerir premio. */}
                       <div className="flex flex-wrap items-center gap-1.5">
                         {winnerLabel && (
                           <PickPill
@@ -262,16 +266,20 @@ export default function AdminPredictions() {
                           <PickPill
                             icon="⏱"
                             label={methodLabel}
-                            pts={methodFlag === true ? POINTS_METHOD : (methodFlag === false ? 0 : null)}
-                            correct={methodFlag === true}
+                            pts={winnerFlag === false
+                              ? null
+                              : (methodFlag === true ? POINTS_METHOD : (methodFlag === false ? 0 : null))}
+                            correct={winnerFlag === true && methodFlag === true}
                           />
                         )}
                         {score && (
                           <PickPill
                             icon="⚽"
                             label={score}
-                            pts={scoreFlag === true ? POINTS_SCORE : (scoreFlag === false ? 0 : null)}
-                            correct={scoreFlag === true}
+                            pts={winnerFlag === false
+                              ? null
+                              : (scoreFlag === true ? POINTS_SCORE : (scoreFlag === false ? 0 : null))}
+                            correct={winnerFlag === true && scoreFlag === true}
                           />
                         )}
                         {!winnerLabel && !methodLabel && !score && (
