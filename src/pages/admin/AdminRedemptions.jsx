@@ -4,7 +4,8 @@ import { api } from '@/api/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { User, X, Ban } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { User, X, Ban, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import UserProfileCard from '@/components/admin/UserProfileCard';
 import { format } from 'date-fns';
@@ -44,6 +45,10 @@ export default function AdminRedemptions() {
   // Filtro activo de estado (default: 'all' = total). Recalcula en vivo
   // cuando el admin aprueba/entrega/rechaza un canje (la query se invalida).
   const [statusFilter, setStatusFilter] = useState('all');
+  // Búsqueda por usuario (email / nombre / instagram / tiktok).
+  // Vacío = no aplica filtro de usuario; con texto = filtra canjes cuyo
+  // usuario matchee alguno de esos campos.
+  const [search, setSearch] = useState('');
 
   const { data: redemptions = [], isLoading } = useQuery({
     queryKey: ['admin-redemptions'],
@@ -71,17 +76,33 @@ export default function AdminRedemptions() {
     return counts;
   }, [redemptions]);
 
-  // Aplicar filtro actual. 'all' muestra todo, cualquier otro valor es estado exacto.
-  const filteredRedemptions = React.useMemo(() => {
-    if (statusFilter === 'all') return redemptions;
-    return redemptions.filter(r => r.status === statusFilter);
-  }, [redemptions, statusFilter]);
-
+  // Mapa de usuarios por email — se construye antes que `filteredRedemptions`
+  // porque el filtro por texto lo consume directamente.
   const userMap = React.useMemo(() => {
     const map = {};
     users.forEach(u => { map[u.email] = u; });
     return map;
   }, [users]);
+
+  // Aplicar filtros combinados: estado + match por usuario.
+  // 'all' en estado muestra todo; con texto en search filtra por email/nombre/instagram/tiktok del user.
+  const filteredRedemptions = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (statusFilter === 'all' && !q) return redemptions;
+    return redemptions.filter(r => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (q) {
+        const u = userMap[r.user_email] || {};
+        const matchesUser =
+          (r.user_email || '').toLowerCase().includes(q) ||
+          (u.full_name || '').toLowerCase().includes(q) ||
+          (u.instagram || '').toLowerCase().includes(q) ||
+          (u.tiktok || '').toLowerCase().includes(q);
+        if (!matchesUser) return false;
+      }
+      return true;
+    });
+  }, [redemptions, statusFilter, search, userMap]);
 
   // Mapa de premios por id, para mostrar la foto del premio canjeado.
   // El canje solo guarda prize_id/prize_name; la imagen vive en la tabla prizes.
@@ -178,6 +199,18 @@ export default function AdminRedemptions() {
           : `${filteredRedemptions.length} de ${redemptions.length} solicitudes de canje`}
       </p>
 
+      {/* Buscador por usuario — email, nombre, Instagram o TikTok.
+          Vacío no aplica filtro; con texto filtra los canjes cuyo usuario matchee. */}
+      <div className="relative max-w-sm">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          placeholder="Buscar por @instagram, nombre o correo"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       {/* Filtros por estado — Total / Pendientes / Aprobado / Entregado / Rechazado.
           Cada botón muestra el conteo entre paréntesis para que el admin vea de
           un vistazo cuántos canjes hay por categoría antes de filtrar. La lista
@@ -204,7 +237,11 @@ export default function AdminRedemptions() {
       {redemptions.length > 0 && filteredRedemptions.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            <p>No hay canjes en esta categoría.</p>
+            <p>
+              {search.trim()
+                ? `No hay canjes para "${search.trim()}".`
+                : 'No hay canjes en esta categoría.'}
+            </p>
           </CardContent>
         </Card>
       )}
