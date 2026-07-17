@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/api/client';
 import { EMPTY_FORM } from '@/lib/matchCardHelpers';
+import { getQuestionsForMatch } from '@/lib/extraQuestions';
 
 // v2 (metodología 3 picks con marcador exacto) se activa a partir del 28 jun
 // 2026 (16avos en adelante). Antes de eso los partidos usan el formato
@@ -55,6 +56,20 @@ export function usePredictionSubmit({ user, matches }) {
     const form = predictionsState[data.match_id] || {};
     const v2 = isV2Match(match);
 
+    // Serializar preguntas "Puntos extras" desde el form si el partido aplica.
+    // Solo se incluyen las que el usuario respondió (value != null).
+    // Shape: [{ id, value, other }] — `other` solo aplica si value === 'Otro'.
+    const extraQuestions = getQuestionsForMatch(match);
+    const extraAnswers = extraQuestions && extraQuestions.length > 0
+      ? extraQuestions
+          .map(q => ({
+            id: q.id,
+            value: form[`extra_${q.id}`] ?? null,
+            other: form[`extra_other_${q.id}`] ?? null,
+          }))
+          .filter(a => a.value != null)
+      : null;
+
     if (!v2) {
       // ─── LEGACY v1 (pre-28 jun): sólo marcador, 100 pts si aciertas ───
       const t1 = form.team1 ?? predictionsState[data.match_id]?.team1;
@@ -68,6 +83,7 @@ export function usePredictionSubmit({ user, matches }) {
         user_email: data.user_email,
         pred_team1: Number(t1),
         pred_team2: Number(t2),
+        extra_answers: extraAnswers, // null en partidos v1 sin preguntas extra
       });
       return;
     }
@@ -104,6 +120,8 @@ export function usePredictionSubmit({ user, matches }) {
       // v2 pen simplificado: un solo input suma 90+ET+pens. pred_pen_* quedan null.
       pred_pen_team1: null,
       pred_pen_team2: null,
+      // Puntos extras: array de {id, value, other} o null si el partido no aplica.
+      extra_answers: extraAnswers,
     });
   };
 

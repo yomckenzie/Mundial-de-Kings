@@ -10,6 +10,8 @@ import { Calendar, Clock, Lock, UserPlus, Send, Trophy } from 'lucide-react';
 import TeamFlag from '@/components/TeamFlag';
 import { formatTime12h } from '@/lib/utils';
 import { ExistingPredictionPanel } from './PredictionBreakdown';
+import ExtraPointsCard from '@/components/matches/ExtraPointsCard';
+import { getQuestionsForMatch } from '@/lib/extraQuestions';
 
 // ─────────────────────────────────────────────────────────────────────
 // MatchCard (Task 6: 3-step form + post-eval breakdown)
@@ -409,8 +411,15 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
         <CardContent className="p-3 sm:p-4 md:p-5">
           <MatchHeader match={match} isLive={isLive} st={st} liveScore={liveScore} liveLabel={liveLabel} liveResult={liveResult} pendingConfirm={pendingConfirm} />
           <div className="border-t border-border/50 -mx-4 sm:-mx-5 md:mx-0 px-4 sm:px-5 md:px-0 pt-3 pb-1">
-            <div className="md:max-w-md md:mx-auto">
+            <div className="md:max-w-md md:mx-auto space-y-2">
               <PredictionBottom {...bottomProps} />
+              {/* Puntos extras — solo en semifinal/final del Mundial y cuando
+                  el partido está abierto y editable (sin predicción previa ni
+                  en vivo). Si la ventana está cerrada, el form V2 ya muestra
+                  el LockedMessage y no es momento de mostrar extras. */}
+              {isOpen && !isLive && !existing && getQuestionsForMatch(match) && (
+                <ExtraPointsCard match={match} form={form} handlePredict={handlePredict} />
+              )}
             </div>
           </div>
         </CardContent>

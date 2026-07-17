@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2, X } from 'lucide-react';
+import { getQuestionsForMatch, POINTS_PER_EXTRA } from '@/lib/extraQuestions';
 
 // ─────────────────────────────────────────────────────────────────────
 // Sub-componentes del breakdown post-evaluación (Task 7 — v2 render)
@@ -252,6 +253,36 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
             notApplicable={scoreNotApplicable}
           />
         )}
+        {/* Puntos extras — 1 fila por pregunta, solo si el partido las tiene.
+            Sin gate de ganador: cada extra suma sus +5 pts independiente.
+            existing.extra_answers_correct = { [qid]: true|false|null }
+              · true  → ✅ +5
+              · false → ❌ 0
+              · null  → ⏳ pendiente (admin aún no cargó respuesta correcta)
+            existing.extra_answers = [{ id, value, other }] — usamos para mostrar
+            la respuesta del usuario en el label (especialmente "Otro: nombre"). */}
+        {getQuestionsForMatch(match) && getQuestionsForMatch(match).map(q => {
+          const correctFlag = existing.extra_answers_correct?.[q.id];
+          const userAns = Array.isArray(existing.extra_answers)
+            ? existing.extra_answers.find(a => a.id === q.id)
+            : null;
+          let label = q.q;
+          if (userAns) {
+            if (userAns.value === 'Otro') {
+              label = `${q.q} (Otro: ${userAns.other || '—'})`;
+            } else if (userAns.value) {
+              label = `${q.q} (${userAns.value})`;
+            }
+          }
+          return (
+            <PtsRow
+              key={q.id}
+              label={label}
+              correct={correctFlag}
+              pts={POINTS_PER_EXTRA}
+            />
+          );
+        })}
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <span className="text-xs font-bold">Total</span>
           <span className="text-sm font-bold text-amber-600 dark:text-amber-400">

@@ -26,6 +26,7 @@ const Ranking = lazy(() => import('./pages/Ranking'));
 const Prizes = lazy(() => import('./pages/Prizes'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Info = lazy(() => import('./pages/Info'));
+const DemoSemifinal = lazy(() => import('./pages/DemoSemifinal'));
 const Support = lazy(() => import('./pages/Support'));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
@@ -87,6 +88,7 @@ const AuthenticatedApp = () => {
         <Route path="/ranking" element={<Ranking />} />
         <Route path="/prizes" element={<Prizes />} />
         <Route path="/info" element={<Info />} />
+        <Route path="/demo-semifinal" element={<DemoSemifinal />} />
         <Route path="/support" element={<Support />} />
         <Route path="/profile" element={<Profile />} />
         <Route element={<AdminLayout />}>

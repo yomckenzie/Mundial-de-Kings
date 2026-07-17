@@ -88,6 +88,26 @@ function canPublishResult(match) {
   return match.status === 'live' || match.status === 'finished';
 }
 
+// Helper: extrae `correctAnswers` del form del admin y devuelve null si está
+// vacío. Se persiste en `matches.correct_extra_answers` y `evaluateMatchPredictions`
+// lo usa para comparar contra `predictions.extra_answers`.
+// Shape devuelto: { [qid]: option, [`${qid}_other`]: textoLibre }.
+function extractCorrectAnswers(formEntry) {
+  const ca = formEntry?.correctAnswers;
+  if (!ca || typeof ca !== 'object') return null;
+  const keys = Object.keys(ca);
+  if (keys.length === 0) return null;
+  // Filtrar entradas vacías (null/undefined/'') — si el admin no terminó
+  // de cargar las respuestas, no pisamos lo que ya había en la BD.
+  const cleaned = {};
+  for (const k of keys) {
+    const v = ca[k];
+    if (v == null || v === '') continue;
+    cleaned[k] = v;
+  }
+  return Object.keys(cleaned).length > 0 ? cleaned : null;
+}
+
 export default function useMatchHandlers(matches, results, setResults, sourceState, setSourceState, liveNow) {
   const queryClient = useQueryClient();
 
@@ -282,6 +302,11 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
           update.penalty_score_team2 = penaltyT2;
         }
       }
+      // Persistir respuestas correctas de "Puntos extras" si las hay.
+      // Si el admin ya las tenía cargadas, se mantienen/sobrescriben en cada
+      // Actualizar — así puede corregir antes de finalizar.
+      const liveCorrect = extractCorrectAnswers(r);
+      if (liveCorrect) update.correct_extra_answers = liveCorrect;
       await api.entities.Match.update(match.id, update);
       setResults(prev => {
         const { [match.id]: _, ...rest } = prev.form;
@@ -311,6 +336,9 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
       finishedUpdate.penalty_score_team1 = penaltyT1;
       finishedUpdate.penalty_score_team2 = penaltyT2;
     }
+    // Persistir respuestas correctas de "Puntos extras" si las hay.
+    const finishedCorrect = extractCorrectAnswers(r);
+    if (finishedCorrect) finishedUpdate.correct_extra_answers = finishedCorrect;
     await api.entities.Match.update(match.id, finishedUpdate);
     // Para evaluar partidos v1 pasamos method/penalty null — el evaluador ya
     // detecta el modelo por la presencia de pred_score_team1/2 (v2) o
@@ -378,6 +406,9 @@ export default function useMatchHandlers(matches, results, setResults, sourceSta
           update.penalty_score_team1 = penaltyT1;
           update.penalty_score_team2 = penaltyT2;
         }
+        // Puntos extras: persistir correctAnswers si el admin las cargó.
+        const correct = extractCorrectAnswers(r);
+        if (correct) update.correct_extra_answers = correct;
         await api.entities.Match.update(matchId, update);
         const evalResult = await evaluateMatchPredictions(
           matchId, resultTeam1, resultTeam2,

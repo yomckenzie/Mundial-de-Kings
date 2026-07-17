@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { db } from '../lib/db';
+import { POINTS_PER_EXTRA } from '../lib/extraQuestions';
 
 const POINTS_WINNER = 50;
 const POINTS_METHOD = 50;
@@ -141,11 +142,20 @@ export async function evaluateMatchPredictions(
     resultMethod = 'pen';
   }
 
-  // 1. Cargar pronósticos del partido
-  const { data: allPredictions, error: predErr } = await supabase
-    .from('predictions')
-    .select('id, user_email, pred_team1, pred_team2, pred_winner, pred_method, pred_penalty_team1, pred_penalty_team2, pred_score_team1, pred_score_team2, pred_pen_team1, pred_pen_team2')
-    .eq('match_id', matchId);
+  // 1. Cargar pronósticos del partido + correct_extra_answers del match.
+  //    Los extras son independientes del pick principal (sin gate de ganador):
+  //    +5 pts por pregunta correcta, acumulables.
+  const [{ data: allPredictions, error: predErr }, { data: matchRow }] = await Promise.all([
+    supabase
+      .from('predictions')
+      .select('id, user_email, pred_team1, pred_team2, pred_winner, pred_method, pred_penalty_team1, pred_penalty_team2, pred_score_team1, pred_score_team2, pred_pen_team1, pred_pen_team2, extra_answers')
+      .eq('match_id', matchId),
+    supabase
+      .from('matches')
+      .select('correct_extra_answers')
+      .eq('id', matchId)
+      .single(),
+  ]);
 
   if (predErr) {
     console.error('[evaluateMatchPredictions] Error cargando predictions:', predErr);
@@ -154,6 +164,9 @@ export async function evaluateMatchPredictions(
   if (!allPredictions || allPredictions.length === 0) {
     return { evaluated: 0, correct: 0 };
   }
+  const correctExtra = matchRow?.correct_extra_answers && typeof matchRow.correct_extra_answers === 'object'
+    ? matchRow.correct_extra_answers
+    : null;
 
   // 2. Excluir admins
   const { data: adminRows } = await supabase
@@ -214,6 +227,46 @@ export async function evaluateMatchPredictions(
       pointsEarned = v1ExactScoreCorrect ? 100 : 0;
     }
 
+    // ─── Puntos extras ──────────────────────────────────────────────
+    // Independientes del gate de ganador: cada pregunta suma sus +5 pts
+    // sin importar winner/method/score. Si el admin aún no cargó la
+    // respuesta correcta de una pregunta, su flag queda null (⏳ pendiente).
+    // Shape pred.extra_answers: [{ id, value, other }] (puede ser null/array).
+    let extraPointsEarned = 0;
+    let extraAnswersCorrect = null;
+    if (Array.isArray(pred.extra_answers) && correctExtra) {
+      extraAnswersCorrect = {};
+      for (const ans of pred.extra_answers) {
+        const userValue = ans.value;
+        const correctValue = correctExtra[ans.id];
+        if (correctValue == null) {
+          // Admin no cargó respuesta correcta de esta pregunta → pendiente.
+          extraAnswersCorrect[ans.id] = null;
+          continue;
+        }
+        let isCorrect = false;
+        if (userValue === 'Otro') {
+          // Caso "Otro" del usuario: comparar su texto libre contra el valor
+          // que cargó el admin. El admin puede haber elegido "Otro" + texto en
+          // `${q.id}_other`, o haber escrito el nombre directo en `q.id`.
+          const userOther = (ans.other || '').trim();
+          const correctAsOther = (correctExtra[`${ans.id}_other`] ?? '').trim();
+          const correctAsDirect = (typeof correctValue === 'string' ? correctValue : '').trim();
+          isCorrect = userOther !== '' && (
+            userOther === correctAsOther ||
+            userOther.toLowerCase() === correctAsDirect.toLowerCase()
+          );
+        } else {
+          // Opción cerrada: comparación exacta. Case-sensitive porque las
+          // opciones son strings fijos ('Sí', 'No', 'Francia', etc.).
+          isCorrect = userValue === correctValue;
+        }
+        extraAnswersCorrect[ans.id] = isCorrect;
+        if (isCorrect) extraPointsEarned += POINTS_PER_EXTRA;
+      }
+    }
+    pointsEarned += extraPointsEarned;
+
     if (pointsEarned > 0) correctEmails.add(pred.user_email);
 
     predictionUpdates.push({
@@ -226,6 +279,7 @@ export async function evaluateMatchPredictions(
       pre_pen_correct: prePenCorrect,
       pen_correct: penCorrect,
       penalty_correct: penaltyCorrect, // null para v2, bool para v1
+      extra_answers_correct: extraAnswersCorrect, // null si el partido no aplica extras
       scored: true,
     });
   }

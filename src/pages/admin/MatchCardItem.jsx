@@ -6,11 +6,12 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Clock, Save, RotateCcw, Pencil, Trash2 } from 'lucide-react';
+import { Clock, Save, RotateCcw, Pencil, Trash2, Trophy } from 'lucide-react';
 import { formatTime12h } from '@/lib/utils';
 import { isRealTeam } from '@/lib/worldCupTeams';
 import { VALID_TRANSITIONS, isValidTransition } from './matchTransitions';
 import { toast } from 'sonner';
+import { getQuestionsForMatch, getExtraRoundLabel } from '@/lib/extraQuestions';
 
 const STATUS_COLORS = {
   pending: 'bg-muted text-muted-foreground',
@@ -63,6 +64,112 @@ function isV2Match(match) {
 // Movido fuera del componente: es un valor estático (no usa state ni props),
 // reconstruirlo en cada render desperdicia trabajo y rompe memoización de hijos.
 const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
+
+// ─── Bloque "Respuestas correctas · Puntos extras" ───────────────────
+// Solo se muestra para partidos semifinal/final del Mundial. El admin
+// elige la opción correcta de cada pregunta. Si una pregunta tiene
+// "Otro" como opción, también puede escribir el texto correcto.
+// Al publicar resultado (handlePublishResult) este objeto se persiste en
+// matches.correct_extra_answers y evaluateMatchPredictions lo usa para
+// comparar contra predictions.extra_answers.
+function CorrectAnswersBlock({ match, results, setResults }) {
+  const questions = getQuestionsForMatch(match);
+  const roundLabel = getExtraRoundLabel(match);
+  if (!questions || !roundLabel) return null;
+
+  const entry = results.form[match.id] || {};
+  const correctAnswers = entry.correctAnswers || {};
+
+  // Pre-rellenar desde BD si el admin aún no escribió nada (re-edita después
+  // de finalizado). match.correct_extra_answers es un object plano.
+  const initialFromMatch = match.correct_extra_answers;
+  const hasUserInput = Object.keys(correctAnswers).length > 0;
+  const source = hasUserInput ? correctAnswers : (initialFromMatch || {});
+
+  const setAnswer = (qid, opt) => {
+    setResults(prev => {
+      const cur = prev.form[match.id]?.correctAnswers || {};
+      const next = { ...cur, [qid]: opt };
+      // Si NO eligió "Otro" en esta pregunta, limpiar su texto libre.
+      if (opt !== 'Otro' && cur[`${qid}_other`]) {
+        delete next[`${qid}_other`];
+      }
+      return {
+        ...prev,
+        form: {
+          ...prev.form,
+          [match.id]: {
+            ...(prev.form[match.id] || {}),
+            correctAnswers: next,
+          },
+        },
+      };
+    });
+  };
+
+  const setOther = (qid, text) => {
+    setResults(prev => ({
+      ...prev,
+      form: {
+        ...prev.form,
+        [match.id]: {
+          ...(prev.form[match.id] || {}),
+          correctAnswers: {
+            ...(prev.form[match.id]?.correctAnswers || {}),
+            [`${qid}_other`]: text,
+          },
+        },
+      },
+    }));
+  };
+
+  return (
+    <div className="w-full mt-2 space-y-2 border-t border-amber-300/40 dark:border-amber-700/40 pt-3">
+      <div className="flex items-center gap-2">
+        <Trophy className="w-3.5 h-3.5 text-amber-500" />
+        <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+          Respuestas correctas · Puntos extras ({roundLabel})
+        </p>
+      </div>
+      <div className="space-y-2">
+        {questions.map((q, i) => {
+          const value = source[q.id] ?? null;
+          const otherValue = source[`${q.id}_other`] ?? '';
+          const options = q.allowOther ? [...q.options, 'Otro'] : q.options;
+          const cols = options.length >= 4 ? 3 : options.length;
+          return (
+            <div key={q.id} className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">
+                <span className="font-semibold text-foreground">{i + 1}.</span> {q.q}
+              </p>
+              <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                {options.map(opt => (
+                  <Button
+                    key={opt}
+                    size="sm"
+                    variant={value === opt ? 'default' : 'outline'}
+                    className="h-7 text-[10px] px-1 whitespace-nowrap"
+                    onClick={() => setAnswer(q.id, value === opt ? null : opt)}
+                  >
+                    {opt}
+                  </Button>
+                ))}
+              </div>
+              {q.allowOther && value === 'Otro' && (
+                <Input
+                  placeholder="Nombre del jugador (correcto)"
+                  className="h-7 text-xs"
+                  value={otherValue}
+                  onChange={(e) => setOther(q.id, e.target.value)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function MatchCardItem({ match, allMatches, hasLockedMatches, results, setResults, handleStatusChange, handlePublishResult, editMatch, deleteMatch, pendingConfirm, liveResult }) {
   const handleReopen = () => {
@@ -332,6 +439,11 @@ export default function MatchCardItem({ match, allMatches, hasLockedMatches, res
               )}
             </div>
           )}
+
+          {/* Respuestas correctas de "Puntos extras" — solo para semifinal/final.
+              Se muestra junto al formulario de resultado, no depende del
+              status del partido (puede editarse en cualquier publish). */}
+          <CorrectAnswersBlock match={match} results={results} setResults={setResults} />
 
           {hasLockedMatches && isMatchLocked(match) && (
             <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600 dark:text-amber-400 ml-auto">🔒 Bloqueado</Badge>
