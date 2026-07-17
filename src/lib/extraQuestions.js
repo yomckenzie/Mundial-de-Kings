@@ -26,7 +26,7 @@ const SEMIFINAL_FRA_ESP_QUESTIONS = [
   { id: 'primert',  q: "¿Se anotará algún gol en el primer tiempo? (45' m)",              options: ['Sí', 'No'] },
   { id: 'amarillas', q: '¿Quién recibirá más tarjetas amarillas?',                       options: ['Francia', 'España', 'Empate'] },
   { id: 'corners',   q: '¿Qué equipo cobrará más saques de esquina?',                    options: ['Francia', 'España', 'Empate'] },
-  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Kylian Mbappé', 'Antoine Griezmann', 'Lamine Yamal', 'Nico Williams', 'Ninguno'], allowOther: true },
+  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Kylian Mbappé', 'Antoine Griezmann', 'Lamine Yamal', 'Nico Williams', 'Ninguno'] },
 ];
 
 // ─── Semifinal 2: Argentina vs Inglaterra (2026-07-15) ───────────────
@@ -37,7 +37,7 @@ const SEMIFINAL_ARG_ING_QUESTIONS = [
   { id: 'primert',  q: "¿Se anotará algún gol en el primer tiempo? (45' m)",              options: ['Sí', 'No'] },
   { id: 'amarillas', q: '¿Quién recibirá más tarjetas amarillas?',                       options: ['Argentina', 'Inglaterra', 'Empate'] },
   { id: 'corners',   q: '¿Qué equipo cobrará más saques de esquina?',                    options: ['Argentina', 'Inglaterra', 'Empate'] },
-  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Lionel Messi', 'Julián Álvarez', 'Jude Bellingham', 'Harry Kane', 'Ninguno'], allowOther: true },
+  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Lionel Messi', 'Julián Álvarez', 'Jude Bellingham', 'Harry Kane', 'Ninguno'] },
 ];
 
 // ─── Tercer Puesto: Francia vs Inglaterra (2026-07-18) ────────────────
@@ -48,7 +48,7 @@ const THIRD_PLACE_QUESTIONS = [
   { id: 'primert',  q: "¿Se anotará algún gol en el primer tiempo? (45' m)",              options: ['Sí', 'No'] },
   { id: 'amarillas', q: '¿Quién recibirá más tarjetas amarillas?',                       options: ['Francia', 'Inglaterra', 'Empate'] },
   { id: 'corners',   q: '¿Qué equipo cobrará más saques de esquina?',                    options: ['Francia', 'Inglaterra', 'Empate'] },
-  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Kylian Mbappé', 'Antoine Griezmann', 'Jude Bellingham', 'Harry Kane', 'Ninguno'], allowOther: true },
+  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Kylian Mbappé', 'Antoine Griezmann', 'Jude Bellingham', 'Harry Kane', 'Ninguno'] },
 ];
 
 // ─── Final: España vs Argentina (2026-07-19) ──────────────────────────
@@ -59,7 +59,7 @@ const FINAL_QUESTIONS = [
   { id: 'primert',  q: "¿Se anotará algún gol en el primer tiempo? (45' m)",              options: ['Sí', 'No'] },
   { id: 'amarillas', q: '¿Quién recibirá más tarjetas amarillas?',                       options: ['España', 'Argentina', 'Empate'] },
   { id: 'corners',   q: '¿Qué equipo cobrará más saques de esquina?',                    options: ['España', 'Argentina', 'Empate'] },
-  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Lionel Messi', 'Julián Álvarez', 'Lamine Yamal', 'Nico Williams', 'Ninguno'], allowOther: true },
+  { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                     options: ['Lionel Messi', 'Julián Álvarez', 'Lamine Yamal', 'Nico Williams', 'Ninguno'] },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────

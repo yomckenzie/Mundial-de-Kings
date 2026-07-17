@@ -260,7 +260,9 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
               · false → ❌ 0
               · null  → ⏳ pendiente (admin aún no cargó respuesta correcta)
             existing.extra_answers = [{ id, value, other }] — usamos para mostrar
-            la respuesta del usuario en el label (especialmente "Otro: nombre"). */}
+            la respuesta del usuario en el label.
+            Predicciones legacy con value='Otro' (botón retirado del form) caen
+            en el else sin label adicional, en línea con el form actual. */}
         {getQuestionsForMatch(match) && getQuestionsForMatch(match).map(q => {
           const correctFlag = existing.extra_answers_correct?.[q.id];
           const userAns = Array.isArray(existing.extra_answers)
@@ -268,11 +270,11 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
             : null;
           let label = q.q;
           if (userAns) {
-            if (userAns.value === 'Otro') {
-              label = `${q.q} (Otro: ${userAns.other || '—'})`;
-            } else if (userAns.value) {
+            if (userAns.value && userAns.value !== 'Otro') {
               label = `${q.q} (${userAns.value})`;
             }
+            // Legacy: predicciones viejas con value='Otro' quedan sin label
+            // (el botón Otro se quitó del form, así que不会再 entrar nuevos).
           }
           return (
             <PtsRow

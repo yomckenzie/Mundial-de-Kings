@@ -67,11 +67,13 @@ const ALL_STATUSES = ['pending', 'open', 'live', 'closed', 'finished'];
 
 // ─── Bloque "Respuestas correctas · Puntos extras" ───────────────────
 // Solo se muestra para partidos semifinal/final del Mundial. El admin
-// elige la opción correcta de cada pregunta. Si una pregunta tiene
-// "Otro" como opción, también puede escribir el texto correcto.
-// Al publicar resultado (handlePublishResult) este objeto se persiste en
-// matches.correct_extra_answers y evaluateMatchPredictions lo usa para
-// comparar contra predictions.extra_answers.
+// elige la opción correcta de cada pregunta (de las opciones fijas de
+// `extraQuestions.js`). Al publicar resultado (handlePublishResult) este
+// objeto se persiste en matches.correct_extra_answers y
+// evaluateMatchPredictions lo usa para comparar contra predictions.extra_answers.
+//
+// Responsive: las filas de 3 columnas (cols=3) se apilan a 1 columna en
+// móvil para que cada botón tenga ancho cómodo sin recortar texto.
 function CorrectAnswersBlock({ match, results, setResults }) {
   const questions = getQuestionsForMatch(match);
   const roundLabel = getExtraRoundLabel(match);
@@ -87,27 +89,6 @@ function CorrectAnswersBlock({ match, results, setResults }) {
   const source = hasUserInput ? correctAnswers : (initialFromMatch || {});
 
   const setAnswer = (qid, opt) => {
-    setResults(prev => {
-      const cur = prev.form[match.id]?.correctAnswers || {};
-      const next = { ...cur, [qid]: opt };
-      // Si NO eligió "Otro" en esta pregunta, limpiar su texto libre.
-      if (opt !== 'Otro' && cur[`${qid}_other`]) {
-        delete next[`${qid}_other`];
-      }
-      return {
-        ...prev,
-        form: {
-          ...prev.form,
-          [match.id]: {
-            ...(prev.form[match.id] || {}),
-            correctAnswers: next,
-          },
-        },
-      };
-    });
-  };
-
-  const setOther = (qid, text) => {
     setResults(prev => ({
       ...prev,
       form: {
@@ -116,7 +97,7 @@ function CorrectAnswersBlock({ match, results, setResults }) {
           ...(prev.form[match.id] || {}),
           correctAnswers: {
             ...(prev.form[match.id]?.correctAnswers || {}),
-            [`${qid}_other`]: text,
+            [qid]: opt,
           },
         },
       },
@@ -134,35 +115,31 @@ function CorrectAnswersBlock({ match, results, setResults }) {
       <div className="space-y-2">
         {questions.map((q, i) => {
           const value = source[q.id] ?? null;
-          const otherValue = source[`${q.id}_other`] ?? '';
-          const options = q.allowOther ? [...q.options, 'Otro'] : q.options;
-          const cols = options.length >= 4 ? 3 : options.length;
+          const cols = q.options.length;
+          // Clases estáticas para que el JIT de Tailwind las recoja.
+          const gridColsClass =
+            cols === 1 ? 'grid-cols-1' :
+            cols === 2 ? 'grid-cols-2' :
+            cols === 3 ? 'grid-cols-1 sm:grid-cols-3' :
+            /* 4+   */ 'grid-cols-2';
           return (
             <div key={q.id} className="space-y-1">
               <p className="text-[10px] text-muted-foreground">
                 <span className="font-semibold text-foreground">{i + 1}.</span> {q.q}
               </p>
-              <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-                {options.map(opt => (
+              <div className={`grid gap-1 ${gridColsClass}`}>
+                {q.options.map(opt => (
                   <Button
                     key={opt}
                     size="sm"
                     variant={value === opt ? 'default' : 'outline'}
-                    className="h-7 text-[10px] px-1 whitespace-nowrap"
+                    className="h-auto min-h-7 text-[10px] py-1 px-2 min-w-0 text-center break-words leading-tight whitespace-normal"
                     onClick={() => setAnswer(q.id, value === opt ? null : opt)}
                   >
                     {opt}
                   </Button>
                 ))}
               </div>
-              {q.allowOther && value === 'Otro' && (
-                <Input
-                  placeholder="Nombre del jugador (correcto)"
-                  className="h-7 text-xs"
-                  value={otherValue}
-                  onChange={(e) => setOther(q.id, e.target.value)}
-                />
-              )}
             </div>
           );
         })}

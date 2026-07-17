@@ -10,7 +10,7 @@ import { Calendar, Clock, Lock, UserPlus, Send, Trophy } from 'lucide-react';
 import TeamFlag from '@/components/TeamFlag';
 import { formatTime12h } from '@/lib/utils';
 import { ExistingPredictionPanel } from './PredictionBreakdown';
-import ExtraPointsCard from '@/components/matches/ExtraPointsCard';
+import ExtraPointsCard, { ExtraPointsPickSummary } from '@/components/matches/ExtraPointsCard';
 import { getQuestionsForMatch } from '@/lib/extraQuestions';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -308,6 +308,30 @@ function LockedMessage({ children, icon: Icon = Lock }) {
   );
 }
 
+// ── Helper: resumen read-only de puntos extras ya guardados ──────────
+// Se renderiza cuando existe un `existing` con extra_answers. Cuando el
+// usuario está editando (sin existing) el form (ExtraPointsCard) ya
+// muestra su propio PickSummaryCard — esta helper no aplica.
+function ExistingExtrasSummary({ existing, match }) {
+  const questions = getQuestionsForMatch(match);
+  if (!questions) return null;
+  // Solo aplica para predicciones ya enviadas con extras.
+  if (!Array.isArray(existing?.extra_answers) || existing.extra_answers.length === 0) {
+    return null;
+  }
+  const picksById = {};
+  for (const a of existing.extra_answers) {
+    picksById[a.id] = a.value;
+  }
+  return (
+    <ExtraPointsPickSummary
+      questions={questions}
+      picksById={picksById}
+      saved
+    />
+  );
+}
+
 // ── Helper: bloque inferior (form / locked / register / existing) ──
 function PredictionBottom({ match, user, existing, form, isOpen, isLive, resultKnown, predHit, isV2, handlePredict, handleSubmit, submitPrediction }) {
   if (isLive) {
@@ -413,12 +437,20 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
           <div className="border-t border-border/50 -mx-4 sm:-mx-5 md:mx-0 px-4 sm:px-5 md:px-0 pt-3 pb-1">
             <div className="md:max-w-md md:mx-auto space-y-2">
               <PredictionBottom {...bottomProps} />
-              {/* Puntos extras — solo en semifinal/final del Mundial y cuando
-                  el partido está abierto y editable (sin predicción previa ni
-                  en vivo). Si la ventana está cerrada, el form V2 ya muestra
-                  el LockedMessage y no es momento de mostrar extras. */}
+              {/* Puntos extras — editable: solo en semifinal/final y cuando el
+                  partido está abierto, no está en vivo y aún no hay predicción
+                  previa. El resumen read-only se renderiza en ambos casos (con
+                  el form para picks en progreso, con existing para picks
+                  ya guardados) — ver ExtraPointsPickSummary más abajo. */}
               {isOpen && !isLive && !existing && getQuestionsForMatch(match) && (
                 <ExtraPointsCard match={match} form={form} handlePredict={handlePredict} />
+              )}
+              {/* Resumen read-only de extras: se muestra también cuando hay
+                  existing (no se renderiza el form), para que el usuario vea
+                  qué eligió de puntos extras aún después de enviar el
+                  pronóstico principal. */}
+              {getQuestionsForMatch(match) && (
+                <ExistingExtrasSummary existing={existing} match={match} />
               )}
             </div>
           </div>

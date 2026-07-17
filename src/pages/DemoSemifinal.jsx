@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import TeamFlag from '@/components/TeamFlag';
-import { Trophy, ChevronDown, Send, Sparkles } from 'lucide-react';
+import { Trophy, ChevronDown, Send, Sparkles, Check } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────
 // PROTOTIPO LOCAL — "Pronósticos extra" para semifinal y final.
 // Nueva forma de ganar puntos: además de los 3 picks normales (ganador,
 // método y marcador), en semifinal y final se habilita una sección de
-// PUNTOS EXTRAS con preguntas tipo quiniela, cada una +10 pts.
+// PUNTOS EXTRAS con preguntas tipo quiniela, cada una +5 pts.
 //
 // La Semifinal y la Final se muestran como bloques SEPARADOS, cada uno
 // con su partido, sus picks y sus preguntas propias.
@@ -23,7 +23,7 @@ import { Trophy, ChevronDown, Send, Sparkles } from 'lucide-react';
 
 const POINTS_PER_PROP = 5;
 
-// Cada partido lleva su matchup + sus 7 preguntas extra (+10 pts c/u).
+// Cada partido lleva su matchup + sus 7 preguntas extra (+5 pts c/u).
 const MATCHES = [
   {
     round: 'Semifinal',
@@ -38,7 +38,7 @@ const MATCHES = [
       { id: 'primert',   q: "¿Se anotará algún gol en el primer tiempo? (45' m)",                options: ['Sí', 'No'] },
       { id: 'amarillas', q: '¿Quién recibirá más tarjetas amarillas?',                   options: ['Francia', 'Inglaterra', 'Empate'] },
       { id: 'corners',   q: '¿Qué equipo cobrará más saques de esquina?',                options: ['Francia', 'Inglaterra', 'Empate'] },
-      { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                 options: ['Kylian Mbappé', 'Jude Bellingham', 'Harry Kane', 'Antoine Griezmann', 'Ninguno'], allowOther: true },
+      { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',                 options: ['Kylian Mbappé', 'Jude Bellingham', 'Harry Kane', 'Antoine Griezmann', 'Ninguno'] },
     ],
   },
   {
@@ -54,7 +54,7 @@ const MATCHES = [
       { id: 'primert',   q: "¿Se anotará algún gol en el primer tiempo? (45' m)",              options: ['Sí', 'No'] },
       { id: 'amarillas', q: '¿Quién recibirá más tarjetas amarillas?',                 options: ['Argentina', 'España', 'Empate'] },
       { id: 'corners',   q: '¿Qué equipo cobrará más saques de esquina?',              options: ['Argentina', 'España', 'Empate'] },
-      { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',               options: ['Lionel Messi', 'Lamine Yamal', 'Julián Álvarez', 'Nico Williams', 'Ninguno'], allowOther: true },
+      { id: 'primergol', q: '¿Quién marcará el primer gol del partido?',               options: ['Lionel Messi', 'Lamine Yamal', 'Julián Álvarez', 'Nico Williams', 'Ninguno'] },
     ],
   },
 ];
@@ -69,15 +69,23 @@ function PointsPill({ children }) {
 }
 
 // Grupo de botones-opción (un solo seleccionado).
+// Responsive: en móvil, las filas de 3 columnas (cols=3) se apilan a 1 columna
+// para que cada botón tenga ancho cómodo sin recortar texto.
 function OptionRow({ options, value, onSelect, cols }) {
+  // Las clases de Tailwind son estáticas para que el JIT las detecte.
+  const gridColsClass =
+    cols === 1 ? 'grid-cols-1' :
+    cols === 2 ? 'grid-cols-2' :
+    cols === 3 ? 'grid-cols-1 sm:grid-cols-3' :
+    /* 4+     */ 'grid-cols-2';
   return (
-    <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+    <div className={`grid gap-1.5 ${gridColsClass}`}>
       {options.map(opt => (
         <Button
           key={opt}
           size="sm"
           variant={value === opt ? 'default' : 'outline'}
-          className="h-8 text-[11px] sm:text-xs px-1 whitespace-nowrap"
+          className="h-8 text-[11px] sm:text-xs px-2 min-w-0 whitespace-nowrap"
           onClick={() => onSelect(value === opt ? null : opt)}
         >
           {opt}
@@ -88,9 +96,8 @@ function OptionRow({ options, value, onSelect, cols }) {
 }
 
 // Una tarjeta de pregunta extra.
-function PropCard({ index, prop, value, onSelect, otherValue, onOtherChange }) {
-  const options = prop.allowOther ? [...prop.options, 'Otro'] : prop.options;
-  const cols = options.length >= 4 ? 2 : options.length;
+function PropCard({ index, prop, value, onSelect }) {
+  const cols = prop.options.length >= 4 ? 2 : prop.options.length;
   return (
     <div className="bg-card border border-border/60 rounded-xl p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
@@ -99,16 +106,7 @@ function PropCard({ index, prop, value, onSelect, otherValue, onOtherChange }) {
         </p>
         <PointsPill>+{POINTS_PER_PROP} pts</PointsPill>
       </div>
-      <OptionRow options={options} value={value} onSelect={onSelect} cols={cols} />
-      {prop.allowOther && value === 'Otro' && (
-        <Input
-          type="text"
-          placeholder="Nombre del jugador"
-          className="h-8 text-xs"
-          value={otherValue}
-          onChange={(e) => onOtherChange(e.target.value)}
-        />
-      )}
+      <OptionRow options={prop.options} value={value} onSelect={onSelect} cols={cols} />
     </div>
   );
 }
@@ -117,7 +115,6 @@ function PropCard({ index, prop, value, onSelect, otherValue, onOtherChange }) {
 function MatchPredictionBlock({ match }) {
   const [advOpen, setAdvOpen] = useState(true);
   const [answers, setAnswers] = useState({}); // { propId: option }
-  const [otherText, setOtherText] = useState({}); // { propId: nombre libre para "Otro" }
   const [winner, setWinner] = useState(null);
   const [method, setMethod] = useState(null);
   const [score, setScore] = useState({ t1: '', t2: '' });
@@ -126,10 +123,7 @@ function MatchPredictionBlock({ match }) {
   const extraPoints = answeredCount * POINTS_PER_PROP;
   const maxExtra = match.props.length * POINTS_PER_PROP;
 
-  const setAnswer = (id, opt) => {
-    setAnswers(a => ({ ...a, [id]: opt }));
-    if (opt !== 'Otro') setOtherText(t => ({ ...t, [id]: '' }));
-  };
+  const setAnswer = (id, opt) => setAnswers(a => ({ ...a, [id]: opt }));
 
   const summary = useMemo(() => {
     const picks = [];
@@ -139,10 +133,10 @@ function MatchPredictionBlock({ match }) {
     match.props.forEach((p, i) => {
       const v = answers[p.id];
       if (!v) return;
-      picks.push(`${i + 1}. ${v === 'Otro' ? (otherText[p.id] || 'Otro') : v}`);
+      picks.push(`${i + 1}. ${v}`);
     });
     return picks;
-  }, [winner, method, score, answers, otherText, match]);
+  }, [winner, method, score, answers, match]);
 
   const handleSubmit = () => {
     if (summary.length === 0) {
@@ -293,8 +287,6 @@ function MatchPredictionBlock({ match }) {
                     prop={p}
                     value={answers[p.id]}
                     onSelect={(opt) => setAnswer(p.id, opt)}
-                    otherValue={otherText[p.id] || ''}
-                    onOtherChange={(txt) => setOtherText(t => ({ ...t, [p.id]: txt }))}
                   />
                 ))}
               </div>
@@ -302,6 +294,42 @@ function MatchPredictionBlock({ match }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Resumen de picks de puntos extras — visible al responder */}
+      {answeredCount > 0 && (
+        <Card className="border-emerald-300/50 dark:border-emerald-800/40 bg-emerald-50/40 dark:bg-emerald-950/20">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
+                Tus picks · puntos extra
+              </p>
+              <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
+                {answeredCount}/{match.props.length} · <span className="text-emerald-700 dark:text-emerald-400 font-medium">+{extraPoints} pts</span>
+              </span>
+            </div>
+            <ul className="space-y-1">
+              {match.props.map((p, i) => {
+                const v = answers[p.id];
+                return (
+                  <li key={p.id} className="text-xs flex items-baseline gap-2 leading-snug">
+                    <span className="text-muted-foreground/70 tabular-nums w-4 text-right shrink-0">{i + 1}.</span>
+                    <span
+                      className={`flex-1 min-w-0 truncate ${v ? 'text-muted-foreground/90' : 'text-muted-foreground/40 italic'}`}
+                      title={p.q}
+                    >
+                      {p.q}
+                    </span>
+                    <span className={`shrink-0 font-semibold tabular-nums ${v ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground/40'}`}>
+                      {v ? `→ ${v}` : '→ —'}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Contador + Enviar (por partido) */}
       <Card className="shadow-sm">
