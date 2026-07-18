@@ -90,11 +90,29 @@ function ExtraPropCard({ index, question, matchId, form, handlePredict, disabled
 //   - `saved`: true cuando los picks ya están persistidos en BD (existing).
 //     En ese caso la tarjeta se ve ámbar + clock con "esperando resultado",
 //     no verde + check, para no sugerir que ya están "ganados".
-export function ExtraPointsPickSummary({ questions, picksById, maxExtra, saved = false }) {
+//   - `extraAnswersCorrect`: opcional, mapa `{ [qid]: true|false|null }` con
+//     la evaluación del backend (true=acertó, false=falló, null=pendiente).
+//     Cuando se pasa junto con `saved=true`, el contador muestra SOLO los
+//     puntos de los aciertos (no el máximo posible). Si no se pasa, fallback
+//     al cálculo antiguo (answeredCount × POINTS_PER_EXTRA).
+export function ExtraPointsPickSummary({ questions, picksById, maxExtra, saved = false, extraAnswersCorrect }) {
   if (!questions || questions.length === 0) return null;
   const answeredCount = questions.reduce((acc, q) => acc + (picksById?.[q.id] ? 1 : 0), 0);
   if (answeredCount === 0) return null;
-  const extraPoints = answeredCount * POINTS_PER_EXTRA;
+  // En modo saved con evaluación disponible, contamos SOLO los aciertos.
+  // Así no mostramos "+35 pts" cuando en realidad el usuario solo ganó +20.
+  let earnedPoints;
+  if (saved && extraAnswersCorrect) {
+    const correctCount = questions.reduce(
+      (acc, q) => acc + (extraAnswersCorrect?.[q.id] === true ? 1 : 0),
+      0
+    );
+    earnedPoints = correctCount * POINTS_PER_EXTRA;
+  } else {
+    // Sin evaluación (form en progreso o admin no cargó respuestas todavía):
+    // mostramos el máximo posible para mantener la UX original.
+    earnedPoints = answeredCount * POINTS_PER_EXTRA;
+  }
   const cap = maxExtra ?? questions.length * POINTS_PER_EXTRA;
 
   // Estilos según estado: saved (ámbar/esperando) vs in-form (verde/activo).
@@ -123,7 +141,7 @@ export function ExtraPointsPickSummary({ questions, picksById, maxExtra, saved =
           </p>
           <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
             {answeredCount}/{questions.length} ·{' '}
-            <span className={`${titleClass} font-medium`}>+{extraPoints} pts</span>{' '}
+            <span className={`${titleClass} font-medium`}>+{earnedPoints} pts</span>{' '}
             <span className="text-muted-foreground/60">(de {cap})</span>
           </span>
         </div>

@@ -214,6 +214,27 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
           : match.result_team1 < match.result_team2 ? match.team2
           : 'Empate')
         : null);
+  // FIX (jul 2026): computamos el Total en el frontend a partir del desglose
+  // visible, en vez de leer `existing.points_earned` de la BD. Razón: si el
+  // backend se quedó stale (puntos_earned=0) pero las flags de evaluación sí
+  // están actualizadas (winner/method/score/extras), el usuario veía "Total
+  // 0 pts" aunque el desglose mostrara +20 de extras. Mantenemos
+  // `points_earned` como fuente de verdad para partidos legacy (V1).
+  let computedTotal = 0;
+  if (!isLegacy) {
+    // Winner: 50 si acertó. Si NO acertó, todo lo gated queda en 0.
+    if (existing.winner_correct === true) {
+      computedTotal += 50;
+      if (existing.method_correct === true) computedTotal += 50;
+      // Score: solo si winner correcto Y score evaluable (no null) Y score correcto.
+      if (showScoreRow && existing.score_correct === true) computedTotal += 100;
+    }
+    // Extras: independientes del winner. Solo cuentan los true (aciertos).
+    if (existing.extra_answers_correct && typeof existing.extra_answers_correct === 'object') {
+      const correctExtras = Object.values(existing.extra_answers_correct).filter(v => v === true).length;
+      computedTotal += correctExtras * POINTS_PER_EXTRA;
+    }
+  }
   return (
     <div className="space-y-1.5">
       {/* Tu pick (lo que elegiste) — sin emojis que sugieran premio. */}
@@ -239,18 +260,20 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
         <PtsRow label="Ganador" correct={existing.winner_correct} pts={50} />
         {/* FIX (bug pick-gate-15jul): ganador es GATE. Si el usuario no
             acertó el ganador, método y marcador NO suman puntos aunque
-            coincidan por casualidad. Mostramos "no aplica" en gris. */}
+            coincidan por casualidad. Mostramos "no aplica" en gris (no
+            "pendiente" — el partido YA está evaluado, simplemente no cuenta). */}
         <PtsRow
           label="Cómo gana"
           correct={existing.winner_correct === false ? null : existing.method_correct}
+          notApplicable={existing.winner_correct === false}
           pts={50}
         />
         {showScoreRow && (
           <PtsRow
             label="Marcador"
             correct={existing.winner_correct === false ? null : existing.score_correct}
+            notApplicable={existing.winner_correct === false || scoreNotApplicable}
             pts={100}
-            notApplicable={scoreNotApplicable}
           />
         )}
         {/* Puntos extras — 1 fila por pregunta, solo si el partido las tiene.
@@ -288,7 +311,7 @@ export function ExistingPredictionPanel({ existing, match, isAdmin, resultKnown,
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <span className="text-xs font-bold">Total</span>
           <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-            {existing.points_earned || 0} pts
+            {isLegacy ? (existing.points_earned || 0) : computedTotal} pts
           </span>
         </div>
       </div>

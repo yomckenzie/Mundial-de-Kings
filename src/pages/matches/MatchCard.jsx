@@ -127,7 +127,11 @@ function MatchHeader({ match, isLive, st, liveScore, liveLabel, liveResult, pend
 }
 
 // ── Sub-component: form legacy v1 (pre-28 jun) ─────────────────────
-function V1PredictionForm({ match, form, user, handlePredict, handleSubmit, submitPrediction }) {
+// NOTA: el botón "Enviar" NO vive acá. Se renderiza una sola vez al final del
+// MatchCard (después del ExtraPointsCard si aplica) para que el usuario tenga
+// que recorrer todo el formulario antes de poder enviar — evita que se
+// "pase de largo" las preguntas de puntos extra en semifinal/final.
+function V1PredictionForm({ match, form, handlePredict }) {
   return (
     <>
       <div className="flex items-center justify-center gap-1.5 sm:gap-2">
@@ -147,15 +151,6 @@ function V1PredictionForm({ match, form, user, handlePredict, handleSubmit, subm
           onChange={(e) => handlePredict(match.id, 'team2', e.target.value)}
         />
       </div>
-      <Button
-        onClick={() => handleSubmit({ match_id: match.id, user_email: user.email })}
-        disabled={submitPrediction.isPending}
-        size="sm"
-        className="w-full min-w-0 gap-1.5 h-9 px-2 text-xs sm:text-sm font-semibold"
-      >
-        <Send className="w-3.5 h-3.5 shrink-0" />
-        <span className="truncate">{submitPrediction.isPending ? 'Enviando...' : 'Enviar'}</span>
-      </Button>
       <div className="flex items-center justify-center gap-1 text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/20 px-1.5 py-1 rounded-md">
         <Trophy className="w-3 h-3 shrink-0" />
         <span><strong>100 pts</strong> si aciertas</span>
@@ -165,7 +160,11 @@ function V1PredictionForm({ match, form, user, handlePredict, handleSubmit, subm
 }
 
 // ── Sub-component: form v2 (3 picks independientes, >= 28 jun) ─────
-function V2PredictionForm({ match, form, user, handlePredict, handleSubmit, submitPrediction }) {
+// NOTA: el botón "Enviar" NO vive acá. Se renderiza una sola vez al final del
+// MatchCard (después del ExtraPointsCard si aplica) para que el usuario tenga
+// que recorrer todo el formulario antes de poder enviar — evita que se
+// "pase de largo" las preguntas de puntos extra en semifinal/final.
+function V2PredictionForm({ match, form, handlePredict }) {
   return (
     <>
       {/* Paso 1: ¿Quién gana? */}
@@ -280,17 +279,6 @@ function V2PredictionForm({ match, form, user, handlePredict, handleSubmit, subm
         </div>
       )}
 
-      {/* Botón enviar */}
-      <Button
-        onClick={() => handleSubmit({ match_id: match.id, user_email: user.email })}
-        disabled={submitPrediction.isPending || !form.pred_winner || !form.pred_method}
-        size="sm"
-        className="w-full gap-1.5 h-9 text-xs font-semibold"
-      >
-        <Send className="w-3.5 h-3.5" />
-        <span>{submitPrediction.isPending ? 'Enviando...' : 'Enviar'}</span>
-      </Button>
-
       <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-center">
         Hasta <strong>200 pts</strong> si aciertas los 3 picks
       </div>
@@ -328,12 +316,15 @@ function ExistingExtrasSummary({ existing, match }) {
       questions={questions}
       picksById={picksById}
       saved
+      extraAnswersCorrect={existing.extra_answers_correct}
     />
   );
 }
 
 // ── Helper: bloque inferior (form / locked / register / existing) ──
-function PredictionBottom({ match, user, existing, form, isOpen, isLive, resultKnown, predHit, isV2, handlePredict, handleSubmit, submitPrediction }) {
+// NOTA: el botón Enviar vive en MatchCard (no acá) para que aparezca siempre
+// al final del card, después del ExtraPointsCard si aplica.
+function PredictionBottom({ match, user, existing, form, isOpen, isLive, resultKnown, predHit, isV2, handlePredict }) {
   if (isLive) {
     return (
       <div className="space-y-2 w-full">
@@ -380,8 +371,8 @@ function PredictionBottom({ match, user, existing, form, isOpen, isLive, resultK
       <m.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }} className="w-full">
         <div className="bg-muted/40 border border-border/50 rounded-xl p-2 sm:p-3 space-y-2">
           {isV2
-            ? <V2PredictionForm match={match} form={form} user={user} handlePredict={handlePredict} handleSubmit={handleSubmit} submitPrediction={submitPrediction} />
-            : <V1PredictionForm match={match} form={form} user={user} handlePredict={handlePredict} handleSubmit={handleSubmit} submitPrediction={submitPrediction} />
+            ? <V2PredictionForm match={match} form={form} handlePredict={handlePredict} />
+            : <V1PredictionForm match={match} form={form} handlePredict={handlePredict} />
           }
         </div>
       </m.div>
@@ -429,6 +420,13 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
 
   const bottomProps = { match, user, existing, form, isOpen, isLive, resultKnown, predHit, isV2, handlePredict, handleSubmit, submitPrediction };
 
+  // El botón "Enviar" se renderiza UNA SOLA VEZ al final del card, debajo del
+  // ExtraPointsCard si aplica. Esto fuerza al usuario a recorrer TODO el form
+  // (predicción principal + puntos extra en semifinal/final) antes de poder
+  // apostar, evitando submits accidentales que se "pasan de largo" las
+  // preguntas extra.
+  const showSubmitButton = isOpen && !isLive && !existing && !!user;
+
   return (
     <m.div layout initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
       <Card className={`card-hover ${isLive ? 'ring-2 ring-red-500/50 glow-sm' : ''}`}>
@@ -444,6 +442,24 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                   ya guardados) — ver ExtraPointsPickSummary más abajo. */}
               {isOpen && !isLive && !existing && getQuestionsForMatch(match) && (
                 <ExtraPointsCard match={match} form={form} handlePredict={handlePredict} />
+              )}
+              {/* Botón Enviar — SIEMPRE al final, después del ExtraPointsCard
+                  si existe. El usuario tiene que llegar hasta acá para poder
+                  enviar, lo cual previene submits accidentales antes de
+                  completar los puntos extra. */}
+              {showSubmitButton && (
+                <Button
+                  onClick={() => handleSubmit({ match_id: match.id, user_email: user.email })}
+                  disabled={
+                    submitPrediction.isPending
+                    || (isV2 && (!form.pred_winner || !form.pred_method))
+                  }
+                  size="sm"
+                  className="w-full gap-1.5 h-9 text-xs font-semibold"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{submitPrediction.isPending ? 'Enviando...' : 'Enviar'}</span>
+                </Button>
               )}
               {/* Resumen read-only de extras: se muestra también cuando hay
                   existing (no se renderiza el form), para que el usuario vea

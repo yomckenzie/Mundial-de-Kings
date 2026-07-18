@@ -1,7 +1,8 @@
 import { Badge } from '@/components/ui/badge';
-import { Clock } from 'lucide-react';
+import { Clock, Check, X, Trophy } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
+import { getQuestionsForMatch, POINTS_PER_EXTRA } from '@/lib/extraQuestions';
 
 const statusLabels = {
   pending: 'Pendiente',
@@ -110,6 +111,18 @@ export function PredictionsHistory({ predictions, matchMap }) {
     const realWinner = hasResult ? deriveRealWinner(match) : null;
     const realMethodText = hasResult ? realMethodLabel(match) : null;
 
+    // Puntos extra — solo aplica si el partido tiene preguntas configuradas
+    // (semifinal/final) y el usuario envió extras.
+    const questions = match ? getQuestionsForMatch(match) : null;
+    const userExtras = Array.isArray(pred.extra_answers) ? pred.extra_answers : [];
+    const extrasEval = (pred.extra_answers_correct && typeof pred.extra_answers_correct === 'object')
+      ? pred.extra_answers_correct
+      : null;
+    const extrasCorrectCount = extrasEval
+      ? Object.values(extrasEval).filter(v => v === true).length
+      : 0;
+    const extrasTotal = questions?.length ?? 0;
+
     return (
       <div key={pred.id} className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-muted/30 text-sm">
         <div className="min-w-0 flex-1 space-y-1">
@@ -168,6 +181,47 @@ export function PredictionsHistory({ predictions, matchMap }) {
               <span>·</span>
               <span className="tabular-nums font-medium text-foreground">{match.result_team1}-{match.result_team2}</span>
             </p>
+          )}
+
+          {/* Puntos extra — semifinal/final. Lista cada pregunta con el pick
+              del usuario y el resultado (✓/✗/⏳). Si el admin aún no cargó
+              respuestas correctas, mostramos el pick sin evaluación. */}
+          {questions && userExtras.length > 0 && (
+            <details className="mt-1.5 group">
+              <summary className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1 cursor-pointer select-none">
+                <Trophy className="w-3 h-3" />
+                Puntos extra · {extrasEval
+                  ? `${extrasCorrectCount}/${extrasTotal} · +${extrasCorrectCount * POINTS_PER_EXTRA} pts`
+                  : `${userExtras.length}/${extrasTotal} respondidas`}
+              </summary>
+              <ul className="mt-1 space-y-0.5 pl-2 border-l-2 border-amber-300/50">
+                {questions.map((q, idx) => {
+                  const userAns = userExtras.find(a => a.id === q.id);
+                  const value = userAns?.value ?? null;
+                  const flag = extrasEval?.[q.id]; // true | false | null | undefined
+                  let StatusIcon = null;
+                  let statusColor = 'text-muted-foreground/60';
+                  if (flag === true) { StatusIcon = Check; statusColor = 'text-emerald-600 dark:text-emerald-400'; }
+                  else if (flag === false) { StatusIcon = X; statusColor = 'text-red-600 dark:text-red-400'; }
+                  // flag === null o undefined → pendiente, no icon
+                  return (
+                    <li key={q.id} className="text-[10px] flex items-baseline gap-1.5 leading-tight">
+                      <span className="text-muted-foreground/70 tabular-nums w-3 text-right shrink-0">{idx + 1}.</span>
+                      <span className="flex-1 min-w-0 truncate text-muted-foreground/90">
+                        {value ? <><strong className="text-foreground">{value}</strong> · {q.q}</> : <em className="italic">— sin responder —</em>}
+                      </span>
+                      {StatusIcon ? (
+                        <span className={`shrink-0 ${statusColor}`}>
+                          <StatusIcon className="w-3 h-3" />
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-muted-foreground/40 text-[9px]">⏳</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
           )}
         </div>
 
