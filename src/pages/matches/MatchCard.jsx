@@ -321,6 +321,119 @@ function ExistingExtrasSummary({ existing, match }) {
   );
 }
 
+// ── Form solo de "Puntos extra" para predicciones ya guardadas ────────
+// FIX (bug extras-after-submit-17jul): usuarios que mandaron su pronóstico
+// principal antes del fix (botón estaba arriba) se quedaron sin responder
+// las preguntas de puntos extra. Este componente les permite completar
+// SOLO los extras, sin tocar su pick principal.
+//
+// Renderiza solo cuando:
+//   - existing existe (predicción ya guardada)
+//   - el partido tiene preguntas configuradas (semifinal/final)
+//   - el usuario NO envió extras (o está vacío)
+//   - el partido NO empezó (status != live/finished)
+//
+// El botón "Enviar puntos extra" llama a handleSubmitExtrasOnly que usa
+// api.entities.Prediction.update(id, { extra_answers }) — no toca
+// winner/method/score. Ver usePredictionSubmit.handleSubmitExtrasOnly.
+function ExtrasOnlyForm({ match, existing, form, handlePredict, submitExtrasOnly, handleSubmitExtrasOnly }) {
+  const questions = getQuestionsForMatch(match);
+  if (!questions) return null;
+
+  const answeredCount = questions.reduce((acc, q) => {
+    const v = form?.[`extra_${q.id}`];
+    return acc + (v ? 1 : 0);
+  }, 0);
+
+  const maxExtra = questions.length * 5;
+
+  return (
+    <div className="bg-amber-50/40 dark:bg-amber-950/20 border border-amber-300/60 dark:border-amber-700/40 rounded-xl p-3 space-y-2 mt-2">
+      <div className="flex items-start gap-2">
+        <Trophy className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-amber-700 dark:text-amber-300 leading-snug">
+            Te falta responder los puntos extra
+          </p>
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Mandaste tu pronóstico antes de que estas preguntas estuvieran disponibles.
+            Podés completarlas ahora (antes del partido) sin cambiar tu pick principal.
+          </p>
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        {questions.map((q, i) => (
+          <ExtrasOnlyQuestionRow
+            key={q.id}
+            index={i + 1}
+            question={q}
+            matchId={match.id}
+            form={form}
+            handlePredict={handlePredict}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <p className="text-[10px] text-muted-foreground">
+          {answeredCount}/{questions.length} respondidas ·{' '}
+          <span className="text-amber-600 dark:text-amber-400 font-medium">
+            +{answeredCount * 5} pts posibles
+          </span>{' '}
+          <span className="text-muted-foreground/60">(máx +{maxExtra})</span>
+        </p>
+        <Button
+          size="sm"
+          onClick={() => handleSubmitExtrasOnly({
+            predictionId: existing.id,
+            matchId: match.id,
+            match,
+          })}
+          disabled={submitExtrasOnly.isPending || answeredCount === 0}
+          className="h-8 gap-1.5 px-3 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-black"
+        >
+          <Send className="w-3.5 h-3.5" />
+          <span>{submitExtrasOnly.isPending ? 'Enviando...' : 'Enviar puntos extra'}</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Sub-componente: una fila con la pregunta + botones de opciones. Igual al
+// ExtraOptionRow de ExtraPointsCard pero inline (más simple, sin animación).
+function ExtrasOnlyQuestionRow({ index, question, matchId, form, handlePredict }) {
+  const valueKey = `extra_${question.id}`;
+  const value = form?.[valueKey] ?? null;
+  const cols = question.options.length >= 4 ? 2 : question.options.length;
+  const gridColsClass =
+    cols === 1 ? 'grid-cols-1' :
+    cols === 2 ? 'grid-cols-2' :
+    cols === 3 ? 'grid-cols-1 sm:grid-cols-3' :
+    'grid-cols-2';
+  const handleSelect = (opt) => handlePredict(matchId, valueKey, opt);
+
+  return (
+    <div className="bg-card border border-border/60 rounded-xl p-2.5 space-y-1.5">
+      <p className="text-[12px] font-semibold leading-snug">
+        <span className="text-muted-foreground">{index}. </span>{question.q}
+      </p>
+      <div className={`grid gap-1.5 ${gridColsClass}`}>
+        {question.options.map(opt => (
+          <Button
+            key={opt}
+            size="sm"
+            variant={value === opt ? 'default' : 'outline'}
+            className="h-auto min-h-7 text-[11px] py-1 px-1.5 min-w-0 text-center break-words leading-tight whitespace-normal"
+            onClick={() => handleSelect(value === opt ? null : opt)}
+          >
+            {opt}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Helper: bloque inferior (form / locked / register / existing) ──
 // NOTA: el botón Enviar vive en MatchCard (no acá) para que aparezca siempre
 // al final del card, después del ExtraPointsCard si aplica.
@@ -382,7 +495,7 @@ function PredictionBottom({ match, user, existing, form, isOpen, isLive, resultK
 }
 
 // ── Componente principal: compositor ────────────────────────────────
-export function MatchCard({ match, user, existing, predictions, submitPrediction, handlePredict, handleSubmit, liveResult, live, pendingConfirm, isV2 = true }) {
+export function MatchCard({ match, user, existing, predictions, submitPrediction, submitExtrasOnly, handlePredict, handleSubmit, handleSubmitExtrasOnly, liveResult, live, pendingConfirm, isV2 = true }) {
   const isOpen = isMatchOpenForPredictions(match);
   const st = isOpen ? statusMap.open : (statusMap[match.status] || statusMap.pending);
   const isLive = (match.status === 'live' || !!live) && !pendingConfirm;
@@ -427,6 +540,18 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
   // preguntas extra.
   const showSubmitButton = isOpen && !isLive && !existing && !!user;
 
+  // FIX (bug extras-after-submit-17jul): el usuario ya mandó su predicción
+  // principal (existing) pero NO respondió los puntos extra (porque el botón
+  // estaba arriba antes del fix). Le damos la opción de completar solo los
+  // extras hasta que arranque el partido (no aplica si ya está en vivo o
+  // finalizado). NO tocamos su pick principal — solo `extra_answers`.
+  const showExtrasOnlyForm =
+    !!existing
+    && !isLive
+    && match.status !== 'finished'
+    && getQuestionsForMatch(match) != null
+    && (!Array.isArray(existing.extra_answers) || existing.extra_answers.length === 0);
+
   return (
     <m.div layout initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
       <Card className={`card-hover ${isLive ? 'ring-2 ring-red-500/50 glow-sm' : ''}`}>
@@ -442,6 +567,21 @@ export function MatchCard({ match, user, existing, predictions, submitPrediction
                   ya guardados) — ver ExtraPointsPickSummary más abajo. */}
               {isOpen && !isLive && !existing && getQuestionsForMatch(match) && (
                 <ExtraPointsCard match={match} form={form} handlePredict={handlePredict} />
+              )}
+              {/* FIX (bug extras-after-submit-17jul): si el usuario ya mandó
+                  su pick principal pero NO respondió los extras, le mostramos
+                  un form SOLO de extras para que pueda completarlos antes
+                  del partido. No toca el pick principal (winner/method/score)
+                  — solo `extra_answers`. */}
+              {showExtrasOnlyForm && handleSubmitExtrasOnly && submitExtrasOnly && (
+                <ExtrasOnlyForm
+                  match={match}
+                  existing={existing}
+                  form={form}
+                  handlePredict={handlePredict}
+                  submitExtrasOnly={submitExtrasOnly}
+                  handleSubmitExtrasOnly={handleSubmitExtrasOnly}
+                />
               )}
               {/* Botón Enviar — SIEMPRE al final, después del ExtraPointsCard
                   si existe. El usuario tiene que llegar hasta acá para poder

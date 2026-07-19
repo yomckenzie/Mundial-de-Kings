@@ -80,7 +80,9 @@ export default function Matches() {
     predictionsState,
     handlePredict,
     handleSubmit,
+    handleSubmitExtrasOnly,
     submitPrediction,
+    submitExtrasOnly,
   } = usePredictionSubmit({ user, matches });
 
   // Resultados en vivo de SportScore (auto-refresco cada 30s).
@@ -108,8 +110,10 @@ export default function Matches() {
       existing={getPredictionForMatch(match.id)}
       predictions={predictionsState}
       submitPrediction={submitPrediction}
+      submitExtrasOnly={submitExtrasOnly}
       handlePredict={handlePredict}
       handleSubmit={handleSubmit}
+      handleSubmitExtrasOnly={handleSubmitExtrasOnly}
       liveResult={liveResults[match.id]}
       live={live}
       pendingConfirm={finished && pendingConfirmIds.has(match.id)}

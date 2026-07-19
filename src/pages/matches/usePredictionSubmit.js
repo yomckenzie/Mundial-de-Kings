@@ -20,6 +20,10 @@ export const isV2Match = (m) => {
  *   - handlePredict:     (matchId, field, value) → actualiza un campo
  *   - handleSubmit:      (data) → valida + dispara la mutación
  *   - submitPrediction:  useMutation result (isPending, etc.)
+ *   - submitExtrasOnly:  useMutation que actualiza SOLO los `extra_answers`
+ *                        de una predicción existente. Para usuarios que
+ *                        mandaron su pick principal antes del fix (botón
+ *                        estaba arriba) y se quedaron sin extras.
  */
 export function usePredictionSubmit({ user, matches }) {
   const queryClient = useQueryClient();
@@ -38,6 +42,31 @@ export function usePredictionSubmit({ user, matches }) {
       toast.success('¡Pronóstico enviado! 🏆');
     },
     onError: (err) => toast.error(err?.message || 'Error al enviar pronóstico'),
+  });
+
+  // Actualiza SOLO los extras de una predicción ya guardada. El pick principal
+  // (winner/method/score) queda intacto. Se llama cuando el usuario ya mandó
+  // su pronóstico antes de que el botón estuviera al final y se quedó sin
+  // responder las preguntas extra. Solo aplica a partidos semifinal/final
+  // (donde hay preguntas) y antes de que arranque el partido.
+  const submitExtrasOnly = useMutation({
+    mutationFn: ({ predictionId, extraAnswers }) =>
+      api.entities.Prediction.update(predictionId, { extra_answers: extraAnswers }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-predictions', user?.email] });
+      setPredictionsState(prev => {
+        const next = { ...prev };
+        // Limpiar el flag de "extras en progreso" para este partido
+        for (const k of Object.keys(next)) {
+          if (next[k]?.extrasSubmitting) {
+            delete next[k];
+          }
+        }
+        return next;
+      });
+      toast.success('¡Puntos extra enviados! 🏆');
+    },
+    onError: (err) => toast.error(err?.message || 'Error al enviar puntos extra'),
   });
 
   // Merge con EMPTY_FORM para que el primer cambio no sobrescriba los demás campos.
@@ -125,10 +154,52 @@ export function usePredictionSubmit({ user, matches }) {
     });
   };
 
+  // Envío solo de los puntos extra de una predicción existente. NO toca el
+  // pick principal (winner/method/score) — solo actualiza `extra_answers` en
+  // la fila correspondiente. Usado cuando el usuario ya mandó su pronóstico
+  // antes del fix (botón estaba arriba) y se quedó sin responder las
+  // preguntas extra. Solo aplica a partidos semifinal/final con preguntas
+  // y antes de que el partido empiece (status != live/finished).
+  const handleSubmitExtrasOnly = (data) => {
+    const { predictionId, matchId, match } = data;
+    const form = predictionsState[matchId] || {};
+
+    const extraQuestions = getQuestionsForMatch(match);
+    if (!extraQuestions || extraQuestions.length === 0) {
+      toast.error('Este partido no tiene puntos extra.');
+      return;
+    }
+
+    const extraAnswers = extraQuestions
+      .map(q => ({
+        id: q.id,
+        value: form[`extra_${q.id}`] ?? null,
+        other: form[`extra_other_${q.id}`] ?? null,
+      }))
+      .filter(a => a.value != null);
+
+    if (extraAnswers.length === 0) {
+      toast.error('Responde al menos una pregunta de puntos extra.');
+      return;
+    }
+
+    submitExtrasOnly.mutate({ predictionId, extraAnswers });
+    // Limpiar el flag local de "extrasSubmitting" (lo usa el UI)
+    if (typeof window !== 'undefined') {
+      setPredictionsState(prev => {
+        const next = { ...prev };
+        if (next[matchId]) delete next[matchId].extrasSubmitting;
+        return next;
+      });
+    }
+  };
+
   return {
     predictionsState,
     handlePredict,
     handleSubmit,
+    handleSubmitExtrasOnly,
     submitPrediction,
+    submitExtrasOnly,
   };
 }

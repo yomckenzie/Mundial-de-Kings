@@ -161,8 +161,11 @@ const client = {
         }
         case 'recalcUserPoints': {
           const predictions = db.predictions.list();
-          // Deduplicar: contar solo una prediccion por (user_email, match_id)
-          // para evitar que duplicados inflen los puntos (ej: 600pts por 1 acierto)
+          // FIX (bug ranking-extras-18jul): antes sumábamos 1 acierto × 100
+          // hardcoded, lo cual ignoraba los puntos extra (5 pts/preg en
+          // semifinal/final). Ahora usamos `points_earned` directo de la
+          // predicción — fuente de verdad única — y deduplicamos por
+          // (user_email, match_id) para que duplicados no inflen los puntos.
           const seen = new Set();
           const pointsMap = {};
           predictions.forEach(p => {
@@ -170,7 +173,7 @@ const client = {
               const key = p.user_email + '|' + p.match_id;
               if (seen.has(key)) return;
               seen.add(key);
-              pointsMap[p.user_email] = (pointsMap[p.user_email] || 0) + 100;
+              pointsMap[p.user_email] = (pointsMap[p.user_email] || 0) + (p.points_earned || 0);
             }
           });
           let updated = 0;

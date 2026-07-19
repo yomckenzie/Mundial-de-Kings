@@ -2,11 +2,15 @@
 // (users + predictions + matches). Sin dependencias de React.
 //
 // Semana = lunes a domingo (calendario). Los puntos semanales de un usuario =
-// aciertos (is_correct + scored) cuyos partidos se jugaron en esa semana × 100,
-// deduplicando por (user_email, match_id).
+// Σ points_earned (ya incluye winner/method/score + extras) de predicciones
+// is_correct+scored cuyos partidos se jugaron en esa semana, deduplicando
+// por (user_email, match_id).
+//
+// FIX (bug ranking-extras-18jul): antes contábamos 1 acierto × 100 hardcoded,
+// lo cual ignoraba los puntos extra (5 pts/preg en semifinal/final). Ahora
+// usamos `points_earned` directo de la predicción — fuente de verdad única.
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const POINTS_PER_CORRECT = 100;
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 // Fecha-calendario de un partido como ms al inicio del día en hora local.
@@ -73,7 +77,7 @@ export function computeWeeklyRanking(users, predictions, matches, week) {
   }
 
   const seen = new Set();
-  const countByEmail = {};
+  const pointsByEmail = {};
   for (const p of (predictions || [])) {
     if (!p.is_correct || !p.scored) continue;
     const md = dateById[p.match_id];
@@ -82,13 +86,16 @@ export function computeWeeklyRanking(users, predictions, matches, week) {
     const key = `${p.user_email}|${p.match_id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    countByEmail[p.user_email] = (countByEmail[p.user_email] || 0) + 1;
+    // FIX (bug ranking-extras-18jul): usar points_earned (incluye extras)
+    // en vez de contar 1 acierto. Si es null/undefined (no evaluado aún),
+    // fallback a 0 — la evaluación asíncrona lo actualizará.
+    pointsByEmail[p.user_email] = (pointsByEmail[p.user_email] || 0) + (p.points_earned || 0);
   }
 
   const ranked = [];
   for (const u of (users || [])) {
     if (!u.profile_complete || u.role === 'admin') continue;
-    const weeklyPoints = (countByEmail[u.email] || 0) * POINTS_PER_CORRECT;
+    const weeklyPoints = pointsByEmail[u.email] || 0;
     if (weeklyPoints <= 0) continue;
     ranked.push({ ...u, weeklyPoints });
   }

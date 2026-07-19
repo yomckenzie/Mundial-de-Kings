@@ -13,13 +13,13 @@ const users = [
   { email: 'inc@x.com', instagram: 'inc', profile_complete: false, role: 'user' },
 ];
 const preds = [
-  { user_email: 'a@x.com', match_id: 'm1', is_correct: true, scored: true },
-  { user_email: 'a@x.com', match_id: 'm2', is_correct: true, scored: true },
-  { user_email: 'a@x.com', match_id: 'm1', is_correct: true, scored: true }, // duplicado
-  { user_email: 'b@x.com', match_id: 'm1', is_correct: true, scored: true },
-  { user_email: 'b@x.com', match_id: 'm3', is_correct: true, scored: true }, // Sem 2
-  { user_email: 'a@x.com', match_id: 'm3', is_correct: false, scored: true },
-  { user_email: 'adm@x.com', match_id: 'm1', is_correct: true, scored: true },
+  { user_email: 'a@x.com', match_id: 'm1', is_correct: true, scored: true, points_earned: 100 },
+  { user_email: 'a@x.com', match_id: 'm2', is_correct: true, scored: true, points_earned: 100 },
+  { user_email: 'a@x.com', match_id: 'm1', is_correct: true, scored: true, points_earned: 100 }, // duplicado
+  { user_email: 'b@x.com', match_id: 'm1', is_correct: true, scored: true, points_earned: 100 },
+  { user_email: 'b@x.com', match_id: 'm3', is_correct: true, scored: true, points_earned: 100 }, // Sem 2
+  { user_email: 'a@x.com', match_id: 'm3', is_correct: false, scored: true, points_earned: 0 },
+  { user_email: 'adm@x.com', match_id: 'm1', is_correct: true, scored: true, points_earned: 100 },
 ];
 const NOW = new Date(2026, 5, 20, 12, 0, 0).getTime(); // dentro de Sem 2
 

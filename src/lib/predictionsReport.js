@@ -1,8 +1,10 @@
 // Lógica pura para armar reportes de pronósticos (sin React).
 // Cruza predictions con users (por correo) para mostrar @instagram y nombre.
 // Excluye admins de métricas y tabla de posiciones (igual que la evaluación).
-
-const POINTS_PER_CORRECT = 100;
+//
+// FIX (bug ranking-extras-18jul): antes asumíamos 100 pts por acierto, lo
+// cual ignoraba los puntos extra. Ahora usamos `points_earned` directo de
+// la predicción (incluye winner/method/score + extras hasta +35 pts).
 
 const hasResult = (match) =>
   match && match.result_team1 != null && match.result_team2 != null;
@@ -47,9 +49,12 @@ export function buildMatchReport(match, predictions, usersByEmail) {
       email: p.user_email,
       pred: `${p.pred_team1}-${p.pred_team2}`,
       status,
+      // FIX (bug ranking-extras-18jul): leer points_earned directo, que ya
+      // incluye extras. Si la predicción aún no se evaluó (scored=false),
+      // usamos el estado local (`status`) — sin extras posibles.
       points: p.scored
-        ? (p.points_earned ?? (p.is_correct ? POINTS_PER_CORRECT : 0))
-        : (status === 'ganó' ? POINTS_PER_CORRECT : 0),
+        ? (p.points_earned ?? (p.is_correct ? 100 : 0))
+        : (status === 'ganó' ? 100 : 0),
     });
   }
   rows.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
@@ -84,7 +89,12 @@ export function buildStandings(predictions, matches, usersByEmail) {
     const won = statusOf(p, matchById.get(p.match_id)) === 'ganó';
     const cur = byUser.get(p.user_email) || { hits: 0, total: 0, points: 0 };
     cur.total += 1;
-    if (won) { cur.hits += 1; cur.points += POINTS_PER_CORRECT; }
+    if (won) {
+      cur.hits += 1;
+      // FIX (bug ranking-extras-18jul): usar points_earned directo (incluye
+      // extras), en vez de POINTS_PER_CORRECT hardcoded (100).
+      cur.points += p.points_earned || 0;
+    }
     byUser.set(p.user_email, cur);
   }
   const list = [...byUser.entries()].map(([email, v]) => {
