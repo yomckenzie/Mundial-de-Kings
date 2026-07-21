@@ -200,10 +200,7 @@ export default function Prizes() {
               <Gift className="w-14 h-14 text-muted-foreground/30 mx-auto" />
               <h2 className="font-display text-2xl">No hay premios disponibles</h2>
               <p className="text-muted-foreground text-sm">
-                {dbPrizes.length === 0
-                  ? 'El catálogo está vacío. Pide al administrador que agregue premios.'
-                  : `Hay ${dbPrizes.length} premio${dbPrizes.length === 1 ? '' : 's'} en el catálogo pero ${dbPrizes.length === 1 ? 'está marcado' : 'están marcados'} como inactivo${dbPrizes.length === 1 ? '' : 's'}. Actívalo${dbPrizes.length === 1 ? '' : 's'} desde /admin/prizes.`
-                }
+                El catálogo está vacío. Vuelve pronto para ver nuevos premios.
               </p>
             </CardContent>
           </Card>
